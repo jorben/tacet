@@ -11,7 +11,8 @@
 | 领域数据 | `src/domain` | 类别、示例文档、批量例外分组、模型状态文案、场景清单、图标（逐字取自原型） |
 | 界面引擎 | `src/engine` | 原型脚本按小节移植为 TypeScript 模块（shell/layer/models/home/single/batch/review/presets/plugins/settings/actions/events/proto），行为、状态机与文案与原型一致；`runtime.ts` 承载 DOM 助手、确定性随机数与计时器句柄；`state.ts` 为单一状态对象 |
 | 服务接口 | `src/services` | `TacetService` 接口 + `mock`（浏览器/测试）与 `wails`（只实现 `Service.AppInfo`，与 internal/gui 现有绑定兼容）；下载、安装、更新、导出均为模拟，不伪造为真实现 |
-| 外壳 | `src/App.tsx` | React 渲染窗口外壳（标题栏、导航、主区、弹层、场景导航），引擎填充内容 |
+| 外壳 | `src/App.tsx`、`src/styles/host.css` | React 渲染窗口外壳；桌面宿主（Wails）下由系统画窗口框架，标题栏为拖拽区，浏览器下由引擎画替身窗口 |
+| 宿主 | `src/services`、`internal/gui/window.go` | 关闭/最小化/退出经 `TacetService`；Go 侧拦截用户关闭并发事件 `tacet:close-requested`，前端就绪（`CloseHandlerReady`）前保持原生关闭行为 |
 | 导航 | state `view` + `navStack` | 不使用路由库；任务（首页/单份/批量/历史结果）、方案、插件、设置；URL `#scene=` 直达场景 |
 | 测试 | `src/test`、`scripts` | Vitest + Testing Library（66 项）；`scripts/compare.mjs` 对 26 个场景逐字对比原型与实现的可见文本；`scripts/walkthrough.mjs` 无头浏览器走查并生成 `docs/walkthrough.md` 与截图 |
 
@@ -22,7 +23,7 @@
 ### 2.1 外壳
 - 标题栏：关闭窗口（含“最小化到托盘”提示与“有未完成任务”确认对话框：保存并关闭 / 停止并清理 / 取消）、返回按钮（返回任务/结果/批次/方案/规则/插件/设置）、标题（Tacet、文件名、批次名、导出清单、人工复核）、模型待下载入口、网络状态提示（本机处理 · 未联网 / 正在下载模型）
 - 左侧导航：任务（含批次待处理红点）、方案、插件、设置
-- 原型场景导航（右下角“原型场景”，URL `#scene=xxx`）：见 2.9
+- 场景导航（右下角“原型场景”，URL `#scene=xxx`，见 2.9）仅用于开发与测试：位于 `src/dev/`，由构建开关 `__SCENES__` 控制，生产构建不含；走查与对比脚本用 `npm run build:scenes` 构建
 - 弹层：菜单、气泡、对话框、抽屉、撤销提示（toast）
 
 ### 2.2 首页（任务）
