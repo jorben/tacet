@@ -13,6 +13,15 @@
 
 首页与标题栏使用相同比例的圆角处理。首页 Logo 显示为 80 × 80 CSS px。
 
+## 宣传 Hero 图
+
+Jorben 提供的 2048 × 1152 宣传图：左侧为 Logo、Tacet 字标、标语“Sensitive data stops here.”与三项能力标签，右侧为应用窗口、文档脱敏前后对比与幼苗角色。用于仓库 README 顶部与对外传播。
+
+| 文件 | 用途 |
+| --- | --- |
+| [tacet-hero.png](tacet-hero.png) | 2048 × 1152 PNG 原稿；用作社交预览图等需要 PNG 的场合 |
+| [tacet-hero.webp](tacet-hero.webp) | 2048 × 1152 WebP（质量 86），用于仓库 README 顶部展示 |
+
 ## 首页底部脱敏流程插画
 
 根据 Jorben 提供的设计稿，使用 MCP 生图工具（remote-magpie/codex/gpt-image-2）生成四阶段横向流程插画：文档导入、敏感信息识别、脱敏保护、结果输出。采用浅鼠尾草绿线稿、幼苗角色与轻薄植物背景，不嵌入文字。
