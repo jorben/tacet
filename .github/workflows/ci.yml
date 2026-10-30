@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    # First release targets: macOS arm64 and Windows x64 (architecture section 10)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Generate bindings
+        run: wails3 generate bindings -clean=true -ts -i ./cmd/tacet-desktop
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - run: go vet ./...
+      - name: Test (includes module dependency rules)
+        run: go test ./...
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: SDK and built-in plugin tests
+        working-directory: python
+        run: uv run --locked python -m unittest discover -s tests
