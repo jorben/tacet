@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿 |
+| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿；也是桌面应用图标的唯一来源，构建时由 `build/Taskfile.yml` 的 `generate:icons` 生成 macOS `.icns` 与 Windows `.ico` |
 | [tacet-seedling-logo.webp](tacet-seedling-logo.webp) | 256 × 256 WebP 界面素材，内嵌于原型的 `HOME_ICON` 及标签页图标 |
 
 首页与标题栏使用相同比例的圆角处理。首页 Logo 显示为 80 × 80 CSS px。

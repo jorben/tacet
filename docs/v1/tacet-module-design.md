@@ -150,15 +150,15 @@ flowchart TB
 | 模块 | 可依赖 |
 | --- | --- |
 | `gui`、`cli` | `app`、`query` |
-| `app` | 领域层各模块、`workspace` 提交区 |
+| `app` | 领域层各模块、`workspace` 提交区、`update` |
 | `query` | 各领域模块的只读接口 |
 | `lifecycle` | `app`、`workspace`、`jobs`、`sched`、`host`、`publish`、`review`、`retention`、`platform` |
-| `update` | `netgate`、`lifecycle`、`envs`、`registry`、`query` |
+| `update` | `netgate`、`envs`、`registry`、`query`；退出顺序经组装代码注入的 `Quitter` 接口调用，不导入 `lifecycle`，否则 `app` → `update` → `lifecycle` → `app` 成环 |
 | `jobs` | `workspace`、`snapshot`、`lineage`、`sched`、`exceptions`、`verdict`、`retention`，以及各领域模块的只读汇总接口 |
 | `snapshot` | `config`、`registry`，`models` 的只读状态 |
 | `sched` | `netgate`（处理租约）、`platform`（内存监控） |
 | `retention` | `keys`、`registry`，`publish` 的只读状态；各模块的清理逻辑经 `retention.Purger` 接口注册，`retention` 不导入它们 |
-| 阶段模块（`preflight`、`extract`、`policy` 的处置阶段、`export`、`validate`、`publish`） | `workspace`、`host` 角色客户端、`refs`，以及各自小节写明的领域模块；文件事实从 `StageContext` 取得，不反向依赖 `jobs` |
+| 阶段模块（`preflight`、`extract`、`policy` 的处置阶段、`export`、`validate`、`publish`） | `workspace`、`sched`（实现 `StageRunner`）、`snapshot`（读取分面）、`host` 角色客户端、`refs`，以及各自小节写明的领域模块；文件事实从 `StageContext` 取得，不反向依赖 `jobs` |
 | `detect` | `rules`、`host`（`DetectClient`） |
 | `review` | `findings`、`exceptions` |
 | `preview` | `host`、`refs`、`plan`（几何）、`extract` 的只读接口 |
@@ -170,6 +170,8 @@ flowchart TB
 | 纯逻辑模块（`lineage`、`policy` 与 `plan` 的核心、`verdict`、`exceptions` 的类型表、`jobs` 的迁移函数） | 只依赖共享类型（3.1 节） |
 | `host`、`refs` | `platform`、`keys`、`store`（资源文件）、`envs`（启动规格） |
 | `store`、`keys`、`netgate` | `platform` |
+
+上表与下列禁止项由 `internal/archtest` 在 `go test` 中检查，修改依赖规则时两处同步修改。
 
 明确禁止：
 
@@ -302,7 +304,7 @@ flowchart TB
 - 检查与下载只经 `netgate`，取得网络租约后进行，因此不会与文档处理同时发生（SEC-15）；检查请求只含版本号、平台与通道。
 - 更新包校验签名后才可应用；离线更新包走同一校验。
 - 存在待复核或可恢复任务时，经 `query` 展示数量，由用户选择先完成、作废，或更新后按 INV-03、INV-04 重新执行受影响阶段（架构文档 7.3 节）。
-- 应用前调用 `lifecycle` 的退出顺序；新版本首次启动由 `store` 迁移，Python 次版本或 ABI 变化时由 `envs` 把第三方环境标为“需重新部署”。
+- 应用前经注入的 `Quitter` 接口执行 `lifecycle` 的退出顺序；新版本首次启动由 `store` 迁移，Python 次版本或 ABI 变化时由 `envs` 把第三方环境标为“需重新部署”。
 
 ### 4.5 `gui` 桌面适配
 
