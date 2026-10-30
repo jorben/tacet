@@ -1,3 +1,4 @@
+// Needs a build that includes the scene navigator: VITE_SCENES=1 npm run build && npx vite preview --port 4173
 // Fidelity check: for every prototype scene, compare the visible text of docs/v1/tacet-prototype.html
 // with the React app (same viewport, same scene). Prints a diff summary; exits non-zero on any difference.
 import { launch } from "./walk-lib.mjs";
@@ -15,7 +16,8 @@ async function grab(url, k) {
   await page.reload();
   await page.waitForTimeout(k === "s3" ? 2500 : 700);
   const out = await page.evaluate(() => ({
-    text: document.querySelector("#win").innerText.replace(/\s+/g, " ").trim(),
+    // The version string is read from the host in the app (hard-coded 1.0.0 in the prototype): not a fidelity difference.
+    text: document.querySelector("#win").innerText.replace(/\s+/g, " ").trim().replace(/(检查更新 )(1\.0\.0|0\.0\.0-dev)/, "$1<version>"),
     html: document.querySelector("#main").innerHTML.length,
   }));
   await page.close();

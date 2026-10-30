@@ -11,11 +11,7 @@ export const S:any={
  models:[{id:'astr',name:'AstrLink Guard',version:'0.1.3',variant:'INT8',languages:'中文 / 中英混排',weightMiB:36,recommended:true,confRec:0.5,confMin:0.3,status:'ready',progress:100,error:null}],modelPending:null,
  theme:(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light',
  themePref:'system',
- history:[
-  {k:'batch',name:'季度客户材料',meta:'48 份',st:'done',stl:'已导出 48',when:'3 天前'},
-  {k:'file',name:'述职报告.docx',ext:'docx',meta:'12 页',st:'done',stl:'已导出',when:'昨天'},
-  {k:'batch',name:'供应商合同',meta:'26 份',st:'keep',stl:'已保存 · 6 天后清理',when:'上周'},
- ],
+ history:[],
  single:null,batch:null,
  presetSel:'office',
  homePreset:'通用办公脱敏',
@@ -54,7 +50,7 @@ export const S:any={
   {id:'fin',name:'金融行业规则包',role:'规则',fmt:'',ver:'1.2.0',src:'gitee.com/fintools/tacet-fin-rules',commit:'a91d3e0',on:true,trusted:false,refs:0},
  ],
  set:{redact:'black',tier:'comfort',autoUpd:false,keep:'7',closeAct:'tray'},
- update:{current:'1.0.0',latest:null,status:'idle'},
+ update:{current:'',latest:null,status:'idle'},
  undo:[],
 };
 

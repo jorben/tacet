@@ -44,7 +44,6 @@ export function newBatch(names,opt={}){
  S.batch=Object.assign({title:opt.title||'新批次',n,files,groups,phase:'precheck',mode:'guided',preset:S.homePreset,modelId:presetModelId(S.homePreset),imgAct:'remove',out:'桌面 / 已脱敏',autoPub:true,keep:'7',paused:false,tab:'todo',ff:'all',q:'',dsel:new Set(),live:{}},opt);
  S.view='batch';render();
 }
-export function demoNames(n){rt.R=rng(99);return Array.from({length:n},(_,i)=>{const[k,e]=pick(KIND);return k.replace('{n}',pick(SUR)+pick(GIV)).replace('{k}',String(100+i))+'.'+(i===37?'pages':e)})}
 export function counts(B=S.batch){
  const c={queue:0,proc:0,wait:0,held:0,ready:0,done:0,partial:0,bad:0,skip:0};
  B.files.forEach(f=>{c[{queue:'queue',proc:'proc',wait:'wait',held:'held',ready:'ready',done:'done',partial:'partial',bad:'bad',skipped:'skip'}[f.st]]++});

@@ -7,7 +7,7 @@ beforeEach(() => {
   go("home");
 });
 
-describe("首页与最近任务", () => {
+describe("首页与最近任务（场景夹具：原型预置的最近任务）", () => {
   it("展示拖入区、方案选择与最近的 3 条任务", () => {
     expect(win()).toContain("拖入文档");
     expect(win()).toContain("DOCX");

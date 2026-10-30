@@ -1,0 +1,39 @@
+/* Window chrome for a real desktop host (Wails). The prototype CSS draws a stand-in window for the browser;
+   here the OS draws the frame, so the page fills the window and the title bar becomes the drag region. */
+
+:root[data-host="darwin"],
+:root[data-host="windows"],
+:root[data-host="linux"] {
+  --bg: var(--win);
+}
+:root[data-host="darwin"] body,
+:root[data-host="windows"] body,
+:root[data-host="linux"] body {
+  padding: 0;
+  display: block;
+}
+:root[data-host="darwin"] .win,
+:root[data-host="windows"] .win,
+:root[data-host="linux"] .win {
+  max-width: none;
+  max-height: none;
+  height: 100vh;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Drag region: the bar itself drags, its controls do not. */
+:root:not([data-host="browser"]) .titlebar {
+  --wails-draggable: drag;
+}
+:root:not([data-host="browser"]) .titlebar button,
+:root:not([data-host="browser"]) .titlebar .ib,
+:root:not([data-host="browser"]) .titlebar a,
+:root:not([data-host="browser"]) .titlebar input {
+  --wails-draggable: no-drag;
+}
+
+/* macOS (hidden-inset title bar): leave room for the system traffic lights. */
+:root[data-host="darwin"] .titlebar {
+  padding-left: 84px;
+}

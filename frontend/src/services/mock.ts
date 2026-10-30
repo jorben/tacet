@@ -1,9 +1,14 @@
 import type { TacetService } from "./types";
 
-/** Prototype behaviour: model download, install, update and export are all simulated in the UI engine. */
+/** Browser/test host: nothing native exists, window operations are no-ops. */
 export const mockService: TacetService = {
-  simulated: true,
+  host: "browser",
   async appInfo() {
-    return { name: "Tacet", version: "1.0.0" };
+    return { name: "Tacet", version: "0.0.0-dev" };
+  },
+  async minimiseWindow() {},
+  async quitApp() {},
+  onCloseRequested() {
+    return () => {};
   },
 };

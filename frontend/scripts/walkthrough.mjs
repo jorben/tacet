@@ -1,3 +1,4 @@
+// Needs a build that includes the scene navigator: VITE_SCENES=1 npm run build && npx vite preview --port 4173
 // Headless-browser walkthrough: visits every prototype scene and the main flows, fails on page errors,
 // and writes screenshots plus docs/walkthrough.md. Usage: npm run build && npx vite preview & node scripts/walkthrough.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -61,7 +62,7 @@ await scene("settings", "设置", ["外观", "涂抹样式", "存储", "版本",
 await scene("close", "关闭窗口", ["最小化到托盘"]);
 
 // flows
-await page.goto(BASE); await page.reload(); await page.waitForTimeout(300);
+await page.goto(BASE + "#scene=home"); await page.reload(); await page.waitForTimeout(400);
 await page.locator('[data-a="allHistory"]').click();
 await shot("最近任务对话框", ["最近任务", "季度客户材料"]);
 await page.keyboard.press("Escape");
@@ -91,7 +92,7 @@ await page.locator('[data-a="checkUpd"]').click();
 await page.waitForTimeout(1200);
 await shot("检查更新", ["发现新版本"]);
 await page.locator('[data-a="updateApp"]').click();
-await shot("更新对话框", ["更新至", "原型演示"]);
+await shot("更新对话框", ["更新至", "更新功能尚未接入"]);
 await page.keyboard.press("Escape");
 await page.locator('[data-a="licenses"]').click();
 await shot("开源许可", ["开源许可", "Apache"]);

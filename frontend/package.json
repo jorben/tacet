@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "walkthrough": "node scripts/walkthrough.mjs",
-    "compare": "node scripts/compare.mjs"
+    "compare": "node scripts/compare.mjs",
+    "build:scenes": "tsc && VITE_SCENES=1 vite build --mode production"
   },
   "dependencies": {
     "@wailsio/runtime": "3.0.0",

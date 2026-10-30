@@ -1,11 +1,13 @@
-import { act, render } from "@testing-library/react";
-import { vi } from "vitest";
+import { act, render, waitFor } from "@testing-library/react";
+import { expect, vi } from "vitest";
 import App from "../App";
-import { scene } from "../engine/proto";
+import { scene } from "../dev/scenes";
 
 /** The engine keeps module-level state and document listeners, so the app is mounted once per test file. */
-export function mountApp() {
+export async function mountApp() {
   render(<App />);
+  // the scene navigator is loaded on demand
+  await waitFor(() => expect(document.querySelector("#proto [data-scene]")).toBeTruthy());
 }
 
 export const $ = (s: string): HTMLElement | null => document.querySelector(s);

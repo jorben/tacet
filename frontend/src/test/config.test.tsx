@@ -180,7 +180,7 @@ describe("设置", () => {
     tick(1000);
     expect(win()).toContain("发现新版本 1.0.1");
     clickA("updateApp");
-    expect($("#layer .modal")!.textContent).toContain("原型演示");
+    expect($("#layer .modal")!.textContent).toContain("更新功能尚未接入");
     clickA("updateDo");
     tick(1300);
     expect($("#currentVersion")!.textContent).toBe("1.0.1");

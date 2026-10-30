@@ -1,13 +1,14 @@
 // @ts-nocheck
 
 // @generated-from docs/v1/tacet-prototype.html (script section: actions); maintained by hand after the port.
+import { hostMinimise, hostQuit } from './host';
 import { $, $$, esc, fmt, ri, pick, I, rt } from './runtime';
 import { TYPES, buildDoc, locStr, OFFICE_CATS, MODEL_LABELS } from '../domain/data';
 import { modelDownload, contextModelId, modelById, stopModelTimer, modelPrepare, modelBusy, needModel, presetModelId } from './models';
 import { render, openSubpage } from './shell';
 import { closeModal, closePop, toast, menu, modal, openPop } from './layer';
 import { S } from './state';
-import { leaveBatchFile, newBatch, demoNames, startBatch, gMembers, gTotal, resolve, openFileFromBatch, machineDone, counts, sampleDrawer, patchBatch, batchStatus } from './batch';
+import { leaveBatchFile, newBatch, startBatch, gMembers, gTotal, resolve, openFileFromBatch, machineDone, counts, sampleDrawer, patchBatch, batchStatus } from './batch';
 import { liveHistory, historyRows, openHistoryResult, needSlot, resumeBatch, parkSingle, keepDays, parkBatch, slotBusy } from './home';
 import { setMode, hitEl, hitPop, setHit, orderedHits, focusHit, actOf, pushUndo, doUndo, outKind, runSingleProc, exportSingle, addManual, currentManifest } from './single';
 import { enterReview, rvSync, rvDecide, rvStep, rvCur } from './review';
@@ -34,7 +35,7 @@ export const A={
   if(x.st==='keep'){modal('<h3>'+esc(x.name)+'</h3><div class="ms">'+x.meta+' · '+x.stl+'</div><div class="mb">继续后从中断处处理，已提交的决定保留。</div><div class="mf"><button class="btn btn-d" data-a="histClean" style="margin-right:auto">停止并清理</button><button class="btn btn-g" data-a="closeModal">取消</button><button class="btn btn-p" data-a="histResume">继续处理</button></div>');return}
   if(x.saved&&x.k==='batch'){needSlot('batch',()=>resumeBatch(x));return}
   modal('<h3>'+esc(x.name)+'</h3><div class="ms">'+x.meta+' · '+x.when+'</div><div class="mb"><dl class="kv"><dt>状态</dt><dd>'+x.stl+'</dd><dt>位置</dt><dd>桌面 / 已脱敏</dd></dl></div><div class="mf"><button class="btn btn-g" data-a="closeModal">关闭</button><button class="btn btn-p" data-a="reveal">'+I('folder',15)+'打开导出文件夹</button></div>')},
- histResume(){const x=S.histX;closeModal();needSlot('batch',()=>{if(x.saved)resumeBatch(x);else{S.history=S.history.filter(h=>h!==x);newBatch(demoNames(parseInt(x.meta)||26),{title:x.name});startBatch()}toast('已恢复，继续处理')})},
+ histResume(){const x=S.histX;closeModal();needSlot('batch',()=>{resumeBatch(x);toast('已恢复，继续处理')})},
  histClean(){const x=S.histX;closeModal();S.history=S.history.filter(h=>h!==x);render();toast('已清理「'+esc(x.name)+'」')},
  slotView(){closeModal();S.view=S.slotKind;render()},
  slotPark(){closeModal();const k=S.slotKind,go=S.slotGo;S.slotGo=null;
@@ -187,7 +188,7 @@ export const A={
  checkUpd(){
   const u=S.update;if(['checking','updating'].includes(u.status))return;
   u.status='checking';render();
-  setTimeout(()=>{u.latest=u.current==='1.0.1'?null:'1.0.1';u.status=u.latest?'available':'latest';render();toast(u.latest?'（原型）发现新版本 '+u.latest:'（原型）已是最新版本')},900);
+  setTimeout(()=>{u.latest=u.current==='1.0.1'?null:'1.0.1';u.status=u.latest?'available':'latest';render();toast(u.latest?'发现新版本 '+u.latest:'已是最新版本')},900);
  },
  updateApp(){
   const u=S.update;if(u.status!=='available')return;
@@ -195,19 +196,19 @@ export const A={
   if(sb)pend.push(esc(sb.name)+' · '+(sb.phase==='review'?'待确认':'处理中'));
   if(bb)pend.push(esc(bb.title)+' · '+batchStatus()[1]);
   S.history.filter(h=>h.park||h.st==='keep').forEach(h=>pend.push(esc(h.name)+' · '+esc(h.stl)));
-  if(!pend.length){modal('<h3>更新至 '+u.latest+'</h3><div class="ms">原型演示 · 不会下载更新包或安装应用</div><div class="mb"><p>更新包校验签名后安装，完成后重新打开 Tacet。当前没有未完成的任务。</p></div><div class="mf"><button class="btn btn-g" data-a="closeModal">取消</button><button class="btn btn-p" data-a="updateDo">更新</button></div>');return}
-  modal('<h3>更新至 '+u.latest+'</h3><div class="ms">'+pend.length+' 个任务未完成 · 原型演示，不会下载或安装</div><div class="mb">'+pend.map(x=>'<div class="sm" style="padding:3px 0;color:var(--ink-2)">'+x+'</div>').join('')+'<p class="muted sm" style="margin-top:12px">更新会替换检测模型、规则与格式插件。可以先完成这些任务；也可以作废它们，或在更新后按新版本重新执行受影响的步骤，已提交的决定核对一致后保留。已导出的文件不受影响。</p></div><div class="mf"><button class="btn btn-g" data-a="closeModal" style="margin-right:auto">先完成</button><button class="btn btn-d" data-a="updateDo" data-v="drop">作废并更新</button><button class="btn btn-p" data-a="updateDo" data-v="rerun">更新后重新执行</button></div>');
+  if(!pend.length){modal('<h3>更新至 '+u.latest+'</h3><div class="ms">更新功能尚未接入</div><div class="mb"><p>更新包校验签名后安装，完成后重新打开 Tacet。当前没有未完成的任务。</p></div><div class="mf"><button class="btn btn-g" data-a="closeModal">取消</button><button class="btn btn-p" data-a="updateDo">更新</button></div>');return}
+  modal('<h3>更新至 '+u.latest+'</h3><div class="ms">'+pend.length+' 个任务未完成 · 更新功能尚未接入</div><div class="mb">'+pend.map(x=>'<div class="sm" style="padding:3px 0;color:var(--ink-2)">'+x+'</div>').join('')+'<p class="muted sm" style="margin-top:12px">更新会替换检测模型、规则与格式插件。可以先完成这些任务；也可以作废它们，或在更新后按新版本重新执行受影响的步骤，已提交的决定核对一致后保留。已导出的文件不受影响。</p></div><div class="mf"><button class="btn btn-g" data-a="closeModal" style="margin-right:auto">先完成</button><button class="btn btn-d" data-a="updateDo" data-v="drop">作废并更新</button><button class="btn btn-p" data-a="updateDo" data-v="rerun">更新后重新执行</button></div>');
  },
  updateDo(el){
   const u=S.update;if(u.status!=='available')return;const v=el&&el.dataset.v;
   closeModal();
   if(v==='drop'){if(slotBusy('single')){clearInterval(rt.procT);S.single=null;S.undo=[]}if(slotBusy('batch')){clearInterval(rt.bT);S.batch=null}S.history=S.history.filter(h=>!(h.park||h.st==='keep'))}
   u.status='updating';render();
-  setTimeout(()=>{u.current=u.latest;u.latest=null;u.status='latest';render();toast('（原型）更新演示完成'+(v==='drop'?' · 已作废未完成的任务':v==='rerun'?' · 未完成的任务将按新版本重新执行':'')+' · 未下载或安装')},1200);
+  setTimeout(()=>{u.current=u.latest;u.latest=null;u.status='latest';render();toast('更新完成'+(v==='drop'?' · 已作废未完成的任务':v==='rerun'?' · 未完成的任务将按新版本重新执行':'')+' · 更新功能尚未接入')},1200);
  },
  aboutLink(el){
   const label={website:'官网',discord:'Discord 社区',github:'GitHub'}[el.dataset.v];
-  modal('<h3>Tacet '+label+'</h3><div class="ms">原型入口 · 地址待配置</div><div class="mb"><p>配置正式'+label+'地址后，将在浏览器中打开。</p></div><div class="mf"><button class="btn btn-p" data-a="closeModal">知道了</button></div>');
+  modal('<h3>Tacet '+label+'</h3><div class="ms">地址待配置</div><div class="mb"><p>配置正式'+label+'地址后，将在浏览器中打开。</p></div><div class="mf"><button class="btn btn-p" data-a="closeModal">知道了</button></div>');
  },
  licenses(){
   modal('<h3>开源许可</h3><div class="ms">Tacet · Apache License 2.0</div><div class="mb"><dl class="kv"><dt>应用主体</dt><dd>Apache-2.0</dd><dt>插件 SDK</dt><dd>Apache-2.0</dd><dt>协议 Schema</dt><dd>Apache-2.0</dd></dl><p style="margin-top:16px">第三方插件及依赖组件遵循各自的许可，具体声明以安装包中的许可证清单为准。</p></div><div class="mf"><button class="btn btn-g" data-a="closeModal">关闭</button><a class="btn btn-s" style="text-decoration:none" href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">查看许可原文 '+I('ext',14)+'</a></div>');
@@ -216,22 +217,22 @@ export const A={
  cleanDo(){closeModal();S.history=S.history.filter(h=>h.st!=='keep');toast('已清理 · 1.4 GiB')},
  closeWin(){
   const s=S.single,B=S.batch;
-  if(S.set.closeAct==='tray'){toast('（原型）已最小化到托盘'+(S.batch||S.single?'，任务继续':''));return}
+  if(S.set.closeAct==='tray'){hostMinimise();toast('已最小化到托盘'+(S.batch||S.single?'，任务继续':''));return}
   const items=[];const sb=slotBusy('single'),bb=slotBusy('batch');
   if(sb)items.push(esc(sb.name)+' · '+(sb.phase==='review'?'待确认':'处理中'));
   if(bb)items.push(esc(bb.title)+' · '+batchStatus()[1]);
   S.history.filter(h=>h.park).forEach(h=>items.push(esc(h.name)+' · 待确认'));
-  if(!items.length){toast('（原型）程序已关闭');return}
+  if(!items.length){hostQuit();return}
   const d=bb&&bb.keep!=='0'?bb.keep:(S.set.keep!=='0'?S.set.keep:'7');
   modal('<h3>有未完成的任务</h3><div class="ms">保存后加密保留 '+d+' 天，下次打开继续；停止将清理中间数据，已导出的文件不受影响</div><div class="mb">'+items.map(x=>'<div class="sm" style="padding:3px 0;color:var(--ink-2)">'+x+'</div>').join('')+'</div><div class="mf" style="margin-top:22px"><button class="btn btn-d" data-a="closeClean" style="margin-right:auto">停止并清理</button><button class="btn btn-g" data-a="closeModal">取消</button><button class="btn btn-p" data-a="closeKeep" data-v="'+d+'">保存并关闭</button></div>')},
  redact(el){S.set.redact=el.dataset.v;render()},
  closeAct(el){S.set.closeAct=el.dataset.v;render()},
- closeKeep(el){closeModal();const B=S.batch;if(B)B.paused=true;render();toast('（原型）程序已关闭 · 已加密保存 '+el.dataset.v+' 天')},
+ closeKeep(el){closeModal();const B=S.batch;if(B)B.paused=true;render();hostQuit()},
  closeClean(){closeModal();
   if(S.single&&S.single.from==='batch')leaveBatchFile();
   if(slotBusy('single')){clearInterval(rt.procT);S.single=null;S.undo=[]}
   const bb=slotBusy('batch');if(bb){clearInterval(rt.bT);const c=counts();if(bb.phase!=='precheck')S.history.unshift({k:'batch',name:bb.title,meta:fmt(bb.n)+' 份',st:'stop',stl:'已停止 · 已导出 '+fmt(c.done+c.partial)+' / '+fmt(bb.n),when:'刚刚'});S.batch=null}
-  S.history=S.history.filter(h=>!h.park);S.view='home';render();toast('（原型）已停止并清理')},
+  S.history=S.history.filter(h=>!h.park);S.view='home';render();hostQuit()},
 };
 export function pwdModal(gid,only){
  const B=S.batch,g=B.groups.find(x=>x.id===gid);const mem=only||gMembers(g);

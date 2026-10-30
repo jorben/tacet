@@ -21,9 +21,9 @@ describe("应用外壳与导航", () => {
     }
   });
 
-  it("默认走 mock 服务，不伪造为真实现", async () => {
+  it("浏览器/测试环境走 mock 服务，宿主为 browser", async () => {
     const s = getService();
-    expect(s.simulated).toBe(true);
+    expect(s.host).toBe("browser");
     expect((await s.appInfo()).name).toBe("Tacet");
   });
 

@@ -1,11 +1,35 @@
-import { Service } from "../../bindings/github.com/jorben/tacet/internal/gui";
-import type { TacetService } from "./types";
+import { Application, Events, System, Window } from "@wailsio/runtime";
+import { AppInfo, CloseHandlerReady } from "../../bindings/github.com/jorben/tacet/internal/gui/service";
+import type { HostKind, TacetService } from "./types";
 
-/** Adapter over the existing Wails binding (internal/gui). Only AppInfo exists; nothing else is faked as real. */
+/** Must match internal/gui/window.go EventCloseRequested. */
+export const EVENT_CLOSE_REQUESTED = "tacet:close-requested";
+
+function hostKind(): HostKind {
+  if (System.IsMac()) return "darwin";
+  if (System.IsWindows()) return "windows";
+  return "linux";
+}
+
+/** Adapter over the Wails runtime and the existing internal/gui binding. */
 export const wailsService: TacetService = {
-  simulated: true,
+  get host() {
+    return hostKind();
+  },
   async appInfo() {
-    const info = await Service.AppInfo();
+    const info = await AppInfo();
     return { name: info.name, version: info.version };
+  },
+  async minimiseWindow() {
+    await Window.Minimise();
+  },
+  async quitApp() {
+    await Application.Quit();
+  },
+  onCloseRequested(handler) {
+    const off = Events.On(EVENT_CLOSE_REQUESTED, () => handler());
+    // Tell the host a handler exists; before this the native close behaviour stays.
+    void CloseHandlerReady();
+    return off;
   },
 };

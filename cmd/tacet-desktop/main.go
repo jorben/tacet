@@ -17,11 +17,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	svc := gui.NewService()
 	a := application.New(application.Options{
 		Name:        app.Name,
 		Description: "Local document redaction",
 		Services: []application.Service{
-			application.NewService(gui.NewService()),
+			application.NewService(svc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -34,19 +35,21 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
-	a.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     app.Name,
 		Width:     1180,
 		Height:    760,
 		MinWidth:  960,
 		MinHeight: 600,
+		// The frontend draws the title bar and marks it draggable (--wails-draggable);
+		// only the system traffic lights are native.
 		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 50,
-			TitleBar:                application.MacTitleBarHiddenInset,
+			TitleBar: application.MacTitleBarHiddenInset,
 		},
 		BackgroundColour: application.NewRGB(250, 250, 248),
 		URL:              "/",
 	})
+	gui.InterceptClose(a, win, svc)
 	if err := a.Run(); err != nil {
 		log.Fatal(err)
 	}
