@@ -26,6 +26,5 @@ python/.venv/
 __pycache__/
 *.egg-info/
 
-# Local pi goal state
-.pi/.goals-pool-snapshot.json
-.pi/goals/
+# Local pi state
+.pi/
