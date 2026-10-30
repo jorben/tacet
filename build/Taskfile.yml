@@ -154,19 +154,18 @@ tasks:
       - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i {{.MAIN_PKG}}
 
   generate:icons:
-    summary: Generates Windows `.ico` and Mac `.icns` from the brand logo. The outputs are not committed; every build regenerates them.
+    summary: Generates the macOS `.icns` and Windows `.ico` from the icon masters in build/icons (made from the brand logo by build/icons/make_masters.py). The outputs are not committed; every build regenerates them.
     run: once
     dir: build
-    vars:
-      # Single source of the app icon: the brand original (1024 x 1024)
-      APP_ICON: ../docs/v1/assets/brand/tacet-seedling-logo.png
     sources:
-      - "{{.APP_ICON}}"
+      - "icons/macos.png"
+      - "icons/windows.png"
     generates:
       - "darwin/icons.icns"
       - "windows/icon.ico"
     cmds:
-      - wails3 generate icons -input "{{.APP_ICON}}" -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+      - wails3 generate icons -input icons/macos.png -macfilename darwin/icons.icns -windowsfilename ""
+      - wails3 generate icons -input icons/windows.png -macfilename "" -windowsfilename windows/icon.ico
 
   dev:frontend:
     summary: Runs the frontend in development mode

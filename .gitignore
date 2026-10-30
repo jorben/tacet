@@ -11,7 +11,7 @@
 bin/
 cmd/tacet-desktop/*.syso
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
-# Icons generated from docs/v1/assets/brand/tacet-seedling-logo.png by the generate:icons task
+# Icons generated from the masters in build/icons by the generate:icons task
 build/darwin/icons.icns
 build/darwin/Assets.car
 build/windows/icon.ico
