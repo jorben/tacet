@@ -1,0 +1,14 @@
+[project]
+name = "tacet-format-pdf"
+version = "0.1.0"
+description = "Built-in Tacet plugin. Text PDF: text-layer consistency checks and rasterised safe output (architecture 4.5)"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["tacet-plugin-sdk"]
+
+[tool.uv.sources]
+tacet-plugin-sdk = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

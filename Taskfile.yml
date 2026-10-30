@@ -1,0 +1,91 @@
+version: '3'
+
+vars:
+  APP_NAME: "tacet"
+  BIN_DIR: "bin"
+  # The desktop entry lives outside the module root; build, bindings and .syso tasks use these
+  MAIN_DIR: "cmd/tacet-desktop"
+  MAIN_PKG: "./cmd/tacet-desktop"
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  # Target OS for build/package/run. Defaults to the host OS. First release targets
+  # are macOS arm64 and Windows x64 (architecture section 10).
+  GOOS: '{{.GOOS | default OS}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the desktop application
+    cmds:
+      - task: "{{.GOOS}}:build"
+
+  build:cli:
+    summary: Builds the CLI into bin/cli (a separate directory, so it never clashes with the desktop binary)
+    cmds:
+      - go build -o "{{.BIN_DIR}}/cli/tacet{{exeExt}}" ./cmd/tacet
+
+  package:
+    summary: Packages a production build of the desktop application
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  run:
+    summary: Runs the desktop application
+    cmds:
+      - task: "{{.GOOS}}:run"
+
+  dev:
+    summary: Runs the desktop application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  install:msix:tools:
+    summary: Installs tools required for Windows MSIX packaging
+    cmds:
+      - task: windows:install:msix:tools
+
+  bindings:
+    summary: Generates the TypeScript bindings for the desktop services
+    cmds:
+      - task: common:generate:bindings
+
+  ensure:dist:
+    summary: Creates a placeholder frontend/dist so Go packages compile without a frontend build
+    internal: true
+    status:
+      - test -f frontend/dist/index.html
+    cmds:
+      - mkdir -p frontend/dist
+      - echo '<!doctype html><title>Tacet</title>' > frontend/dist/index.html
+
+  test:
+    summary: Runs the Go tests, including the module dependency rules (internal/archtest)
+    deps: [ensure:dist]
+    cmds:
+      - go test ./...
+
+  lint:
+    summary: Runs go vet and the frontend type check
+    deps: [ensure:dist]
+    cmds:
+      - go vet ./...
+      - task: common:frontend:run
+        vars:
+          SCRIPT: typecheck
+
+  test:python:
+    summary: Runs the Python SDK and built-in plugin tests
+    dir: python
+    cmds:
+      - uv run --locked python -m unittest discover -s tests
+
+  check:
+    summary: Runs every check that CI runs
+    cmds:
+      - task: lint
+      - task: test
+      - task: test:python

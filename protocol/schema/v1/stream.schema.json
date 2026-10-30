@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/stream.schema.json",
+  "title": "Streaming extension: items, credit and end (architecture 4.2, 7)",
+  "$defs": {
+    "Credit": {
+      "description": "Sent by the host after results are committed; credit is added only when downstream capacity frees up",
+      "type": "object",
+      "required": [
+        "stream",
+        "committed_seq"
+      ],
+      "properties": {
+        "stream": {
+          "type": "string"
+        },
+        "committed_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Item": {
+      "type": "object",
+      "required": [
+        "stream",
+        "seq",
+        "item"
+      ],
+      "properties": {
+        "stream": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "item": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "End": {
+      "type": "object",
+      "required": [
+        "type",
+        "stream",
+        "last_seq",
+        "status"
+      ],
+      "properties": {
+        "type": {
+          "const": "stream.end"
+        },
+        "stream": {
+          "type": "string"
+        },
+        "last_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "$ref": "common.schema.json#/$defs/Error"
+        }
+      }
+    }
+  }
+}

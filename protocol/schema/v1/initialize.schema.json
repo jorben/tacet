@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/initialize.schema.json",
+  "title": "initialize: protocol and version negotiation",
+  "$defs": {
+    "Params": {
+      "type": "object",
+      "required": [
+        "protocol",
+        "owner_generation",
+        "limits"
+      ],
+      "properties": {
+        "protocol": {
+          "type": "object",
+          "required": [
+            "min",
+            "max"
+          ],
+          "properties": {
+            "min": {
+              "type": "string"
+            },
+            "max": {
+              "type": "string"
+            }
+          }
+        },
+        "owner_generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limits": {
+          "type": "object",
+          "required": [
+            "max_message_bytes"
+          ],
+          "properties": {
+            "max_message_bytes": {
+              "type": "integer",
+              "maximum": 4194304
+            }
+          }
+        }
+      }
+    },
+    "Result": {
+      "type": "object",
+      "required": [
+        "protocol",
+        "plugin",
+        "roles"
+      ],
+      "properties": {
+        "protocol": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "format",
+              "detect",
+              "ocr",
+              "validate"
+            ]
+          }
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

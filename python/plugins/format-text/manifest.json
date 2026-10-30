@@ -1,0 +1,27 @@
+{
+  "id": "tacet.text",
+  "version": "0.1.0",
+  "kind": "plugin",
+  "protocol": {
+    "min": "1.0",
+    "max": "1.0"
+  },
+  "license": "Apache-2.0",
+  "roles": [
+    "format"
+  ],
+  "runtime": {
+    "kind": "python",
+    "entry": "tacet_format_text"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "windows-amd64"
+  ],
+  "formats": [
+    "txt",
+    "md",
+    "log"
+  ],
+  "capabilities": {}
+}

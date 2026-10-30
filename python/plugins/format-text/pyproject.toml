@@ -1,0 +1,14 @@
+[project]
+name = "tacet-format-text"
+version = "0.1.0"
+description = "Built-in Tacet plugin. TXT, Markdown and log files: incremental decoding with byte-to-code-point maps"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["tacet-plugin-sdk"]
+
+[tool.uv.sources]
+tacet-plugin-sdk = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

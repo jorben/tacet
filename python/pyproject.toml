@@ -1,0 +1,5 @@
+# Built-in release group: the SDK and the built-in plugins are resolved and
+# locked together and share one environment (architecture 7.2). Third-party
+# plugins are separate projects with their own uv.lock.
+[tool.uv.workspace]
+members = ["sdk", "plugins/*"]

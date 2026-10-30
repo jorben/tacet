@@ -1,0 +1,14 @@
+[project]
+name = "tacet-format-xlsx"
+version = "0.1.0"
+description = "Built-in Tacet plugin. XLSX value subset: shared strings and sheet cell values, other parts by inventory (M0 admission pending)"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["tacet-plugin-sdk"]
+
+[tool.uv.sources]
+tacet-plugin-sdk = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

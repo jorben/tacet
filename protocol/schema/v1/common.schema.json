@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/common.schema.json",
+  "title": "Tacet plugin protocol v1: shared definitions",
+  "$defs": {
+    "Span": {
+      "description": "0-based half-open range [start, end) of Unicode code points in one text unit version",
+      "type": "object",
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ResourceRef": {
+      "description": "A controlled resource reference issued by the host (architecture 4.4). Plugins never receive paths.",
+      "type": "object",
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        },
+        "handle": {
+          "type": "integer",
+          "description": "Platform handle inherited by the worker"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TaskRef": {
+      "description": "Carried by every task message; late messages from an older generation or attempt are rejected",
+      "type": "object",
+      "required": [
+        "job_id",
+        "attempt_id",
+        "owner_generation"
+      ],
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "attempt_id": {
+          "type": "string"
+        },
+        "owner_generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deadline_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Error": {
+      "description": "Error data of a JSON-RPC error. Params are redacted (INV-07).",
+      "type": "object",
+      "required": [
+        "code",
+        "retry"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "retry": {
+          "enum": [
+            "none",
+            "resource",
+            "transient"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExceptionType": {
+      "description": "Exception type codes (architecture 5.2). Plugins may report only the content-level codes marked in the kernel type table.",
+      "enum": [
+        "password_required",
+        "file_failed",
+        "strict_confirm",
+        "scan_page",
+        "image_with_text",
+        "embedded_object",
+        "uninspected_part",
+        "outlined_text",
+        "validator_mismatch",
+        "type_change",
+        "unreliable_location",
+        "policy_review"
+      ]
+    }
+  }
+}

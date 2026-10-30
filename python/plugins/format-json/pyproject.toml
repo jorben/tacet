@@ -1,0 +1,14 @@
+[project]
+name = "tacet-format-json"
+version = "0.1.0"
+description = "Built-in Tacet plugin. JSON and JSONL: streaming parse that keeps numeric lexemes and duplicate keys"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["tacet-plugin-sdk"]
+
+[tool.uv.sources]
+tacet-plugin-sdk = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

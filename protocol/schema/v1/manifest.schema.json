@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/manifest.schema.json",
+  "title": "Tacet plugin manifest v1 (architecture 4.2, 4.7)",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "kind",
+    "protocol",
+    "license"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "plugin",
+        "ruleset"
+      ],
+      "description": "ruleset packages carry declarative rule data only and declare no runtime"
+    },
+    "protocol": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "string"
+        },
+        "max": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX expression declared by the author"
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "format",
+          "detect",
+          "ocr",
+          "validate"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "kind",
+        "entry"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "MVP hosts accept python only; unknown kinds are refused before launch"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "python": {
+          "type": "object",
+          "properties": {
+            "requires": {
+              "type": "string"
+            },
+            "lock_digest": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "darwin-arm64",
+          "windows-amd64"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "read",
+          "unlock",
+          "inventory",
+          "detect",
+          "preview",
+          "write",
+          "output_provenance",
+          "preserve_structure",
+          "preserve_layout",
+          "ocr",
+          "metadata_cleanup",
+          "hidden_content_cleanup",
+          "validate",
+          "large_file_profile"
+        ]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "supported"
+        ],
+        "properties": {
+          "supported": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "description": "Declared memory, worker and time needs"
+    },
+    "scratch_plaintext": {
+      "type": "boolean",
+      "description": "Uses the private plaintext scratch directory; recorded as a protection downgrade (architecture 4.4)"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "plugin"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "roles",
+          "runtime",
+          "platforms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "ruleset"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "runtime"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+version = 1
+revision = 2
+requires-python = ">=3.12"
+
+[manifest]
+members = [
+    "tacet-detect-astrlink",
+    "tacet-format-csv",
+    "tacet-format-docx",
+    "tacet-format-json",
+    "tacet-format-pdf",
+    "tacet-format-text",
+    "tacet-format-xlsx",
+    "tacet-plugin-sdk",
+]
+
+[[package]]
+name = "tacet-detect-astrlink"
+version = "0.1.0"
+source = { editable = "plugins/detect-astrlink" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-csv"
+version = "0.1.0"
+source = { editable = "plugins/format-csv" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-docx"
+version = "0.1.0"
+source = { editable = "plugins/format-docx" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-json"
+version = "0.1.0"
+source = { editable = "plugins/format-json" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-pdf"
+version = "0.1.0"
+source = { editable = "plugins/format-pdf" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-text"
+version = "0.1.0"
+source = { editable = "plugins/format-text" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-format-xlsx"
+version = "0.1.0"
+source = { editable = "plugins/format-xlsx" }
+dependencies = [
+    { name = "tacet-plugin-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tacet-plugin-sdk", editable = "sdk" }]
+
+[[package]]
+name = "tacet-plugin-sdk"
+version = "0.1.0"
+source = { editable = "sdk" }
