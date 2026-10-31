@@ -7,16 +7,20 @@
 
 | 层 | 位置 | 说明 |
 | --- | --- | --- |
-| 样式 | `src/styles/app.css` | 原型 CSS 原样沿用（令牌、深浅色、涂抹样式、各页面样式）；`src/assets` 为品牌图标与首页插画（与 docs/v1/assets 同源） |
-| 领域数据 | `src/domain` | 类别、示例文档、批量例外分组、模型状态文案、场景清单、图标（逐字取自原型） |
-| 界面引擎 | `src/engine` | 原型脚本按小节移植为 TypeScript 模块（shell/layer/models/home/single/batch/review/presets/plugins/settings/actions/events/proto），行为、状态机与文案与原型一致；`runtime.ts` 承载 DOM 助手、确定性随机数与计时器句柄；`state.ts` 为单一状态对象 |
-| 服务接口 | `src/services` | `TacetService` 接口 + `mock`（浏览器/测试）与 `wails`（只实现 `Service.AppInfo`，与 internal/gui 现有绑定兼容）；下载、安装、更新、导出均为模拟，不伪造为真实现 |
-| 外壳 | `src/App.tsx`、`src/styles/host.css` | React 渲染窗口外壳；桌面宿主（Wails）下由系统画窗口框架，标题栏为拖拽区，浏览器下由引擎画替身窗口 |
+| 样式 | `src/styles/index.css` | 按令牌、公共控件和功能拆分 CSS，保留原型的深浅色与涂抹样式；宿主覆盖在 `host.css`；资源位于 `src/assets` |
+| 领域 | `src/domain` | 类型、类别、示例文档，以及单份、批次、复核、方案的状态转移和计算；不访问 DOM 或 store |
+| 状态与操作 | `src/store`、`src/actions` | Immer 不可变快照 + `useSyncExternalStore` 订阅；操作按功能编排；计时器集中管理 |
+| 共享组件 | `src/ui`、`src/overlay` | 按钮、分段选择、开关、行、表单、状态、进度、结果卡与弹层容器 |
+| 功能组件 | `src/features` | 首页、模型、单份、批量、复核、历史、方案/规则、插件、设置及对话框；均通过 JSX 与 React 回调实现 |
+| 服务接口 | `src/services` | `TacetService` + 浏览器 mock / Wails 适配；应用信息和窗口调用经宿主，其余业务仍为演示 |
+| 外壳 | `src/App.tsx`、`src/features/shell` | 组合标题栏、导航、主视图与弹层；Wails 下系统画窗口框架，标题栏为拖拽区 |
 | 宿主 | `src/services`、`internal/gui/window.go` | 关闭/最小化/退出经 `TacetService`；Go 侧拦截用户关闭并发事件 `tacet:close-requested`，前端就绪（`CloseHandlerReady`）前保持原生关闭行为 |
 | 导航 | state `view` + `navStack` | 不使用路由库；任务（首页/单份/批量/历史结果）、方案、插件、设置；URL `#scene=` 直达场景 |
-| 测试 | `src/test`、`scripts` | Vitest + Testing Library（66 项）；`scripts/compare.mjs` 对 26 个场景逐字对比原型与实现的可见文本；`scripts/walkthrough.mjs` 无头浏览器走查并生成 `docs/walkthrough.md` 与截图 |
+| 测试 | `src/test`、`src/**/__tests__`、`scripts` | Vitest + Testing Library；领域与 store 测试；26 场景可见文本对比；41 项页面/流程走查与截图 |
 
-大批量约束（需求 PF/AR-11）：批量文件表分页（60 行/次，“再显示”）、导出清单分页（80 行）、复核队列只含待处理项；不渲染全量成员表。
+组件清单、依赖、生命周期与开发命令见 [React 架构说明](react-architecture.md)。已移除原 `src/engine`、HTML 字符串页面、`data-a` 分发和 `@ts-nocheck`。
+
+大批量约束（需求 PF/AR-11）：批量文件表分页（60 行/次，“再显示”）、导出清单分页（80 行）；复核队列由例外成员生成，并保留本轮已决策项供返回与撤销，不渲染全量文件成员表。当前数据为前端演示集合，后端有界查询尚未接入。
 
 ## 2. 页面与状态
 
@@ -64,5 +68,5 @@ home、fresh、model-download、model-paused、model-offline、model-disk、mode
 
 ## 3. 与需求文档的取舍记录
 - 原型为单文件 HTML，前端按 React 组件重构，行为、文案、视觉保持一致。
-- 下载、安装、更新、导出、托盘仅为模拟；不发起网络请求。
-- 前端不直接依赖 Go 内核；Wails 绑定仅用于读取应用版本（`Service.AppInfo`）。
+- 下载、安装、更新、检测、导出、清理工作区仍为模拟；不发起业务网络请求。浏览器中的打开输出文件夹同样只显示提示。
+- 前端不直接依赖 Go 内核；Wails 适配用于应用版本、最小化、退出、关闭请求订阅与前端就绪通知。独立托盘交互仍待接入。
