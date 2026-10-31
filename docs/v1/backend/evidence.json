@@ -1,0 +1,345 @@
+{
+ "schema_version": 1,
+ "requirements": {
+  "MD-19": {
+   "status": "partial",
+   "evidence": "sched 每个准入票据持有处理租约至 runner 真正停止，取消不提前释放；网络活动阻止准入，释放后事件唤醒，队列暂停/压力不轮询。netgate.Lease.HTTPClient 已实现受租约约束的出站客户端：仅 Network 租约可创建；只允许 https、无 URL 凭据、主机白名单（空白名单拒绝一切），重定向每一跳重新校验且最多 5 跳；每次请求和拨号在租约下准入，释放租约会取消在途请求并使响应体读取返回 ACTIVITY_LEASE_RELEASED，同时关闭空闲连接（7 项本地 TLS 服务器测试，-race 通过，5 个有效变异验证）；模型/插件下载、更新、安装的具体调用方与 UI 待接入。；pluginmgr.Confirm 取维护租约（需下载依赖时再取网络租约），models/update 下载取网络租约，处理期间均返回 ACTIVITY_BUSY 且未发起任何请求或部署（测试）"
+  },
+  "AR-13": {
+   "status": "partial",
+   "evidence": "workspace 与 store 的真实事务已适配；AdmitTx 在所属工作区同一事务校验代次/尝试/任务版本，提交后的钩子释放锁后执行，可重入而不死锁。锁与双槽代次已有测试；workspace.OpenManaged 完成生产装配：先取锁与新代次，再清扫崩溃遗留备份、解开工作区密钥、打开加密库并带验证备份迁移（5 项集成测试，含密文无明文、重开后旧代次结果被拒、第二所有者忙、新于本构建的库被拒且释放锁、崩溃遗留备份恢复；5 个变异验证）；发布排序及清理竞争待完成。"
+  },
+  "FR-30": {
+   "status": "partial",
+   "evidence": "publish.Service.Publish：流式复制到目标目录以 O_EXCL、0600 独占创建的临时文件并刷盘核对摘要→提交区内重新核对所有权代次、处置键、授权→持久化“准备”意图→platform.PublishExclusive 无覆盖重命名→记交付；目标已存在返回 PUBLISH_NAME_CONFLICT 且不动现有文件、清理临时文件（并发 12 个发布者同名恰一个胜出）；卷不支持原子无覆盖重命名时需调用方明示同意才退回独占创建并记为非原子；崩溃补记 Recover：目标存在且摘要一致→补记已发布，摘要不符→冲突（不覆盖不重发），不存在→删除遗留临时文件并中止；只删带 .tacet- 前缀的自有临时文件；调用方在重命名后取消也会记录结果。Windows 仅交叉编译，未在真实 Windows 上执行；用户目录的权限/杀软/网络盘行为未测；真实 DOCX 候选经 refs.Grant.Plaintext 逐段认证解密→publish 无覆盖发布端到端：验证未通过的候选被 PUBLISH_NOT_READY 拒绝且目录无遗留；通过的候选发布为合法 docx（手机号已除、占位符与无敏感内容在）、无临时文件、原件摘要与认证不变；再次同名发布返回名称冲突且不改已交付文件；【task-10 模型】输出文件名改为“批次号-中性编号”（b0001-f0001.txt）：编号每个批次从头开始，原先同一输出目录里第二个批次会撞名并被“不覆盖”规则拦下（真实进程测试发现，回归测试断言两个批次交付同一目录名称不同；去掉前缀的变异被抓住）"
+  },
+  "SEC-13": {
+   "status": "partial",
+   "evidence": "models：模型清单仅在应用签名验证通过后才被解释（ParseSigned）；下载按目录逐文件核对大小与 SHA-256，暂存区只含清单所列文件，原子登记，失败清理半成品且不覆盖已安装资源；加载前（CheckBinding/Prepare）核对已安装文件，缺失/被改即阻塞并进入错误态，大小与修改时间不变但内容改变也会重新哈希；任务绑定按 ID+摘要，缺失或不符不回退到仅规则"
+  },
+  "AR-15": {
+   "status": "partial",
+   "evidence": "refs 颁发绑定完整 AttemptRef 的引用，写入仅追加；冻结复制密文到宿主专有文件并验证全部 GCM 段，旧写句柄不能修改冻结候选；Handoff/Revoke 并发测试通过。持久化资源目录已实现（refs.Catalog/SQL 目录模块 refs_resource，冻结与 Adopt 先落目录再可读，目录失败则资源与文件一并消失；Recover 重启后加载并清除无目录行的崩溃遗留文件、上报缺失或尺寸不符的资源且不再提供读取；Purge 先删行后删文件；按作业累计配额含已完成字节与进行中写入的上限；目录写入不在 refs.mu 内，Freeze 与提交区间内 Revoke 的并发无死锁；7 项真实加密工作区集成测试与 7 个变异验证）；与进程回收的联动（Revoke 触发 host.Terminate）留给 task-4 装配，Windows 实机待完成。见 task-storage-integration.md。"
+  },
+  "AR-14": {
+   "status": "partial",
+   "evidence": "internal/rules 编译预算、按实际扫描量计费的匹配工作量预算、取消与命中数上限已测试；尚未接入检测流水线、任务级预算与 UI 响应验证"
+  },
+  "FR-46": {
+   "status": "partial",
+   "evidence": "规则包：Schema 严格解析（未知成员拒绝）、按预算试编译（过于昂贵或非法的表达式拒绝）、不得声明运行时、不得含安装代码；登记时无环境、无进程、无需沙箱"
+  },
+  "INV-09": {
+   "status": "partial",
+   "evidence": "DOCX 文字子集与 AstrLink 解码均按 Unicode code point 定位，emoji、组合字符与跨 run 有测试；无法可靠关联时的例外路径与候选关联未实现；preview.Validate 对位置不可靠的单元返回 SELECTION_LOCATION_UNRELIABLE，policy 的 Enrichment.Unreliable 使命中转为 unreliable_location 例外而不处置；文本类单元按结构编号（TXT 行号×64+分片，CSV 单元格序号，JSON 字符串序号×64+分片，XLSX 工作表内单元格序号），回写改变某单元长度不移动其他单元序号，才能让验证在候选中找到同一单元；JSON 字符串按固定 16384 码点重新分片，不依赖扫描器的读缓冲边界（曾因此错位，补用例）"
+  },
+  "AR-05": {
+   "status": "partial",
+   "evidence": "platform.StartTree/Kill 在 macOS 回收进程组内孙进程；host.Start/Terminate 对忽略取消且带子进程的 worker 在超时后回收整棵树，且环境变量不继承、崩溃立即失败（3 项真实 Python 子进程测试）。macOS 上 setsid 后代逃出进程组已复现，host.Spec.Generation 的代次环境标记经 platform.ReapMarked 在 Terminate 中回收（platform 8 项、host 3 项真实进程测试与变异验证；修复了逃逸后代使 Terminate 永久挂起的缺陷）；仅限同用户、环境未被清空且非 SIP 保护二进制的后代，启动时回收上一代次尚未接入；Windows Job Object 与空实现 ReapMarked 仅编译；内存上限监控未实现；协议层：宿主取消发送带完整尝试标识的 task.cancel 并在对端不再读取时 200 ms 内返回，截止时间传给插件且 SDK 内强制（DEADLINE_EXCEEDED），迟到/错位结果（他流、序号跳变、他请求 id、错误响应）、超大帧、截断帧、非 JSON 帧一律断流且不触达持久化，提交失败断流且不发信用（15 项宿主敌对对端测试、5 个 SDK 协议违规用例，18 个变异验证）"
+  },
+  "SEC-08": {
+   "status": "partial",
+   "evidence": "safezip 与 DOCX XML 对重复条目、路径穿越、压缩膨胀、DTD、处理指令的拒绝测试；PDF 恶意输入、递归附件与完整恶意样本集未做"
+  },
+  "SEC-09": {
+   "status": "partial",
+   "evidence": "固定提交的模型文件逐一核对大小与摘要；Python 运行时由 uv.lock 的哈希锁定 wheel 以 --require-hashes --no-build 安装并可重定位；SBOM、许可清单、应用/插件包签名校验与已知漏洞跟踪未实现"
+  },
+  "MD-10": {
+   "status": "partial",
+   "evidence": "jobs 仓库已把阶段完成标记、任务状态迁移、产物引用、发件箱及提交后派发放在同一 SQLite 事务；重复/旧 attempt 拒绝；回滚不触发派发。完整阶段模块接线和加密生产库待完成。"
+  },
+  "MD-07": {
+   "status": "partial",
+   "evidence": "validate 结论为封闭枚举并按设计顺序判定（Classify：未完成→损坏/对账不符/未对账操作→可扩大残留→不可扩大残留→新命中→通过），未知结论不会映射为通过（StatusOf 缺省 not_run）；验证状态映射到 not_run/failed/passed_within_declared_scope/partial，保留缺口的通过为 partial"
+  },
+  "FR-05": {
+   "status": "partial",
+   "evidence": "jobs 阶段/尝试/状态已持久化；真实数据库关闭重开后推进 owner generation，旧结果拒绝；恢复先暂停且保留已完成阶段产物，显式继续后重做中断阶段。阶段内检查点已实现于 jobs（jobs_checkpoint，迁移 v4）：仅当前运行尝试可保存且序号必须递增；暂停、崩溃恢复后保留并在继续时交给新尝试；输入或阶段所读分面变化则作废并删除；阶段完成、取消（含恢复时完成取消）后清除；每作业每阶段一条（5 项集成测试、9 个变异验证，其中 3 个最初仅编译失败后改写重做）。检查点内容的写入与读回由抽取检测阶段（task-6）负责，保留授权与生命周期回收联动待完成。"
+  },
+  "INV-04": {
+   "status": "partial",
+   "evidence": "lineage.EarliestStale/Superseded/FacetsChanged 纯逻辑：输入、分面、决定版本与上游重跑均使下游失效，发布记录只被替代；19 项测试与 2 个变异检查通过。与 jobs 存储、review.Rebind 与 publish 授权失效尚未联通；jobs 已接入：阶段开始时经 BeginStageReading 记录所读分面摘要与所消费的上游输出（jobs_stage.reads/output，迁移 v3），ApplySnapshotChange 在同一事务内绑定新快照版本并按 lineage 将每个成员送回最早失效阶段（只比较配置分面，输入/决定版本取自记录）；运行中且读取旧分面的尝试被作废、其迟到结果被拒绝；未记录读取的运行与阶段按失效处理（失败即关闭）；暂停、密码/输入/资源阻塞、失败状态不会被失效事件悄悄改成排队；草稿、取消中与终态成员不被触动（jobs 7 项新增集成测试 + 1 项状态机测试 + 1 项映射测试，11 个有效变异验证，其中 3 个最初存活、2 个最初仅编译失败，补测并改写后才算数）；review.Rebind 与 publish 授权失效尚未"
+  },
+  "AR-07": {
+   "status": "partial",
+   "evidence": "同 INV-04 的 lineage 判定；幂等提交与恢复后重复计数防护未实现"
+  },
+  "FR-35": {
+   "status": "partial",
+   "evidence": "verdict.PublishReadiness/Judge 纯逻辑：保留缺口仅在 PartialEligible 时形成部分结果，待决项/未决缺口/未验证/输入摘要未核对均不可发布；41 项测试与 2 个变异检查通过。PartialEligible 的两步判定（coverage）、发布授权与文件命名标记未实现；validate.StatusOf：保留缺口的通过记 partial，绝不记为完整通过；publish 对部分结果要求部分授权与可辨识命名"
+  },
+  "BUX-16": {
+   "status": "partial",
+   "evidence": "verdict.Summarize 判定批次阶段与结果页条件（全部结束且无待复核/待发布/失败/阻塞/取消）；GUI 结果页与清单未接线"
+  },
+  "BUX-12": {
+   "status": "partial",
+   "evidence": "verdict.Summarize 给出已交付 n/总计 m 与分项；空批次不为“全部交付”。调度、局部授权与 UI 未实现"
+  },
+  "FR-44": {
+   "status": "partial",
+   "evidence": "verdict.Judge 在插件未获完成判定授权时只给出 Delivered 而非 CompletedPerPolicy，UnattendedEligible 要求 PluginQualified；授权登记与按版本绑定在 registry，未实现；完成判定授权绑定版本与摘要：升级与回退都不让授权随之转移（测试：v1 的授权不属于 v2）"
+  },
+  "FR-37": {
+   "status": "partial",
+   "evidence": "verdict.UnattendedEligible 要求全部处置来自冻结策略/字段规则（HumanDecided=false）；处置依据统计与 policy 未实现；【task-10】引擎接线：StartRequest.Authorize/AllowPartial 与 Engine.Publish 记录发布授权，未授权的文件停在 ready_to_publish 且输出目录为空（端到端断言）；授权后决定变更使文件回到解析并再次等待；Publish 可同时指定输出目录（相对路径拒绝）；非交互 CLI 必须显式 --preset/--authorize/--out，缺任一项在触及内核前退出 1"
+  },
+  "MD-14": {
+   "status": "partial",
+   "evidence": "coverage.Reconcile 在 validate.Evaluate 中接入：format.validate 重新枚举候选部件（独立于 format.write 自述），与导出登记的去向对账；真实 DOCX（保留/改写/移除部件，移除时同步删 Override 与关系）与 PDF（页转换、元数据/书签/附件移除）端到端通过，任何不符判 failed_corrupt；XLSX/DOCX/PDF 的部件枚举来自文件本身（enumerate），候选独有的部件没有 source，被移除的部件在候选中缺席才算执行；XLSX 属性部件（作者/公司/自定义字段/缩略图）要么全删要么写失败"
+  },
+  "FR-33": {
+   "status": "partial",
+   "evidence": "DOCX 原型登记全部 ZIP 条目并拒绝未知部件导出；coverage.Assess 对未知/不透明内容判缺口。PDF 注释/表单展平已用合成样本实证（Form 仅在被下探时放行，含矢量或过深拒绝，5 项测试与变异验证；输出不含 Contents/URI/域值），表单域值静默缺失未入覆盖报告，完整对象枚举与真实 PDF 残留检查未完成；coverage.Repository 持久化账本（按尝试开始/记录/完成，迟到尝试不能写入，重做的新尝试从空账本开始且未完成，已关闭账本拒写），extract 把部件状态写入账本，未知/未检视部件在 Assess 中成为缺口"
+  },
+  "MD-17": {
+   "status": "partial",
+   "evidence": "exceptions.Actions：仅在 PartialEligible 时提供“保留”且带部分结果后果，否则禁用并给出原因；coverage.PartialBeforeExport/PartialEligible 两步判定。授权记录、发布授权与持久化未实现；exceptions.Repository.Decide 对“保留”实际校验可用性（无部分结果资格则拒绝），并把后果记入决定历史"
+  },
+  "BUX-03": {
+   "status": "partial",
+   "evidence": "exceptions.Repository：Sync 以（任务、类型、范围键）为稳定标识，重复同步无变化，消失者标已解决并记依据，重现者重开且保留决定；Groups 按类型与原因聚合给出项数、文件数与已决数，Items 键集分页；Decide/DecideGroup/Revoke 逐条记录历史并带用户所见后果，每次记录递增任务例外版本；同一范围键在不同任务中不冲突（曾因主键冲突发现并修复 ItemIDFor）。UI 未做"
+  },
+  "BUX-08": {
+   "status": "partial",
+   "evidence": "ImpactOf 在批量决定前给出成员数与其中已有单项决定数；批量默认不覆盖已确认的单项决定（单项恒优先），仅 Replace=true 时才以撤销记录替代，且只撤销范围内的单项决定，不波及范围外成员（测试：一个跨三成员的批量被一个只含一成员的 Replace 批量替代，其余两成员仍属原批量）；exceptions.CanDecideGroup 阻止不可整组类型，Decide 对多项强制检查。排除数量的界面报告未做"
+  },
+  "SEC-12": {
+   "status": "partial",
+   "evidence": "exceptions.ValidatePluginReport 拒绝未知与内核专属类型码，插件无法自定义动作；预览隔离与选择校验未实现"
+  },
+  "MD-12": {
+   "status": "partial",
+   "evidence": "detect.Service 实现单元级编排：规则与模型并行，任一来源失败整体失败且不返回部分候选；标签按快照 LabelMap 映射为类别，未映射标签只计数；未启用类别丢弃并计数；低于适配器下限的丢弃，低于校准值标 LowConf，不按方案最低置信度过滤；检测上下文（前后缀）里的命中丢弃、跨界命中裁回正文且坐标按正文重基；整字段规则产生 field_rule 候选且不再跑规则与模型、与模型计数分开；模型越界/空/反向/非有限分数为协议错误而非修补；缺模型运行器不会静默降级为仅规则；suspect 规则命中保留 validator_mismatch 与规则 ID（12 项测试、12 个变异验证，其中 1 个最初仅编译失败）。已经 detect.schema.json 协议与 AstrLink Guard 插件入口（python -m tacet_detect_astrlink）接入真实模型：宿主逐单元调用 detect.run，逐条按 Schema 校验并核对 unit_done 计数（缺失/多余/二次 done/失败流均拒绝，8 个变异验证），真实模型端到端与位置映射回归（emoji、组合字符、CRLF、全角、前后缀上下文）通过；尚未接入 findings 存储与抽取阶段；findings.Filter 提供分数区间筛选以查看低于最低置信度的候选；policy.Run 在处置阶段过滤：分数恰等于最低置信度不算低于、恰等于校准值不算低置信度（边界变异曾存活，补用例）；用户对低于阈值者的涂抹决定经 review.Effective 生效并计入人工统计"
+  },
+  "FR-13": {
+   "status": "partial",
+   "evidence": "policy.Resolve 同单元内重叠/相接的去除类目标合并为并集并取最强动作；保留与去除部分重叠、两种不同类别占位符冲突时生成 policy_review 而非静默丢弃。plan 的操作计划生成未实现"
+  },
+  "FR-14": {
+   "status": "partial",
+   "evidence": "policy.Resolve 优先级：人工单项 > 人工批量 > 方案明确规则 > 自动建议。review.Effective 按（任务、单元、文本版本、区间、类别）解析每个命中的生效决定：单项压过批量，同类取最后提交，待提交与已撤销者忽略（变异验证）；policy.Service.Run 读取生效决定与例外决定后写入处置结果，决定版本=复核版本+例外版本，提交时核对检测结果版本与决定版本，变化则整体重算（上限后 ErrInputsChanged 且不落库）。GUI 复核界面接线未做"
+  },
+  "FR-18": {
+   "status": "partial",
+   "evidence": "policy 对无动作类别生成例外；snapshot.Check 对每个启用类别要求检测来源，仅规则模式下依赖模型的类别列入 NeedsNarrowing 且不声称覆盖。用户确认记录与 UI 未实现"
+  },
+  "INV-01": {
+   "status": "partial",
+   "evidence": "policy.Stats 分列自动解决/人工逐项/人工批量/低于最低置信度/低置信度；verdict 不把保留缺口当作已检查。报告与界面汇总未实现"
+  },
+  "MD-15": {
+   "status": "partial",
+   "evidence": "plan.Regions 纯逻辑：按行合并字符框（不同列保持分开）、插件声明外扩、抗锯齿外扩、DPI 换算、0/90/180/270 旋转（手算锚点测试）、向外取整并裁剪到页面；非法输入返回错误。预览叠加与 PDF 回写尚未接入同一函数；变异验证：边距、抗锯齿、裁剪、y 翻转、旋转各被抓住；plan.Widen 限一次（MaxPatches=1，第二次扩大返回 ErrWidenOutOfScope，纵深于 jobs 计次）"
+  },
+  "FR-34": {
+   "status": "partial",
+   "evidence": "plan.Widen：残留所在单元/区域内一次扩大为整个容器，计入补丁并生成新计划版本；无对应已批准操作或容器未知返回 ErrWidenOutOfScope。再检测、新命中关联与 validate 未实现"
+  },
+  "AR-06": {
+   "status": "partial",
+   "evidence": "plan.Build 要求文本操作带可靠源片段，缺失即拒绝，不按偏移推断；稳定操作标识与计划版本含解析键、render 摘要与补丁。输出关联映射（OutputProvenanceMap）未实现"
+  },
+  "AR-18": {
+   "status": "partial",
+   "evidence": "迁移先只读检查模块版本，取得备份后在事务内创建核心/模块表；未来版本拒绝不创建任何新表，首次迁移失败不留核心表，均检查 sqlite_schema。store.FileBackup 在加密库上实现迁移前备份：检查点后复制密文并附带密钥派生的 HMAC，恢复前先校验（被篡改、缺 MAC 的备份拒绝替换数据库并保持原库可用），恢复先关闭连接再原子替换并清理 WAL，成功迁移后丢弃备份，已有遗留备份拒绝新备份（5 项测试与变异验证）；store.SweepBackup 在打开前处理崩溃遗留备份（库完好则清除；库损坏则仅在 HMAC 校验通过后恢复；被篡改的备份不使用且保留；5 项测试与变异验证），已由 OpenManaged 调用；备份或恢复进程中途真实崩溃注入、两平台格式矩阵待完成。"
+  },
+  "MD-01": {
+   "status": "partial",
+   "evidence": "store.Module 注册表与 Scope：模块只能写自己前缀的表，跨模块 INSERT/UPDATE/DELETE/DDL/多语句/发件箱写入均被拒绝（9 种用例与 2 个变异检查）；迁移同样受限。这是防误用守卫而非安全边界，且各模块真实表结构尚未建立"
+  },
+  "MD-09": {
+   "status": "partial",
+   "evidence": "snapshot.Repository 在独立命名空间持久化不可变内容与五分面摘要，加载逐项验证，旧版本和最新版本可分别读取。jobs_batch.snapshot_version 固定批次版本，新快照不会静默重绑；与批次确认同事务回滚已验证。真实配置/注册表解析、版本变更的 lineage 重排与引用登记待完成。；版本变更的失效由 jobs.ApplySnapshotChange 承担（见 INV-04）"
+  },
+  "INV-03": {
+   "status": "partial",
+   "evidence": "snapshot 对调用方入参与访问器返回值做深拷贝，冻结后无法经别名修改；内容未变则 NewVersion 返回 ErrNoChange 不产生新版本；Restore 拒绝被篡改、缺分面或带未知分面的记录。任务绑定、恢复核对插件/模型版本与授权冻结未实现；新快照版本与批次绑定后，阶段按分面依赖失效（见 INV-04）；models.CheckBinding 以模型 ID 与清单摘要冻结，缺失或不符返回 MODEL_BINDING_MISSING/MISMATCH 且不替换；pluginmgr 停用/回退不改变已冻结任务（Disable 返回仍在引用的任务）"
+  },
+  "FR-19": {
+   "status": "partial",
+   "evidence": "快照保存解析后的完整配置内容而非引用（snapshot.Content）。配置对象 v{n} 版本、历史 5 个、回滚、导入冲突（config）未实现；【task-10 配置接线】屏幕上的方案/规则集经 Wails 命令（ConfigList/Create/Save/Copy/Delete/History/Rollback）读写内核存储：启动读出，之后每次改动防抖 350ms 写回；一个屏幕“方案”存为预设+方案两个对象，规则集一对一；内建对象只读不写（变异验证）；保存检查版本（冲突返回 VERSION_CONFLICT，屏幕提示并按存储重新载入）；规则编号/校验器/上下文词/cjk 边界等屏幕没有开关的设置随规则保留，读出再写回内容不变（测试）；预设可组合多个规则集（extra_ruleset_ids，合并后规则编号重复则拒绝开始，摘要随任一规则集变化）、规则可停用（disabled，不参与检测也不算检测来源，真实进程验证）；删除先删预设再删方案对象，被预设引用的对象拒绝删除（config.Repository.Delete）；历史版本与回滚来自存储；导入/导出为真实文件对话框读写（按名称引用规则集、不含模型与编号，名称冲突先改名不覆盖，格式/类型/缺规则集被拒绝）；开始任务时使用所选方案的存储编号并先写回未保存的改动。未做：预设回滚只恢复预设对象（规则集、置信度），各类别处理方式不随之回退；规则 kind “校验”只能保留不能新建；涂抹样式 12 种与存储的 4 种枚举未对应，预览与回写仍用固定样式；规则包（FR-46）、模型资源下载（models.Service）、插件管理、设置/更新页面仍是演示数据；【task-10 设置】应用偏好（关闭行为、主题、涂抹样式 12 种、资源档位、保留天数、自动检查更新）存入 config.Settings 并经 Settings/SaveSettings 读写：旧数据缺新字段时补默认值，“保留 0 天”与“从未选过”可区分，非法样式/档位/天数/关闭行为被拒绝（3 个变异均被抓住）；真实引擎测试关闭后重开仍保持；前端启动读出、每项改动防抖写回，被拒绝时提示并恢复（变异：保留天数固定、关闭行为固定、主题不保存均被抓住）。未做：保留天数与资源档位尚未驱动实际的保留期限与调度预算；涂抹样式只存不影响预览与回写"
+  },
+  "PF-06": {
+   "status": "partial",
+   "evidence": "snapshot.Check 在模型内存超出资源档预算时阻塞开始；整个进程树预算采样与回收未实现"
+  },
+  "FR-12": {
+   "status": "partial",
+   "evidence": "snapshot.Check 要求使用模型的方案阈值为正且不低于适配器下限，无人值守下阈值高于校准默认值则缩小自动发布范围；改选模型时重置为新默认值（config）未实现"
+  },
+  "MD-05": {
+   "status": "partial",
+   "evidence": "store.Consume 将事件批次、query 投影更新和游标前移放同事务；第二个文件读取失败时先前汇总也回滚，重试/重复事件不重复计数。jobs 与 snapshot 已发件箱接通；后台分发循环、节流订阅、retention/report 消费者尚未实现；【task-10】引擎通知：Engine.Subscribe/changed 在阶段完成、事件应用、导入、启动、发布后推送批次变化，gui.Service 合并为 150ms+4×读耗时的节流窗口后发出 tacet:batch-changed 事件（50 次变化合并为 1 次事件，测试断言）；前端按事件读取状态，不轮询。query 投影消费者仍未接入"
+  },
+  "SEC-04": {
+   "status": "partial",
+   "evidence": "keys 分层逻辑：用户密钥包裹 workspace/config，workspace 密钥包裹 batch/task；包裹 blob 绑定 kind+id（换 id/换层解密失败）并带 AES-GCM 认证；资源密钥由任务密钥与资源 id 派生；资源文件分段 AES-256-GCM 已与 Go/Python 互通；数据库加密候选已在十万候选原型比较。macOS 钥匙串适配器已用真实登录钥匙串验证（platform.Secret 经 Security.framework，kSecAttrAccessibleWhenUnlockedThisDeviceOnly，Save 不覆盖已有条目，缺失/不可用均不回退明文；keys.OSUserKeyStore 映射错误码；重开进程可解开工作区密钥，CLI 不会静默新建密钥；4 项真实钥匙串测试与 1 个变异验证，无残留条目）；Windows DPAPI 实现仅交叉编译、未实机执行；生产数据库经 store.OpenEncrypted 采用 ncruces + Adiantum VFS（主库、WAL 在真实 Go 集成中无原文与明文头，错误密钥与明文库被拒绝，错误信息不含密钥语句；temp_store=MEMORY、secure_delete 已断言；5 个以上测试与 4 个变异验证）；迁移前备份沿用库的密文并以 HMAC 保证完整性（见 AR-18）；keys.DirWrapped 以原子、不覆盖方式保存包裹密钥；现存库缺密钥时拒绝新建（ErrKeyMissing）；用户导出备份、SHM 索引元数据保护、Windows 未完成"
+  },
+  "INV-07": {
+   "status": "partial",
+   "evidence": "密钥不落盘明文、同值分组用批次密钥派生的 HMAC（keys.GroupHMAC，跨批次不可比较）、错误码与测试均不含原值；资源文件落盘前加密。日志/报告/诊断去敏守卫、残留标记扫描与清理验证未实现；report.Guard 与测试：写入目录下所有报告/清单文件不含注入的敏感标记、目录路径或 /Users/；【task-10】引擎/GUI：gui.Service 对前端返回的错误只保留封闭错误码（含路径的错误降为 INTERNAL_ERROR，测试断言）；批次事件与文件行只含中性名 f0001 与封闭原因码；CLI 同样只输出封闭码，退出输出不含源文件名/目录（端到端断言）；【task-10 预览】页面预览栅格：format.preview 把一页渲染为 PNG 写入任务密钥加密的瞬时写入资源，宿主 Grant.ReadBack 逐段认证解密到内存缓存（至多 24 页/96 MiB），不进资源目录与用户可见位置，尝试撤销时文件删除（测试断言目录为空）；gui.AssetHandler 仅对 GET /tacet-preview/<24 位十六进制令牌>.png 响应，Cache-Control: no-store、nosniff，令牌形状不符不查缓存（变异验证）；【task-10 保留】保留期限真正生效：导入时按设置授予 retention.Grant（0 天不授予），启动时清扫——到期或无授予的任务先取消并结束批次，再由 retention.Purge 先擦除任务密钥、再删各模块行与文件（bodies/预览/资源），仅留中性行；Clean 使用同一套清除；真实引擎测试：0 天重启后无任何资源与正文残留且密钥已擦除、7 天内保留/过期后清除（可移动时钟）、Clean 后密钥擦除且交付文件保留。资源档位决定下次启动的调度预算（舒适 1 并发/2 GiB，标准 2 并发/4 GiB；运行中不改变）。预设回滚：预设记录 scheme_rev，回滚在同一事务内连同方案对象一起恢复（变异验证）"
+  },
+  "SEC-05": {
+   "status": "partial",
+   "evidence": "keys.CryptoErase 删除包裹密钥后该任务全部资源不可解密（用真实 store 资源编码验证，重建同 id 得到不同密钥也无法读取旧密文）；重复擦除可重试。retention.Service 实现保留授权与期限（Grant 为唯一续期入口，期限从最近一次显式保存起算，后台 Usable/Sweep 不续期；到期按调用时钟判定）、分步可见可重试的 Purge（等待进行中发布→加密擦除任务密钥→各模块 Registration（事务内 Tx 或自管提交的 Func）→撤销登记；密钥擦除失败则不触碰其他数据，已完成步骤重试时跳过，任一步失败则保留授权与步骤记录）和启动 Sweep（无授权或到期的作业清理，到期先标记再清理，半途清理自动续做）；9 项真实加密工作区测试与 8 个变异验证；Task 级加密擦除与 refs.Purge 已联动，其余模块的 Purger（findings、plan、review 等）与任务历史条目置空随这些模块实现，日志/诊断等旁路文件清理未实现"
+  },
+  "FR-09": {
+   "status": "partial",
+   "evidence": "DOCX 打开密码解锁已用真实进程跑通：format.unlock（UnlockParams 含 x-secret 密码、UnlockDone）→ DOCX 插件以 msoffcrypto-tool 5.4.2（MIT，新增依赖，连同 olefile 0.47 BSD，锁文件含哈希）解密，先校验口令（verify_password）再在内存中解密并做完整性校验（verify_integrity）、确认结果是 zip 包后才写出，因此密码错误、损坏、非加密输入都不留下半截输出；错误码 PASSWORD_INCORRECT / INPUT_CORRUPT / ENCRYPTION_UNSUPPORTED / NOT_ENCRYPTED / RESOURCE_LIMIT，错误文本不含密码。宿主 Session.StreamSecret 把密码以字节切片在所有校验之后拼接进请求帧（预分配最坏情况容量、不重新分配、写后清零，不经 map、Marshal 或 Schema 校验器），preflight.Unlock 在成功、错误、panic 各路径清零调用方切片；真实 DOCX 插件经继承句柄（加密只读输入、追加写输出）端到端解锁，错误密码无任何输出且不封存（Go 端 15 种假插件场景 + 真实进程 + 变异验证）。预检 Decide 把 password_required 判为 locked 并注明输出未加密。未完成：样本由 msoffcrypto 自己加密，Word/WPS 生成的真实加密文件未验证（外部证据，挂账）；msoffcrypto 把整个包解到内存（输入上限 256 MiB，大文件内存曲线未测）；PDF 解锁（pypdfium2 另存副本）、format.probe 协议、解密副本登记为任务输入版本及原件变化后按 INV-04 失效、GUI/CLI 输入密码、批量逐文件输入与例外队列均未实现；Python 字符串无法清零（架构 4.6 已声明不作强保证）；PDF 解锁已用真实进程跑通：pypdfium2 以密码打开、FPDF_REMOVE_SECURITY 另存到内存缓冲，复开无密码且页数一致才写出，错误密码/无需密码/证书加密/损坏各有错误码且无半截输出；夹具为手写 RC4 128 位标准安全处理器（经 PDFium 自检确认是真的），不是 Acrobat/Word 生成的文件（外部证据，挂账）；Go 端经继承句柄解锁与错误密码路径通过；【task-10】引擎接线：Engine.Unlock 把密码放入仅内存的单次使用槽，下一次预检消费并清零，解密副本成为该文件之后各阶段的输入；错误密码使文件回到等待密码且不计重新处理；真实 DOCX 加密包端到端：同批的明文文件独立完成、加密文件阻塞，错误密码→正确密码后完成并脱敏，调用方切片被清零，工作区所有文件不含密码字节。GUI 密码框（LivePasswordDialog）只在组件内存里持有输入，提交后清空，状态树不含密码（前端测试断言）。CLI 非交互运行把需要密码的文件记为阻塞并继续其他成员，不读 stdin；交互式无回显输入未做"
+  },
+  "FR-28": {
+   "status": "partial",
+   "evidence": "jobs_batch 部分唯一索引允许一个 quick 与一个 regular 并存、拒绝静默替换；confirmed 标记冻结成员；只有全部成员终止才释放活动槽位。交互优先、模型共享与快捷 GUI/发布授权待完成；【task-10】引擎接线：快捷任务与常规批次并存，第二个快捷任务返回 QUICK_TASK_ACTIVE（端到端断言）；GUI 的单文件路径用 quick 批次导入、不授权启动，停在 awaiting_review/ready_to_publish，由“确认并导出”携带全部决定与输出位置授权发布。尚缺：交互阶段优先于批次的调度优先级未按任务种类区分（当前均为 Interactive）"
+  },
+  "BUX-11": {
+   "status": "partial",
+   "evidence": "query_job/query_count 从 JobStateChanged 增量维护状态汇总，查询经 jobs 只读接口取得事实，不直接读 jobs 表；有界 keyset 成员分页已测。Finding/例外/覆盖/交付汇总、剩余时间、UI 事件未实现。"
+  },
+  "AR-16": {
+   "status": "partial",
+   "evidence": "sched 队列严格交互优先、同级下游优先、后台保留交互内存余量；等待交互请求即使暂不满足预算，也不允许较小后台请求绕过。活跃后台不打断；Dispatcher 完成事件唤醒下一阶段，真实 SQLite 阶段记录集成通过。模型共享推理/阶段内让出/真实UI待完成。"
+  },
+  "PF-10": {
+   "status": "partial",
+   "evidence": "sched 阶段准入同时限制队列字节、CPU、工作进程、内存和磁盘声明；有上限 pending/active 与完成消息；单票据不能重复运行或提前释放。真实全流水线队列缓冲/计费与负载资源采样待完成。"
+  },
+  "PF-17": {
+   "status": "partial",
+   "evidence": "sched 存量保留磁盘与活动阶段预留分开，高水位阻止产生新数据阶段并允许验证/发布继续；测试确认阶段结束不会释放仍保留的候选存量。真实累计计量、批次配额与空间提示待完成。"
+  },
+  "FR-17": {
+   "status": "partial",
+   "evidence": "仅 JSON/JSONL 精确数字部分的原型：format-json 的 scanner.py 严格流式扫描，数值按原词法保留、重复键不合并、码点到原始字节偏移含转义、仅替换被编辑字节区间；35 项测试（含变异验证）与 100 MiB 三种形状实测见 results/json-*-100mib.json。CSV 字节级扫描与单元格回写原型及公式注入防护（28 项测试，100 MiB 实测见 results/text-csv-100mib.json）亦已完成；仍未实现字段路径/表头匹配、类型授权、结构不匹配例外、CSV 列、插件 format.* 处理与 Go 侧策略均未实现。"
+  },
+  "AR-03": {
+   "status": "partial",
+   "evidence": "插件流的字节与单元数双维度信用：host.Flow 与 SDK Task 分别记账，宿主仅在持久提交完成后才发信用（提交进行中不发，用 net.Pipe 假插件断言），单条超过字节信用被宿主在提交前拒绝、被 SDK 以 RESOURCE_LIMIT 拒绝，序号跳变/零序号/超发被拒；控制通道（health、cancel）在数据背压期间仍可用。仅覆盖插件→宿主这一条流；sched 队列的字节/单元上限、模型会话与预览缓存上限、整文件 tokenization 禁令、100/500 MiB 与 4 h 实测未完成"
+  },
+  "CORE-04": {
+   "status": "partial",
+   "evidence": "envs 已实现：以 OS/ABI/锁文件/产物摘要标识的环境登记，部署中→就绪的单向切换（检查失败记为 Broken 且不可复活），隔离启动规格（-I -m、环境变量白名单、不继承 PYTHON*、私有工作目录），应用更新后第三方环境按 ABI/平台标为需重新部署、内建不受影响，仅回收无引用的第三方环境且删除限定在基目录内；真实 DOCX 插件经 envs 启动规格启动，工作目录与 PYTHONPATH 中的同名恶意模块未被导入（去掉 -I 即失败）。固定提交/离线安装、确认、uv 部署（仅预编译 wheel）、引用保护的接线（registry 引用）、升级授权与沙箱在 task-9；Go 与 Python 共用 protocol/testdata/schema-conformance-v1.json（81 条判定向量，覆盖信封、生命周期、流、初始化、资源引用），两侧测试各自逐条断言，当前一致"
+  },
+  "MD-06": {
+   "status": "partial",
+   "evidence": "见 CORE-04：envs 提供与格式无关的环境登记与启动规格，内核经 host 只依赖协议；新增格式插件不改内核的论证目前限于 DOCX 与 fixture 两个真实插件，其余格式插件尚无协议处理"
+  },
+  "CORE-02": {
+   "status": "partial",
+   "evidence": "规则（含新增上下文规则：关键词窗口按 code point、不跨行、计入工作量预算、编译期拒绝非法配置，8 个变异验证）与固定提交的 AstrLink Guard 经插件协议合并检测；内建中国办公规则包 cn-office-v1 经 ParsePack 加载。合成语料（1,340 篇、7,888 实体、12 类）逐类别评测：合并来源下除账号（P 0.80，同一片段被标为账号与银行卡的类别冲突待处置阶段消解）与个人日期（P 0.96，模型把日志时间戳当日期）外精确 P/R 均 ≥ 0.98；评测发现并修复员工号召回 0%、证件有效期日期召回 44% 的缺口，见 detect-evaluation.md。语料合成且易于真实材料，无真实/独立测试集、无校准、无人值守资格；上游偏移一致性与 IP/URL 清理契约未实现；【task-10 模型】AstrLink Guard 已接入真实批次流程：Options.Model（模型目录+完整性清单+detect 插件）→ 内置“规则+模型”预设（最低置信度取上游推荐 0.8，适配器下限 0.5，引导方式，非无人值守）；检测与验证阶段各按快照启动一个模型 worker（同一时刻仅一个，阶段结束即终止），模型每次调用独立 attempt；真实进程测试：中文人名“张伟”被模型找到并替换为 [姓名]、电话邮箱由规则与模型共同命中，交付文件不含原值；清单哈希被篡改时检测插件在加载前拒绝，文件失败、无任何交付（不记为零命中）；显式选择仅规则预设时不启动模型。变异：默认预设忽略模型、检测不带模型均被测试抓住。未做：模型资源通过 models.Service 下载/登记（当前由 TACET_MODEL_DIR 或 .pi/m0-resources 提供文件）、校准阈值仍为空、无人值守资格关闭"
+  },
+  "AR-11": {
+   "status": "partial",
+   "evidence": "findings 存储：按任务与批次的 keyset 分页（每页 ≤200，越界/无范围拒绝）、按类别/来源/分数区间/字段/模板/同值分组过滤、按键序 keyset 分组聚合（命中数、涉及文件数、取最小 id 的稳定代表样例）。10 万候选（200 任务×500）本机实测：单页 0.4–12 ms，分组首页 193 ms、深页 69 ms（未加密库、开发机、单次，非 R1）。批量决定计时与 review 侧分页未实现"
+  },
+  "BUX-05": {
+   "status": "partial",
+   "evidence": "代表样例取分组内最小 finding id；同值 HMAC 仅用于分组与批量选择，决定绑定到具体成员：同值出现在新位置、同区间但文本版本不同、同区间但类别不同均不继承旧决定，同一命中在新检测结果版本下重新出现则继承（review 测试）。界面刷新行为未做；规模：10 万命中的类别过滤分页走完 0.17 s（曾因规划器对每页做全量排序而需 25 s，EXPLAIN 回归测试守护），全量批量决定 1.0 s"
+  },
+  "INV-02": {
+   "status": "partial",
+   "evidence": "extract.Pipeline 只在 stream.end=completed、插件发出 extract_complete 且其声明的单元数与部件数等于已提交数、至少一个部件时才算完成；任何其他结束（失败/取消、缺完成标记、计数不符、完成后又有条目、重复部件、未知条目、超大/空单元、协议字段多余）都丢弃该尝试的单元、命中与正文，覆盖台账保持未完成，Assess 拒绝把未完成清单当缺口列表；检测失败使整个运行失败而非跳过该单元；过期尝试在每次提交的 AdmitTx 处被拒（15 种中止场景、真实 DOCX 插件端到端、14 个有效变异验证）。其余阶段（导出、验证、发布）的同类保证见各自任务；PDF 抽取的覆盖语义：每页一个部件，页内含图像、非链接批注、文档元数据、书签、嵌入文件时另报 not_inspected 部件；这些部件必须是 class=unknown——端到端测试曾发现我把它们标成 other，结果 Assess 把图像/元数据当作范围外而非缺口，已改并由 Python 与 Go 两侧断言；export.Writer 与 validate.Runner 对流的严格核对：每个已批准操作恰一条结果、每部件至多一条、恰一个完成标记且在最后、计数一致、流 completed，任何偏差（含完成后追加、重复、未知操作）都是协议违例；未执行的批准操作使导出失败并列出原因码；验证未完成记 not_run 而非通过；unitkit 把每个格式的抽取/回写/验证的严格性写在一处：抽取报告所有部件与带计数的完成标记；回写对每个操作给出 executed/not_executed 与原因码，失败时全部 not_executed 且各部件 kept；验证独立重开候选并逐操作判定，部件枚举来自候选本身而非回写自述"
+  },
+  "FR-15": {
+   "status": "partial",
+   "evidence": "detect 把检测上下文（前后缀）中的命中丢弃、跨界命中裁回正文并按正文重基坐标，含真实模型的 emoji/组合字符/CRLF/全角/前后缀回归；DOCX 隐藏文字与修订以 visibility 单独上报而不混入可见正文。表头/相邻段落上下文的生成与保存、不进入公开报告未实现"
+  },
+  "AR-02": {
+   "status": "partial",
+   "evidence": "DOCX 与文字型 PDF 两个内建插件都有真实协议入口并经真实进程端到端：DOCX（inventory/extract/unlock/probe）、PDF（probe/unlock/extract，pypdfium2）；format.extract/unlock/probe 的 Schema 与 Go/Python 共用（含 9 条一致性向量，曾抓出 \\Z 在 RE2 中的差异）。文本、CSV、JSON、XLSX 插件仍只有扫描器，没有协议入口；DOCX 与文字型 PDF 插件现已具备 probe/unlock/extract/write/validate 全部协议入口并经真实进程端到端；文本、CSV、JSON、XLSX 仍只有扫描器，没有协议入口；文本(TXT/MD/log)、CSV、JSON/JSONL、XLSX 值子集插件现经共用 SDK unitkit 具备 probe/extract/write/validate 协议入口，并以真实进程完成抽取→计划→回写→验证→再检测闭环（txt/csv/json/xlsx 四种格式 × 全部涂抹通过、漏做一个得到新命中并定位回输入坐标、不完整候选判残留）；这四个插件没有 unlock（无加密）"
+  },
+  "FR-03": {
+   "status": "partial",
+   "evidence": "preflight.CheckTarget 拒绝与源同一文件的输出目标：同路径、符号链接、硬链接、经符号链接目录或 .. 书写的别名（以卷内文件标识 platform.Identify 判定，Windows 实现仅交叉编译）；不存在的目标只要求父目录可解析，大小写变体靠标识识别（死分支已由变异验证发现并删除）。与发布无覆盖提交、输出命名与同名冲突预览未接入；plan/export：输出为独立候选资源，publish 只无覆盖地创建新名称，原件从不被写入"
+  },
+  "FR-08": {
+   "status": "partial",
+   "evidence": "preflight.Inspect 取快速指纹（大小、修改时间、卷内标识），Source.Changed 在时间、大小、同尺寸同时间的替换文件、删除时都判为已变化（4 个场景测试与变异验证）；完整摘要的后台计算、发布前核对、变化后的暂停与按 INV-04 失效接线未实现"
+  },
+  "FR-02": {
+   "status": "partial",
+   "evidence": "format.probe 协议（ProbeParams/ProbeResult，Go/Python 共用）与 DOCX 探测已用真实进程跑通：按签名与包内容而非扩展名判定——普通包报 docx 并给出内嵌媒体数、嵌入对象数、展开体积；OLE 加密容器报 password_required（不解密）；证书/DRM 类 extensible 加密报 unsupported；伪装成 .docx 的文本、PDF、其他 OPC 格式（xlsx）、不含 OOXML 的 OLE、未加密 OLE 均为 unknown 而不是猜测；损坏或超限的 zip 是探测失败（INPUT_CORRUPT），不是格式判定。preflight.PluginProber 只接受恰好一条 probe_result 且流 completed，Decide 再对结果做纯逻辑判定（未接受格式/非法值拒绝，页数>2000 或体积>8GiB 判无法处理并给出实际值与上限）。真实 DOCX 进程 + Decide 三类文件（普通→preflighted、加密→locked、伪装文本→unprocessable）端到端通过。Python 7 项、Go 假插件 7 场景 + 真实进程；变异 DOCX 11 个、Go 7 个，均被抓住（4 个先存活后补用例）。未完成：DOCX 的页数恒为 0（页数上限对 DOCX 无效，页数需渲染才可得，另议）；PDF 与 text/CSV/JSON/XLSX 插件尚无 probe；探测预算（deadline）依赖通用任务截止时间，未单独设阶段预算；PDF 探测：签名而非扩展名，密码保护→password_required（不打开），只有权限口令→permission_only 且给出页数，Adobe.PubSec→unsupported，图像与嵌入文件计数，页数超限由 Decide 给出实际值与上限（真实进程 + Decide 端到端）；文本类 probe：TXT 依 BOM/严格 UTF-8/GB18030 识别并拒绝含 NUL 的二进制与 UTF-32，CSV 按首行定界符与编码识别且整个文件必须能解析，JSON 先按整文档再按 JSON Lines，XLSX 要求值子集内的整个工作簿能读；扩展名不参与"
+  },
+  "MD-11": {
+   "status": "partial",
+   "evidence": "review.DecideBulk 两阶段：先写 pending 决定，提交区外分块写入成员（带各任务检测结果版本），最后一次提交核对每个成员任务的结果版本未变（否则 SCOPE_CHANGED）并翻为 committed、递增决定版本；pending 不被读取，DropPending 清除；崩溃在成员阶段中途、成员阶段期间检测结果变化、决定在两阶段之间被丢弃均有测试，同一 request 重试返回已提交决定且不改版本、空范围不留 pending；变异 25 余个均被抓住（2 个冗余防御已记录）"
+  },
+  "BUX-10": {
+   "status": "partial",
+   "evidence": "批量决定崩溃不留“部分生效”：见 MD-11（崩溃注入测试：成员写入一半后失败，读取方看不到任何效果，DropPending 清理，同一请求重试成功）；撤销为单事务单行，不需两阶段"
+  },
+  "BUX-06": {
+   "status": "partial",
+   "evidence": "批量范围冻结：成员在决定时物化并绑定检测结果版本，之后新增命中不属于该决定（review 测试：后到的命中不继承）；例外组决定 DecideGroup 要求调用方传入所见计数，变化则 SCOPE_CHANGED 且不记录任何决定；findings.Count 与 Page 同一谓词（测试对 7 种过滤逐一核对）。UI 的所见计数展示未做"
+  },
+  "FR-22": {
+   "status": "partial",
+   "evidence": "review.AddManual 在同一事务内增加 manual 来源的命中（findings.AddManual，独立已封存尝试，立即提高结果版本，按 request 幂等）与一条单项涂抹决定；任一失败则两者都不存在；preview.Validate 在此之前校验选择：过期文本版本拒绝、越界拒绝、他任务单元按拒绝处理且不泄露其状态、位置不可靠转 unreliable_location 路径、坐标选择经插件映射且映射结果同样校验。插件侧 format.preview 与选择映射未实现；【task-10】引擎接线：Engine.AddManual 把界面的 UTF-16 选区转换为码点区间（落在代理对中间、空选区一律拒绝），经 review.AddManual 写入并重新解析；真实进程验证删除类动作的计划行必带 replacement（修复了 omitempty 丢掉空替换导致插件拒绝整份计划的缺陷，回归测试断言），内置方案为人工类别（姓名/地址/机构/其他）默认占位符；【task-10 预览】PDF 复核以渲染页面显示，候选框由 format.preview 用与栅格回写相同的字符框与 regions 几何计算（测试断言与写入覆盖的矩形逐一相等），无法可靠定位的候选返回 unmapped 而不猜测；Pager.Render 严格校验（每个标记要么有框要么声明无法定位、框在图像内、字节数与读回一致，变异验证）。页面不能渲染时回到文本显示并提示；前端按 IntersectionObserver 懒加载页面"
+  },
+  "MD-18": {
+   "status": "partial",
+   "evidence": "review.AddTerms：批次范围、带版本、经批次密钥加密（TermCipher 注入；库中只存密文，测试断言无明文）、按 request 幂等、无新增则不建新版本、上限 2000 条/64 字符并拒绝控制字符；不触碰冻结规则集。向受影响成员派发只用规则的补充扫描属 jobs/app 装配，未做"
+  },
+  "BUX-13": {
+   "status": "partial",
+   "evidence": "review.SavePosition/LoadPosition：筛选、分组与游标按键保存，后写覆盖，长度有界，不含内容。界面恢复未做"
+  },
+  "PF-14": {
+   "status": "partial",
+   "evidence": "撤销是引用原决定的新记录，不复制成员表（测试断言撤销记录无成员行、历史保留、重复撤销为空操作且不改版本）"
+  },
+  "MD-16": {
+   "status": "partial",
+   "evidence": "发布授权绑定（任务，处置键）：Grant 覆盖旧授权，处置键变化后 Publish 在预检与提交区内两次核对均拒绝（ErrNoGrant/ErrStale），只影响该成员；部分结果需要部分授权且输出名带 -partial 标记；授权在复制期间被撤销/收窄也被提交区内的复查拒绝（测试注入）"
+  },
+  "MD-13": {
+   "status": "partial",
+   "evidence": "validate.Service.Run 通过 extract.Pipeline.Rescan（候选模式：不落库，完整性判定与 Run 相同）以同一 detect 分面对真实 DOCX/PDF 候选再检测，格式插件不跑模型；DOCX 候选的新命中经计划的编辑几何映射回输入坐标并写成 post_export 阶段的 Finding（同值 HMAC 与输入命中同组），命中占位符等生成内容→policy_review，无法定位→unreliable_location；栅格化 PDF 输出期望无文本，出现文本判部件核对不符。栅格化输出的新增风险检查局限已写入验证结果"
+  },
+  "FR-36": {
+   "status": "partial",
+   "evidence": "report：File.JSON/Summary 与 Manifest 只用中性标识与相对输出位置；Guard 在写出前检查所有字符串（绝对路径、盘符、UNC、file://、调用方注入的敏感标记、非法 UTF-8），失败即拒绝且错误文本不复述原文；清单拒绝绝对/带 .. 的输出路径、重复 id、无摘要的已交付行、带输出的未交付行；经 publish.Artifacts 独占创建，同内容重放无害、不同内容另起文件名；报告含 INV-01 分列统计、低于最低置信度未处理数（明示不等于无敏感信息）、保留缺口仍未检查、验证局限、自动扩大、“原文件已加密，输出未加密”、未启用 OS 沙箱标注。含源路径的加密本地定位索引未实现；【task-10】引擎接线：发布后写出 report.File（中性标识、相对路径、校验状态与限制），清单摘要为已交付文件的真实 sha256（端到端与交付文件逐字节核对一致）；GUI 清单页对真实批次显示该摘要而非占位值"
+  },
+  "SEC-06": {
+   "status": "partial",
+   "evidence": "report.Guard：路径与已知标记扫描在写出前执行，报告/清单文件写出后再扫描一次（测试）；日志与诊断的同类扫描属 app 装配"
+  },
+  "SEC-15": {
+   "status": "partial",
+   "evidence": "update：检查请求只含版本、平台、通道（测试断言每个请求的查询串）；清单与签名均在解释前先验签（ed25519，用途绑定，多公钥可轮换），签名/用途/载荷/密钥任一不符统一拒绝；平台/通道不符、非更新版本、min_from 不满足均拒绝；下载只在网络租约内、包须与已签名清单的大小与 SHA-256 完全一致才登记为 ready（被篡改、过长、过短、中断均不登记）；离线导入走同一校验；Apply 先核对包未变，存在待复核/可恢复任务时必须由用户选择作废或更新后重新执行，选择“先完成”则不更新，且在检查失败时不会先作废任务；Apply 取维护租约（与处理互斥）→执行退出顺序→交给安装器，任一步失败即停。FirstRun 把第三方环境按 Python ABI 标记为需重新部署。真实的 Wails 更新器/安装器替换、代码签名与公证未做（需打包环境）"
+  },
+  "FR-40": {
+   "status": "partial",
+   "evidence": "pluginmgr：git 来源必须是 40 位十六进制提交（分支/标签/短哈希拒绝，且不会触及 git），可附期望摘要，不符即拒绝并清理暂存；本地路径复制为不可变快照（拒绝符号链接与设备文件，限文件数与总大小）；内容摘要按路径与字节计算，同包同摘要，改名也改变摘要"
+  },
+  "FR-41": {
+   "status": "partial",
+   "evidence": "安装前检查并交由用户确认：清单（经 registry 的 Schema、运行时仅 python、目标平台、许可）、角色/格式/平台、锁文件包数、是否需要联网下载；Confirm 前不部署任何东西；候选令牌单次有效"
+  },
+  "SEC-14": {
+   "status": "partial",
+   "evidence": "安装不执行插件或依赖的构建/安装代码：拒绝 setup.py/setup.cfg/安装脚本/Makefile/.pth/内置 wheel 与 sdist；uv.lock 必须存在，每个包要么是带 wheels 的注册表包，要么是根目录下的插件自身，仅有源码分发、git、路径或其他 editable 的依赖一律拒绝；失败回滚快照与已部署环境，不影响其他插件"
+  },
+  "FR-42": {
+   "status": "partial",
+   "evidence": "pluginmgr.Uninstall：被任何工作区的任务或快照引用的版本不删除并列出引用项（registry.References，跨 GUI/CLI 工作区），解除引用后才删行、快照与环境；Disable 返回仍在使用它的任务；升级是安装新版本（旧版本保留），Rollback 重新启用旧版本并停用新版本，必须同 ID 且旧版本仍已安装"
+  },
+  "FR-45": {
+   "status": "partial",
+   "evidence": "pluginmgr.Confirm 在沙箱未通过的平台拒绝登记第三方代码插件、Enable 同样拒绝；规则包不受此限（测试）；【task-10 插件页】插件页显示引擎真实登记的内建插件（Core.Plugins，按插件编号去重、固定顺序，真实引擎测试断言格式/版本）；第三方安装、停用内建插件、检查更新在真实宿主下如实提示不可用而不再模拟（变异验证）：第三方安装需沙箱验收（registry 对非内建返回 ErrSandbox），更新通道尚未配置发布源。pluginmgr/update 后端虽已实现，但没有接 Wails 命令；真实的环境部署、git 取得与沙箱仍未接线"
+  },
+  "AR-17": {
+   "status": "partial",
+   "evidence": "netgate.Lease.Fetcher：模型与更新的下载经租约客户端进行（仅 https、主机白名单、逐跳重定向检查）；请求只带 URL、Range、If-Range；断点续传绑定强 ETag，实体变化则从零重来，不拼接两个版本；弱 ETag 不用于续传"
+  },
+  "PF-15": {
+   "status": "partial",
+   "evidence": "lifecycle.Starter：启动顺序为设计 4.3 的六步固定顺序（工作区→回收上一代→发布补记→过期清理→丢弃未提交决定与重置阶段→开始派发），顺序与名称由构造检查；每步成功才进入下一步，失败即停并报告，任务操作在全部完成前保持关闭；lifecycle.Stopper：退出顺序七步（停派发→取消到安全边界，受宽限期约束→检查点→回收进程树→等待发布提交区→保留/擦除→释放工作区）固定，任一步失败不阻止后续步骤，首个失败被报告，工作区最后释放；系统关机只停派发、回收并释放，跳过等待与清理；重复调用无效果。Wake：先重置所有心跳基准再探测存活，睡眠时间不被当作超时；Awake：任务运行时向平台声明用户活动、空闲时撤销，仅在状态变化时调用，失败的声明会重试；DecideClose：有任务时关窗隐藏到托盘，显式退出需确认。OS 托盘与睡眠/唤醒事件的真实接线属 gui/platform（task-10），未做；【task-10】注意：lifecycle.Starter/Stopper 尚未被 app 装配调用；引擎自身的 Open 做了账本回收、材料恢复与把未完成成员重置为暂停（recoverJobs），Close 取消派发循环并清零内存口令后释放工作区。托盘与睡眠事件未接线；【task-10 恢复】Engine.Unfinished/Core.Unfinished 经 jobs.Repository.Unfinished 列出仍占用活动槽位的批次（至多快捷与常规各一）；真实进程测试：关闭引擎后用同一工作区、同一密钥重开，快捷任务停在复核处（暂停），常规批次的预检被中断，二者都被列出且带 Started/Authorized 事实，恢复后复核→决定→发布完成，已结束的批次不再列出；界面：快捷任务回到单文件窗口并继续，批次列入“最近”，选择后才恢复运行，已启动/未启动分别回到运行页/预检页（前端测试，4 个变异中 4 个被杀）。恢复后的文件名为中性名（f0001.ext），源文件名不跨重启保留；【task-10 启动】插件 worker 启动失败拆分为 PLUGIN_START_FAILED（进程无法启动）与 PLUGIN_HANDSHAKE_FAILED（启动后没有应答），阶段被暂停/取消/关闭打断时按“被停止”处理而不是文件失败（单元测试，去掉该分支的变异被抓住）。起因：一次满载的全量竞态套件中出现过一次 PLUGIN_START_FAILED（CLI 预检后运行），之后单包重复 36 次与全量两轮均未复现，根因未确定，现在再发生时失败码会说明是哪一种；【task-10 生命周期】引擎 Open 现在经 lifecycle.Starter 按固定六步启动（工作区→回收上一代 worker→补记发布→保留清扫→丢弃未提交决定并重置阶段→开始派发），Close 经 lifecycle.Stopper 按固定七步退出（工作区最后释放）；顺序由测试断言，失败即停并释放工作区（测试）。上一代 worker 以“工作区哈希”前缀整批回收（platform.ReapMarkedPrefix，只匹配环境变量的值且只匹配前缀；真实进程测试：本工作区的遗留进程被回收、另一工作区的不动；跳过回收的变异被抓住）。发布幂等：同目录同名同摘要已记录交付则不重发（delivered 单元测试，且 Recover 已有）；但“写完文件、未记账就崩溃→重启补记→重跑发布阶段跳过”这条端到端路径没有复现，强制重发的变异存活，属于未验证。托盘与睡眠/唤醒的 OS 事件仍未接线（lifecycle.Wake/Awake/DecideClose 未被调用）；【task-10 恢复缺陷】发现并修复：(1) CLI 在 Start 等待预检时被中断，授权/预设/输出位置没有记录，恢复后批次永远不启动——Start 现在先记录请求，Resume 按记录完成启动（测试：中断的启动经 Resume 交付，三个变异均被抓住）；(2) 已预检但尚未并入已启动批次的文件被暂停后，Resume 不再有任何阶段推动它——Resume 之后补做 afterState（测试 + 变异）；(3) 预检阶段被暂停后重试因输入副本同名而 INPUT_COPY_FAILED——输入资源编号改为每次尝试唯一；(4) Wait 在“启动待完成”的瞬间误判空闲（-race 下约 1/6 复现，读取顺序修正后 20/20 通过，概率性结论）"
+  },
+  "AR-10": {
+   "status": "partial",
+   "evidence": "internal/app 的 Core 接口是桌面与 CLI 的唯一入口：同一 Engine 实现，状态与退出码都来自 verdict.Judge/Summarize/ExitCode，GUI 服务（internal/gui.Service）只转发并把错误降为封闭错误码；CLI 单元测试用假 Core 校验参数校验先于任何内核调用、退出码镜像内核判定，真实引擎+真实插件进程的端到端测试（internal/cli/e2e_test.go、internal/app/engine_e2e_test.go）覆盖 TXT/CSV/JSON/DOCX/PDF/XLSX 全链路。尚缺：同一批次在 GUI 与 CLI 之间交接属 P1；桌面端未做真实窗口人工验证"
+  }
+ }
+}

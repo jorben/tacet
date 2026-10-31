@@ -1,0 +1,52 @@
+{
+  "probe": "m0-astrlink-loading-and-windowing",
+  "status": "passed",
+  "model_revision": "7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4",
+  "variant": "int8",
+  "manifest_sha256": "4b2a02a67888b0dd115e65dd89de8cde2d88e7f08d39cbaf2358449a76660efd",
+  "runtime": {
+    "python": "3.13.16",
+    "onnxruntime": "1.31.1",
+    "tokenizers": "0.23.3",
+    "numpy": "2.5.4",
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "intra_threads": 2,
+    "inter_threads": 1
+  },
+  "seconds": {
+    "integrity": 0.01937737502157688,
+    "load": 1.1394883749890141
+  },
+  "inputs": [
+    {
+      "characters": 45,
+      "windows": 1,
+      "tokens_with_overlap": 25,
+      "non_O_token_predictions": 15,
+      "inference_seconds": 0.003207541012670845
+    },
+    {
+      "characters": 68,
+      "windows": 1,
+      "tokens_with_overlap": 30,
+      "non_O_token_predictions": 18,
+      "inference_seconds": 0.0028340409917291254
+    },
+    {
+      "characters": 14021,
+      "windows": 16,
+      "tokens_with_overlap": 7964,
+      "non_O_token_predictions": 6,
+      "inference_seconds": 0.8031161669932771
+    }
+  ],
+  "peak_rss_bytes": 174702592,
+  "limitations": [
+    "synthetic smoke inputs only",
+    "not the official BIO decoder/span cleanup",
+    "no precision/recall, calibration or unattended qualification",
+    "not sandboxed or managed release deployment"
+  ]
+}

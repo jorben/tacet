@@ -1,0 +1,16 @@
+{
+  "probe": "m0-resource-process-interop",
+  "status": "passed",
+  "checks": {
+    "go_to_python": true,
+    "python_to_go": true,
+    "multi_segment_bytes": 300010,
+    "docx_direct_encrypted_read_write": true
+  },
+  "limitations": [
+    "generated fixtures only",
+    "test paths, not production inherited-handle capability transport",
+    "not OS-handle revocation, sandbox or key-store evidence",
+    "not app pipeline or format admission"
+  ]
+}

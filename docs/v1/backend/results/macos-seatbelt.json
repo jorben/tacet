@@ -1,0 +1,22 @@
+{
+  "probe": "m0-macos-seatbelt-candidate",
+  "status": "passed",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "checks": {
+    "unauthorized_read_denied": true,
+    "environment_write_denied": true,
+    "network_denied": true,
+    "process_fork_denied": true,
+    "inherited_input_readable": true,
+    "native_imports_ready": true,
+    "worker_started": true
+  },
+  "limitations": [
+    "generated files and loopback only",
+    "deprecated sandbox-exec candidate",
+    "not signed App Sandbox helper comparison",
+    "imports only, no full parser/model workload",
+    "no orphan tree/resource limit test",
+    "not platform admission"
+  ]
+}

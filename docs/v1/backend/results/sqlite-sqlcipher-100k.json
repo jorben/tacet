@@ -1,0 +1,25 @@
+{
+  "probe": "m0-sqlcipher-100k",
+  "status": "passed",
+  "rows": 100000,
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "seconds": {
+    "open_schema": 0.08426720800343901,
+    "insert_100k": 1.3036097080039326,
+    "filter_first_100": 0.0005509589973371476,
+    "group_first_100": 5.1749986596405506e-05
+  },
+  "files_without_marker_or_plain_header": {
+    "findings.db": 4096,
+    "findings.db-wal": 15318192,
+    "findings.db-shm": 32768
+  },
+  "wrong_key_rejected": true,
+  "sqlite_memory_used_bytes": 2576576,
+  "limitations": [
+    "one synthetic development-machine run, not R1",
+    "ctypes SQLCipher C API vs Go WASM driver timings include different binding overhead",
+    "not production Go driver, cross-platform build or migration evidence",
+    "shm metadata is not claimed encrypted"
+  ]
+}

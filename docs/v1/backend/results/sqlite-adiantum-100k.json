@@ -1,0 +1,29 @@
+{
+  "files_without_marker_or_plain_header": {
+    "findings.db": 4096,
+    "findings.db-shm": 32768,
+    "findings.db-wal": 14995456
+  },
+  "go": "go1.26.1",
+  "go_heap_alloc_bytes": 15361936,
+  "go_heap_sys_bytes": 24805376,
+  "limitations": [
+    "one synthetic run on development machine, not R1",
+    "Adiantum provides confidentiality, no tamper authentication",
+    "shm contains indexing metadata, not a claim of encrypted shm",
+    "not module-owned schema/outbox/migration implementation",
+    "not Windows verification"
+  ],
+  "platform": "darwin/arm64",
+  "probe": "m0-adiantum-sqlite-100k",
+  "reopen_count": 100000,
+  "rows": 100000,
+  "seconds": {
+    "filter_first_100": 0.000816208,
+    "group_first_100": 0.000131708,
+    "insert_100k": 1.972000917,
+    "open_schema": 0.002216375
+  },
+  "status": "passed",
+  "wrong_key_rejected": true
+}

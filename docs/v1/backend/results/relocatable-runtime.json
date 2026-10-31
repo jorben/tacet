@@ -1,0 +1,24 @@
+{
+  "probe": "m0-relocatable-runtime",
+  "status": "passed",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "checks": {
+    "imports_in_relocated_offline_sandbox": true,
+    "real_plugin_handshake": true,
+    "no_stray_native_dependencies": true,
+    "no_editable_or_source_tree_references": true,
+    "no_uv_in_runtime": true
+  },
+  "runtime_bytes": 297998782,
+  "stray_dependencies": [],
+  "pth_files": [],
+  "limitations": [
+    "same machine and user, not a clean OS image",
+    "not code-signed, hardened or notarized",
+    "no Windows runtime",
+    "Seatbelt only; no hard resource limits",
+    "packages installed with uv in the build phase; runtime phase has no installer",
+    "astrlink model weights are a separate downloaded resource"
+  ]
+}

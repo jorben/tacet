@@ -1,0 +1,22 @@
+{
+  "shape": "string",
+  "requested_mib": 100,
+  "python": "3.13.16",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "jsonl": false,
+  "source_bytes": 104857273,
+  "generate_seconds": 0.094,
+  "scan_seconds": 4.27,
+  "events": 978,
+  "numbers": 0,
+  "string_chunks": 973,
+  "rewrite_seconds": 4.492,
+  "output_bytes": 104048813,
+  "verify_seconds": 4.273,
+  "remaining_markers": 0,
+  "replaced_markers": 80846,
+  "nulls": 0,
+  "output_reparses": true,
+  "peak_rss_bytes": 30638080,
+  "note": "single run; development machine; not R1; not a distribution"
+}

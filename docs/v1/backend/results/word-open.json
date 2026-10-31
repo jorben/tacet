@@ -1,0 +1,31 @@
+{
+  "probe": "m0-word-open",
+  "status": "passed",
+  "word_version": "16.114.1",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "checks": {
+    "source_opens": true,
+    "candidate_opens_without_repair": true,
+    "candidate_text_matches": true,
+    "negative_control_rejected": true
+  },
+  "cases": {
+    "source_fixture": {
+      "opened": true
+    },
+    "rewritten_candidate": {
+      "opened": true
+    },
+    "truncated_negative_control": {
+      "opened": false,
+      "reason": "applescript_error",
+      "code": 1
+    }
+  },
+  "limitations": [
+    "generated text-only subset",
+    "one Word build on the development machine",
+    "no WPS, Windows Word, images, styles, tables or real office documents",
+    "not format admission"
+  ]
+}

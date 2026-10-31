@@ -1,0 +1,17 @@
+{
+  "shape": "csv",
+  "requested_mib": 100,
+  "python": "3.13.16",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "source_bytes": 104857614,
+  "scan_seconds": 5.035,
+  "events": 8388612,
+  "rewrite_seconds": 7.109,
+  "output_bytes": 83886094,
+  "records": 2097153,
+  "verify_seconds": 5.293,
+  "remaining_markers": 0,
+  "replaced_markers": 2097152,
+  "peak_rss_bytes": 25575424,
+  "note": "single run; development machine; not R1; not a distribution"
+}

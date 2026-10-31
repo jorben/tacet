@@ -1,0 +1,5935 @@
+{
+  "adapter_floor": 0.5,
+  "combined": {
+    "document_miss": {
+      "calibration": {
+        "documents_missing_an_entity": 0,
+        "documents_with_entities": 256,
+        "miss_rate": 0
+      },
+      "dev": {
+        "documents_missing_an_entity": 0,
+        "documents_with_entities": 640,
+        "miss_rate": 0
+      },
+      "test": {
+        "documents_missing_an_entity": 0,
+        "documents_with_entities": 384,
+        "miss_rate": 0
+      }
+    },
+    "metrics": {
+      "category:account": {
+        "entities": 544,
+        "candidates": 683,
+        "exact_precision": 0.7964860907759883,
+        "exact_precision_ci95": [
+          0.7646725669557692,
+          0.8249831603785274
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.992988009908669,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.992988009908669,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:address": {
+        "entities": 512,
+        "candidates": 519,
+        "exact_precision": 0.9826589595375722,
+        "exact_precision_ci95": [
+          0.9673749442197144,
+          0.9908505206697201
+        ],
+        "exact_recall": 0.99609375,
+        "exact_recall_ci95": [
+          0.9858705927300165,
+          0.9989281109292399
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9925530241605104,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:date": {
+        "entities": 240,
+        "candidates": 251,
+        "exact_precision": 0.9561752988047809,
+        "exact_precision_ci95": [
+          0.9232424152717391,
+          0.9753554855771459
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:email": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:id_number": {
+        "entities": 704,
+        "candidates": 705,
+        "exact_precision": 0.9985815602836879,
+        "exact_precision_ci95": [
+          0.9920095794616766,
+          0.999749566665985
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:ip_address": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:payment_card": {
+        "entities": 416,
+        "candidates": 416,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:person": {
+        "entities": 1696,
+        "candidates": 1696,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:phone": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:project": {
+        "entities": 336,
+        "candidates": 336,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:secret": {
+        "entities": 464,
+        "candidates": 464,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:url": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/mixed": {
+        "entities": 240,
+        "candidates": 348,
+        "exact_precision": 0.6896551724137931,
+        "exact_precision_ci95": [
+          0.639199469706057,
+          0.7359695067406161
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/zh": {
+        "entities": 304,
+        "candidates": 335,
+        "exact_precision": 0.9074626865671642,
+        "exact_precision_ci95": [
+          0.87164459032131,
+          0.9340419419623273
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/en": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 0.9910714285714286,
+        "exact_precision_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "exact_recall": 0.9910714285714286,
+        "exact_recall_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/mixed": {
+        "entities": 176,
+        "candidates": 180,
+        "exact_precision": 0.9722222222222222,
+        "exact_precision_ci95": [
+          0.9366319291712621,
+          0.9880778780423911
+        ],
+        "exact_recall": 0.9943181818181818,
+        "exact_recall_ci95": [
+          0.9685225272965575,
+          0.9989963144786767
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/zh": {
+        "entities": 224,
+        "candidates": 227,
+        "exact_precision": 0.986784140969163,
+        "exact_precision_ci95": [
+          0.961871601543643,
+          0.9954954202686878
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:date/zh": {
+        "entities": 240,
+        "candidates": 251,
+        "exact_precision": 0.9561752988047809,
+        "exact_precision_ci95": [
+          0.9232424152717391,
+          0.9753554855771459
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:email/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:id_number/zh": {
+        "entities": 704,
+        "candidates": 705,
+        "exact_precision": 0.9985815602836879,
+        "exact_precision_ci95": [
+          0.9920095794616766,
+          0.999749566665985
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:ip_address/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:ip_address/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/mixed": {
+        "entities": 320,
+        "candidates": 320,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/zh": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:person/zh": {
+        "entities": 1024,
+        "candidates": 1024,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:phone/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:project/en": {
+        "entities": 128,
+        "candidates": 128,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:project/zh": {
+        "entities": 208,
+        "candidates": 208,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/en": {
+        "entities": 128,
+        "candidates": 128,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/zh": {
+        "entities": 336,
+        "candidates": 336,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/account": {
+        "entities": 112,
+        "candidates": 134,
+        "exact_precision": 0.835820895522388,
+        "exact_precision_ci95": [
+          0.7639172367322693,
+          0.8890067872183527
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/address": {
+        "entities": 112,
+        "candidates": 113,
+        "exact_precision": 0.9823008849557522,
+        "exact_precision_ci95": [
+          0.9377552754867498,
+          0.9951327682232961
+        ],
+        "exact_recall": 0.9910714285714286,
+        "exact_recall_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/date": {
+        "entities": 16,
+        "candidates": 16,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/email": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/id_number": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/ip_address": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/payment_card": {
+        "entities": 64,
+        "candidates": 64,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/person": {
+        "entities": 304,
+        "candidates": 304,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/phone": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/project": {
+        "entities": 16,
+        "candidates": 16,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/secret": {
+        "entities": 144,
+        "candidates": 144,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/url": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/account": {
+        "entities": 320,
+        "candidates": 418,
+        "exact_precision": 0.7655502392344498,
+        "exact_precision_ci95": [
+          0.7226314988469326,
+          0.8036325639332734
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/address": {
+        "entities": 256,
+        "candidates": 260,
+        "exact_precision": 0.9807692307692307,
+        "exact_precision_ci95": [
+          0.9557802464429187,
+          0.9917584802606683
+        ],
+        "exact_recall": 0.99609375,
+        "exact_recall_ci95": [
+          0.9782090243838145,
+          0.9993101178406582
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9852161433443503,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/date": {
+        "entities": 112,
+        "candidates": 113,
+        "exact_precision": 0.9911504424778761,
+        "exact_precision_ci95": [
+          0.9515691315723988,
+          0.998436123948841
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/email": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/id_number": {
+        "entities": 224,
+        "candidates": 225,
+        "exact_precision": 0.9955555555555555,
+        "exact_precision_ci95": [
+          0.9752587585034226,
+          0.9992150151307245
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/ip_address": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/payment_card": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/person": {
+        "entities": 816,
+        "candidates": 816,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/phone": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/project": {
+        "entities": 144,
+        "candidates": 144,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/secret": {
+        "entities": 224,
+        "candidates": 224,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/url": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/account": {
+        "entities": 112,
+        "candidates": 131,
+        "exact_precision": 0.8549618320610687,
+        "exact_precision_ci95": [
+          0.784559128832985,
+          0.9051397276727875
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/address": {
+        "entities": 144,
+        "candidates": 146,
+        "exact_precision": 0.9863013698630136,
+        "exact_precision_ci95": [
+          0.9514330284094206,
+          0.9962352675359094
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/date": {
+        "entities": 112,
+        "candidates": 122,
+        "exact_precision": 0.9180327868852459,
+        "exact_precision_ci95": [
+          0.855674529111497,
+          0.9548691574188283
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/email": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/id_number": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/ip_address": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/payment_card": {
+        "entities": 64,
+        "candidates": 64,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/person": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:test/phone": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/project": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/secret": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/url": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/staff_id": {
+        "entities": 184,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.979549462061389,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.979549462061389,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/username": {
+        "entities": 196,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9807774677847112,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9807774677847112,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/wechat": {
+        "entities": 164,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9771125745277701,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9771125745277701,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/en_address": {
+        "entities": 192,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0.9895833333333334,
+        "exact_recall_ci95": [
+          0.96282145853182,
+          0.9971387106474298
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/zh_address": {
+        "entities": 320,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/birth_date": {
+        "entities": 70,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/doc_date": {
+        "entities": 82,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9552493756355181,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9552493756355181,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/visit_date": {
+        "entities": 88,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:email/email": {
+        "entities": 1200,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:id_number/id_standard": {
+        "entities": 496,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9923146453479597,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9923146453479597,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:id_number/id_suspect": {
+        "entities": 208,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:ip_address/ipv4": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:payment_card/card_declared_range": {
+        "entities": 416,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/en_name": {
+        "entities": 464,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/zh_name": {
+        "entities": 1232,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968916248490536,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968916248490536,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:phone/landline": {
+        "entities": 368,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_grouped": {
+        "entities": 292,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_plain": {
+        "entities": 293,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_prefixed": {
+        "entities": 247,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:project/codename": {
+        "entities": 336,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/api_key_known_format": {
+        "entities": 304,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/password_with_context": {
+        "entities": 160,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.976553804467286,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.976553804467286,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:url/url": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      }
+    },
+    "negative_documents": 60,
+    "negative_documents_with_a_candidate": 1
+  },
+  "combined_error_samples": {
+    "false_positive:account": [
+      "list-01-00 4367429235808370203",
+      "list-01-04 6217008888479473",
+      "list-01-05 9560334235143225",
+      "list-01-09 6228486437037575873",
+      "list-01-10 6222022071641131",
+      "list-01-13 6228484654642556641",
+      "list-01-15 6225884335796937",
+      "list-08-01 6228483525776382"
+    ],
+    "false_positive:address": [
+      "mixed-33-15 1714 Lakeview Drive, London, UK\n会议室 A302",
+      "list-48-05 会议室 A302",
+      "contract-61-04 302",
+      "list-63-08 302",
+      "english-65-08 8122 Elm Street, London, UK\n会议室 A302",
+      "log-70-07 会议室 A302",
+      "list-76-01 302",
+      "finance-77-04 会议室 A302"
+    ],
+    "false_positive:date": [
+      "contract-16-01 20",
+      "contract-16-10 20",
+      "resume-19-10 2026-09-30 14:05:12",
+      "contract-25-02 20",
+      "contract-25-09 20",
+      "contract-31-04 2026-09-30 14:05:12",
+      "contract-31-14 20",
+      "contract-35-09 2026-09-30 14:05:12"
+    ],
+    "false_positive:id_number": [
+      "list-18-06 158614194612144821"
+    ]
+  },
+  "corpus": "synthetic, tools/m0_eval_corpus.py seed 20261031; easier than real documents",
+  "coverage_definition": "every character of the entity lies inside some candidate of any category; exact = same category, start and end",
+  "documents": 1340,
+  "model": "AstrLink Guard int8 7216b6a3 via the plugin protocol",
+  "model_only": {
+    "document_miss": {
+      "calibration": {
+        "documents_missing_an_entity": 157,
+        "documents_with_entities": 256,
+        "miss_rate": 0.61328125
+      },
+      "dev": {
+        "documents_missing_an_entity": 346,
+        "documents_with_entities": 640,
+        "miss_rate": 0.540625
+      },
+      "test": {
+        "documents_missing_an_entity": 327,
+        "documents_with_entities": 384,
+        "miss_rate": 0.8515625
+      }
+    },
+    "metrics": {
+      "category:account": {
+        "entities": 544,
+        "candidates": 499,
+        "exact_precision": 0.7214428857715431,
+        "exact_precision_ci95": [
+          0.6805323026626943,
+          0.7589700416580646
+        ],
+        "exact_recall": 0.6617647058823529,
+        "exact_recall_ci95": [
+          0.6209971489637369,
+          0.7002636777714206
+        ],
+        "complete_coverage_recall": 0.6617647058823529,
+        "complete_coverage_recall_ci95": [
+          0.6209971489637369,
+          0.7002636777714206
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:address": {
+        "entities": 512,
+        "candidates": 519,
+        "exact_precision": 0.9826589595375722,
+        "exact_precision_ci95": [
+          0.9673749442197144,
+          0.9908505206697201
+        ],
+        "exact_recall": 0.99609375,
+        "exact_recall_ci95": [
+          0.9858705927300165,
+          0.9989281109292399
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9925530241605104,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:date": {
+        "entities": 240,
+        "candidates": 205,
+        "exact_precision": 0.9463414634146341,
+        "exact_precision_ci95": [
+          0.906485753997567,
+          0.9697770387461663
+        ],
+        "exact_recall": 0.8083333333333333,
+        "exact_recall_ci95": [
+          0.7538335689428485,
+          0.853118180275678
+        ],
+        "complete_coverage_recall": 0.8083333333333333,
+        "complete_coverage_recall_ci95": [
+          0.7538335689428485,
+          0.853118180275678
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:email": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:id_number": {
+        "entities": 704,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0054270046393824
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0054270046393824
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:ip_address": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:payment_card": {
+        "entities": 416,
+        "candidates": 276,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9862727313649208,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.6634615384615384,
+        "exact_recall_ci95": [
+          0.6167419711236823,
+          0.7071898300909566
+        ],
+        "complete_coverage_recall": 0.9975961538461539,
+        "complete_coverage_recall_ci95": [
+          0.9865109764947103,
+          0.9995755360263234
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:person": {
+        "entities": 1696,
+        "candidates": 1696,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9977401075487213,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:phone": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:project": {
+        "entities": 336,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0113036793507816
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0113036793507816
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:secret": {
+        "entities": 464,
+        "candidates": 464,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:url": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/mixed": {
+        "entities": 240,
+        "candidates": 261,
+        "exact_precision": 0.5862068965517241,
+        "exact_precision_ci95": [
+          0.5256272628572238,
+          0.6442857114560967
+        ],
+        "exact_recall": 0.6375,
+        "exact_recall_ci95": [
+          0.574957311069358,
+          0.6957103608794443
+        ],
+        "complete_coverage_recall": 0.6375,
+        "complete_coverage_recall_ci95": [
+          0.574957311069358,
+          0.6957103608794443
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/zh": {
+        "entities": 304,
+        "candidates": 238,
+        "exact_precision": 0.8697478991596639,
+        "exact_precision_ci95": [
+          0.821049994484193,
+          0.9066995022900006
+        ],
+        "exact_recall": 0.680921052631579,
+        "exact_recall_ci95": [
+          0.6265451420510172,
+          0.73078164687385
+        ],
+        "complete_coverage_recall": 0.680921052631579,
+        "complete_coverage_recall_ci95": [
+          0.6265451420510172,
+          0.73078164687385
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/en": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 0.9910714285714286,
+        "exact_precision_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "exact_recall": 0.9910714285714286,
+        "exact_recall_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/mixed": {
+        "entities": 176,
+        "candidates": 180,
+        "exact_precision": 0.9722222222222222,
+        "exact_precision_ci95": [
+          0.9366319291712621,
+          0.9880778780423911
+        ],
+        "exact_recall": 0.9943181818181818,
+        "exact_recall_ci95": [
+          0.9685225272965575,
+          0.9989963144786767
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/zh": {
+        "entities": 224,
+        "candidates": 227,
+        "exact_precision": 0.986784140969163,
+        "exact_precision_ci95": [
+          0.961871601543643,
+          0.9954954202686878
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:date/zh": {
+        "entities": 240,
+        "candidates": 205,
+        "exact_precision": 0.9463414634146341,
+        "exact_precision_ci95": [
+          0.906485753997567,
+          0.9697770387461663
+        ],
+        "exact_recall": 0.8083333333333333,
+        "exact_recall_ci95": [
+          0.7538335689428485,
+          0.853118180275678
+        ],
+        "complete_coverage_recall": 0.8083333333333333,
+        "complete_coverage_recall_ci95": [
+          0.7538335689428485,
+          0.853118180275678
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:email/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:id_number/zh": {
+        "entities": 704,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0054270046393824
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0054270046393824
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:ip_address/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:ip_address/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/mixed": {
+        "entities": 320,
+        "candidates": 211,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9821195643461977,
+          1
+        ],
+        "exact_recall": 0.659375,
+        "exact_recall_ci95": [
+          0.6058336175803698,
+          0.7091353192332087
+        ],
+        "complete_coverage_recall": 0.996875,
+        "complete_coverage_recall_ci95": [
+          0.9825138318633495,
+          0.9994481476142772
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/zh": {
+        "entities": 96,
+        "candidates": 65,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.944198467845955,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.6770833333333334,
+        "exact_recall_ci95": [
+          0.5782983091847127,
+          0.7622415865756593
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:person/zh": {
+        "entities": 1024,
+        "candidates": 1024,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9962625959012424,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:phone/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:project/en": {
+        "entities": 128,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.029136956719772594
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.029136956719772594
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:project/zh": {
+        "entities": 208,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.018133650049344387
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.018133650049344387
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/en": {
+        "entities": 128,
+        "candidates": 128,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/zh": {
+        "entities": 336,
+        "candidates": 336,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/account": {
+        "entities": 112,
+        "candidates": 96,
+        "exact_precision": 0.7708333333333334,
+        "exact_precision_ci95": [
+          0.6773148939015387,
+          0.8435108290260891
+        ],
+        "exact_recall": 0.6607142857142857,
+        "exact_recall_ci95": [
+          0.5690006799441912,
+          0.7417688869074278
+        ],
+        "complete_coverage_recall": 0.6607142857142857,
+        "complete_coverage_recall_ci95": [
+          0.5690006799441912,
+          0.7417688869074278
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/address": {
+        "entities": 112,
+        "candidates": 113,
+        "exact_precision": 0.9823008849557522,
+        "exact_precision_ci95": [
+          0.9377552754867498,
+          0.9951327682232961
+        ],
+        "exact_recall": 0.9910714285714286,
+        "exact_recall_ci95": [
+          0.9511515311769158,
+          0.9984221453141423
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/date": {
+        "entities": 16,
+        "candidates": 14,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.7846891945970195,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.875,
+        "exact_recall_ci95": [
+          0.6397717251782153,
+          0.965022512573731
+        ],
+        "complete_coverage_recall": 0.875,
+        "complete_coverage_recall_ci95": [
+          0.6397717251782153,
+          0.965022512573731
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/email": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/id_number": {
+        "entities": 192,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          7.123212709841631e-19,
+          0.019615146370127873
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          7.123212709841631e-19,
+          0.019615146370127873
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/ip_address": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/payment_card": {
+        "entities": 64,
+        "candidates": 42,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9162012079230887,
+          1
+        ],
+        "exact_recall": 0.65625,
+        "exact_recall_ci95": [
+          0.534036401118788,
+          0.7607685799326149
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/person": {
+        "entities": 304,
+        "candidates": 304,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/phone": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/project": {
+        "entities": 16,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.1936076829974049
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.1936076829974049
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/secret": {
+        "entities": 144,
+        "candidates": 144,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/url": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/account": {
+        "entities": 320,
+        "candidates": 309,
+        "exact_precision": 0.6828478964401294,
+        "exact_precision_ci95": [
+          0.6289856353626821,
+          0.7322196869883958
+        ],
+        "exact_recall": 0.659375,
+        "exact_recall_ci95": [
+          0.6058336175803698,
+          0.7091353192332087
+        ],
+        "complete_coverage_recall": 0.659375,
+        "complete_coverage_recall_ci95": [
+          0.6058336175803698,
+          0.7091353192332087
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/address": {
+        "entities": 256,
+        "candidates": 260,
+        "exact_precision": 0.9807692307692307,
+        "exact_precision_ci95": [
+          0.9557802464429187,
+          0.9917584802606683
+        ],
+        "exact_recall": 0.99609375,
+        "exact_recall_ci95": [
+          0.9782090243838145,
+          0.9993101178406582
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9852161433443503,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/date": {
+        "entities": 112,
+        "candidates": 92,
+        "exact_precision": 0.9891304347826086,
+        "exact_precision_ci95": [
+          0.9409721432543667,
+          0.9980786709811412
+        ],
+        "exact_recall": 0.8125,
+        "exact_recall_ci95": [
+          0.7303087127712985,
+          0.8739654449957386
+        ],
+        "complete_coverage_recall": 0.8125,
+        "complete_coverage_recall_ci95": [
+          0.7303087127712985,
+          0.8739654449957386
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/email": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/id_number": {
+        "entities": 224,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.016860227722195968
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.016860227722195968
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/ip_address": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/payment_card": {
+        "entities": 288,
+        "candidates": 189,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980079704314721,
+          1
+        ],
+        "exact_recall": 0.65625,
+        "exact_recall_ci95": [
+          0.5996627768759858,
+          0.7087238394224433
+        ],
+        "complete_coverage_recall": 0.9965277777777778,
+        "complete_coverage_recall_ci95": [
+          0.9805973318934302,
+          0.9993868043438002
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/person": {
+        "entities": 816,
+        "candidates": 816,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9953143881177491,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/phone": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/project": {
+        "entities": 144,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.025983637542296996
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.025983637542296996
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/secret": {
+        "entities": 224,
+        "candidates": 224,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/url": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/account": {
+        "entities": 112,
+        "candidates": 94,
+        "exact_precision": 0.7978723404255319,
+        "exact_precision_ci95": [
+          0.705749326833756,
+          0.8666051805529416
+        ],
+        "exact_recall": 0.6696428571428571,
+        "exact_recall_ci95": [
+          0.5781822921101099,
+          0.7498522506777101
+        ],
+        "complete_coverage_recall": 0.6696428571428571,
+        "complete_coverage_recall_ci95": [
+          0.5781822921101099,
+          0.7498522506777101
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/address": {
+        "entities": 144,
+        "candidates": 146,
+        "exact_precision": 0.9863013698630136,
+        "exact_precision_ci95": [
+          0.9514330284094206,
+          0.9962352675359094
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/date": {
+        "entities": 112,
+        "candidates": 99,
+        "exact_precision": 0.898989898989899,
+        "exact_precision_ci95": [
+          0.8239693636779518,
+          0.9442033252294
+        ],
+        "exact_recall": 0.7946428571428571,
+        "exact_recall_ci95": [
+          0.7106634673439023,
+          0.8590807385507326
+        ],
+        "complete_coverage_recall": 0.7946428571428571,
+        "complete_coverage_recall_ci95": [
+          0.7106634673439023,
+          0.8590807385507326
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/email": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/id_number": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.013162827845026913
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.013162827845026913
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/ip_address": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/payment_card": {
+        "entities": 64,
+        "candidates": 45,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.921348400123914,
+          1
+        ],
+        "exact_recall": 0.703125,
+        "exact_recall_ci95": [
+          0.5822979879708777,
+          0.8009484873959462
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/person": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:test/phone": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/project": {
+        "entities": 176,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.02136025199746376
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.02136025199746376
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/secret": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/url": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/staff_id": {
+        "entities": 184,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.020450537938611096
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.020450537938611096
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/username": {
+        "entities": 196,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9807774677847112,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9807774677847112,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/wechat": {
+        "entities": 164,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9771125745277701,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9771125745277701,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/en_address": {
+        "entities": 192,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0.9895833333333334,
+        "exact_recall_ci95": [
+          0.96282145853182,
+          0.9971387106474298
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/zh_address": {
+        "entities": 320,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/birth_date": {
+        "entities": 70,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/doc_date": {
+        "entities": 82,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0.43902439024390244,
+        "exact_recall_ci95": [
+          0.3367353838828526,
+          0.546770789820133
+        ],
+        "complete_coverage_recall": 0.43902439024390244,
+        "complete_coverage_recall_ci95": [
+          0.3367353838828526,
+          0.546770789820133
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/visit_date": {
+        "entities": 88,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:email/email": {
+        "entities": 1200,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:id_number/id_standard": {
+        "entities": 496,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          6.450863115318566e-21,
+          0.007685354652040343
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          6.450863115318566e-21,
+          0.007685354652040343
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:id_number/id_suspect": {
+        "entities": 208,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.018133650049344387
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.018133650049344387
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:ip_address/ipv4": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:payment_card/card_declared_range": {
+        "entities": 416,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0.6634615384615384,
+        "exact_recall_ci95": [
+          0.6167419711236823,
+          0.7071898300909566
+        ],
+        "complete_coverage_recall": 0.9975961538461539,
+        "complete_coverage_recall_ci95": [
+          0.9865109764947103,
+          0.9995755360263234
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/en_name": {
+        "entities": 464,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9917889729343746,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/zh_name": {
+        "entities": 1232,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968916248490536,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968916248490536,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:phone/landline": {
+        "entities": 368,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_grouped": {
+        "entities": 292,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_plain": {
+        "entities": 293,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_prefixed": {
+        "entities": 247,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:project/codename": {
+        "entities": 336,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0113036793507816
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0113036793507816
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/api_key_known_format": {
+        "entities": 304,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/password_with_context": {
+        "entities": 160,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.976553804467286,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.976553804467286,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:url/url": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      }
+    },
+    "negative_documents": 60,
+    "negative_documents_with_a_candidate": 1
+  },
+  "model_score_threshold": 0.8,
+  "per_document_ms_p50": 8,
+  "per_document_ms_p95": 11,
+  "rule_pack": "cn-office-v1 + evaluation-only project dictionary",
+  "rules_only": {
+    "document_miss": {
+      "calibration": {
+        "documents_missing_an_entity": 256,
+        "documents_with_entities": 256,
+        "miss_rate": 1
+      },
+      "dev": {
+        "documents_missing_an_entity": 637,
+        "documents_with_entities": 640,
+        "miss_rate": 0.9953125
+      },
+      "test": {
+        "documents_missing_an_entity": 379,
+        "documents_with_entities": 384,
+        "miss_rate": 0.9869791666666666
+      }
+    },
+    "metrics": {
+      "category:account": {
+        "entities": 544,
+        "candidates": 184,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.979549462061389,
+          1
+        ],
+        "exact_recall": 0.3382352941176471,
+        "exact_recall_ci95": [
+          0.29973632222857927,
+          0.37900285103626313
+        ],
+        "complete_coverage_recall": 0.3382352941176471,
+        "complete_coverage_recall_ci95": [
+          0.29973632222857927,
+          0.37900285103626313
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:address": {
+        "entities": 512,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.007446975839489446
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.007446975839489446
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:date": {
+        "entities": 240,
+        "candidates": 240,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:email": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:id_number": {
+        "entities": 704,
+        "candidates": 705,
+        "exact_precision": 0.9985815602836879,
+        "exact_precision_ci95": [
+          0.9920095794616766,
+          0.999749566665985
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:ip_address": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:payment_card": {
+        "entities": 416,
+        "candidates": 416,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:person": {
+        "entities": 1696,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0022598924512784563
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0022598924512784563
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:phone": {
+        "entities": 1200,
+        "candidates": 1200,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "category:project": {
+        "entities": 336,
+        "candidates": 336,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:secret": {
+        "entities": 464,
+        "candidates": 304,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "exact_recall": 0.6551724137931034,
+        "exact_recall_ci95": [
+          0.6108091820891981,
+          0.6969873957180216
+        ],
+        "complete_coverage_recall": 0.6551724137931034,
+        "complete_coverage_recall_ci95": [
+          0.6108091820891981,
+          0.6969873957180216
+        ],
+        "fewer_than_500_instances": true
+      },
+      "category:url": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/mixed": {
+        "entities": 240,
+        "candidates": 87,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9577124924169734,
+          1
+        ],
+        "exact_recall": 0.3625,
+        "exact_recall_ci95": [
+          0.3042896391205558,
+          0.42504268893064195
+        ],
+        "complete_coverage_recall": 0.3625,
+        "complete_coverage_recall_ci95": [
+          0.3042896391205558,
+          0.42504268893064195
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:account/zh": {
+        "entities": 304,
+        "candidates": 97,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9619059568959835,
+          1
+        ],
+        "exact_recall": 0.3190789473684211,
+        "exact_recall_ci95": [
+          0.26921835312615,
+          0.373454857948983
+        ],
+        "complete_coverage_recall": 0.3190789473684211,
+        "complete_coverage_recall_ci95": [
+          0.26921835312615,
+          0.373454857948983
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/en": {
+        "entities": 112,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.03316134757274063
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.03316134757274063
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/mixed": {
+        "entities": 176,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.02136025199746376
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.02136025199746376
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:address/zh": {
+        "entities": 224,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.016860227722195968
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.016860227722195968
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:date/zh": {
+        "entities": 240,
+        "candidates": 240,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9842460798138267,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:email/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:email/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:id_number/zh": {
+        "entities": 704,
+        "candidates": 705,
+        "exact_precision": 0.9985815602836879,
+        "exact_precision_ci95": [
+          0.9920095794616766,
+          0.999749566665985
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9945729953606177,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:ip_address/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:ip_address/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/mixed": {
+        "entities": 320,
+        "candidates": 320,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9881378409837756,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:payment_card/zh": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/en": {
+        "entities": 96,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          1.3972355619079536e-18,
+          0.03847558844130279
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          1.3972355619079536e-18,
+          0.03847558844130279
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:person/mixed": {
+        "entities": 576,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.006625015894357453
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.006625015894357453
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:person/zh": {
+        "entities": 1024,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.003737404098757652
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.003737404098757652
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/en": {
+        "entities": 96,
+        "candidates": 96,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9615244115586972,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:phone/mixed": {
+        "entities": 576,
+        "candidates": 576,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9933749841056424,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:phone/zh": {
+        "entities": 528,
+        "candidates": 528,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9927770601235633,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "language:project/en": {
+        "entities": 128,
+        "candidates": 128,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:project/zh": {
+        "entities": 208,
+        "candidates": 208,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/en": {
+        "entities": 128,
+        "candidates": 128,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9708630432802272,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:secret/zh": {
+        "entities": 336,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 0.5238095238095238,
+        "exact_recall_ci95": [
+          0.4704406306780963,
+          0.576640146495676
+        ],
+        "complete_coverage_recall": 0.5238095238095238,
+        "complete_coverage_recall_ci95": [
+          0.4704406306780963,
+          0.576640146495676
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/mixed": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "language:url/zh": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/account": {
+        "entities": 112,
+        "candidates": 38,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9081901304590216,
+          1
+        ],
+        "exact_recall": 0.3392857142857143,
+        "exact_recall_ci95": [
+          0.2582311130925722,
+          0.4309993200558087
+        ],
+        "complete_coverage_recall": 0.3392857142857143,
+        "complete_coverage_recall_ci95": [
+          0.2582311130925722,
+          0.4309993200558087
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/address": {
+        "entities": 112,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.03316134757274063
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.03316134757274063
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/date": {
+        "entities": 16,
+        "candidates": 16,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/email": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/id_number": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/ip_address": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/payment_card": {
+        "entities": 64,
+        "candidates": 64,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/person": {
+        "entities": 304,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          9.431915264886899e-20,
+          0.012478692425821926
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          9.431915264886899e-20,
+          0.012478692425821926
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/phone": {
+        "entities": 192,
+        "candidates": 192,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.980384853629872,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/project": {
+        "entities": 16,
+        "candidates": 16,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8063923170025952,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/secret": {
+        "entities": 144,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.5555555555555556,
+        "exact_recall_ci95": [
+          0.47400086755518733,
+          0.6342231727178909
+        ],
+        "complete_coverage_recall": 0.5555555555555556,
+        "complete_coverage_recall_ci95": [
+          0.47400086755518733,
+          0.6342231727178909
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:calibration/url": {
+        "entities": 80,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/account": {
+        "entities": 320,
+        "candidates": 109,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9659570257299044,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.340625,
+        "exact_recall_ci95": [
+          0.2908646807667912,
+          0.39416638241963026
+        ],
+        "complete_coverage_recall": 0.340625,
+        "complete_coverage_recall_ci95": [
+          0.2908646807667912,
+          0.39416638241963026
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/address": {
+        "entities": 256,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.014783856655649795
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.014783856655649795
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/date": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/email": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/id_number": {
+        "entities": 224,
+        "candidates": 225,
+        "exact_precision": 0.9955555555555555,
+        "exact_precision_ci95": [
+          0.9752587585034226,
+          0.9992150151307245
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9831397722778041,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/ip_address": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/payment_card": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/person": {
+        "entities": 816,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.004685611882250761
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.004685611882250761
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/phone": {
+        "entities": 656,
+        "candidates": 656,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9941782092810463,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:dev/project": {
+        "entities": 144,
+        "candidates": 144,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/secret": {
+        "entities": 224,
+        "candidates": 144,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9740163624577031,
+          1
+        ],
+        "exact_recall": 0.6428571428571429,
+        "exact_recall_ci95": [
+          0.5781848092981149,
+          0.7027122684955436
+        ],
+        "complete_coverage_recall": 0.6428571428571429,
+        "complete_coverage_recall_ci95": [
+          0.5781848092981149,
+          0.7027122684955436
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:dev/url": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/account": {
+        "entities": 112,
+        "candidates": 37,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9059421728185314,
+          1
+        ],
+        "exact_recall": 0.33035714285714285,
+        "exact_recall_ci95": [
+          0.2501477493222898,
+          0.42181770788989
+        ],
+        "complete_coverage_recall": 0.33035714285714285,
+        "complete_coverage_recall_ci95": [
+          0.2501477493222898,
+          0.42181770788989
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/address": {
+        "entities": 144,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.025983637542296996
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.025983637542296996
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/date": {
+        "entities": 112,
+        "candidates": 112,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9668386524272592,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/email": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/id_number": {
+        "entities": 288,
+        "candidates": 288,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/ip_address": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/payment_card": {
+        "entities": 64,
+        "candidates": 64,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9433759393644894,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/person": {
+        "entities": 576,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.006625015894357453
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.006625015894357453
+        ],
+        "fewer_than_500_instances": false
+      },
+      "split:test/phone": {
+        "entities": 352,
+        "candidates": 352,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9892045775290689,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/project": {
+        "entities": 176,
+        "candidates": 176,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9786397480025362,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/secret": {
+        "entities": 96,
+        "candidates": 80,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.9541818697747757,
+          0.9999999999999998
+        ],
+        "exact_recall": 0.8333333333333334,
+        "exact_recall_ci95": [
+          0.7462900977068018,
+          0.8947261766656631
+        ],
+        "complete_coverage_recall": 0.8333333333333334,
+        "complete_coverage_recall_ci95": [
+          0.7462900977068018,
+          0.8947261766656631
+        ],
+        "fewer_than_500_instances": true
+      },
+      "split:test/url": {
+        "entities": 32,
+        "candidates": 32,
+        "exact_precision": 1,
+        "exact_precision_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.8928208002353197,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/staff_id": {
+        "entities": 184,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.979549462061389,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.979549462061389,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/username": {
+        "entities": 196,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.01922253221528868
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.01922253221528868
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:account/wechat": {
+        "entities": 164,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          2.573317653689669e-19,
+          0.022887425472229894
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          2.573317653689669e-19,
+          0.022887425472229894
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/en_address": {
+        "entities": 192,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          7.123212709841631e-19,
+          0.019615146370127873
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          7.123212709841631e-19,
+          0.019615146370127873
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:address/zh_address": {
+        "entities": 320,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          8.451207053105089e-20,
+          0.01186215901622431
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          8.451207053105089e-20,
+          0.01186215901622431
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/birth_date": {
+        "entities": 70,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9479769368117259,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/doc_date": {
+        "entities": 82,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9552493756355181,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9552493756355181,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:date/visit_date": {
+        "entities": 88,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9581729327028544,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:email/email": {
+        "entities": 1200,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9968089993470854,
+          1
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:id_number/id_standard": {
+        "entities": 496,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9923146453479597,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9923146453479597,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:id_number/id_suspect": {
+        "entities": 208,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9818663499506557,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:ip_address/ipv4": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:payment_card/card_declared_range": {
+        "entities": 416,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9908502154800722,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/en_name": {
+        "entities": 464,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.008211027065625412
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.008211027065625412
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:person/zh_name": {
+        "entities": 1232,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          0,
+          0.0031083751509464264
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          0,
+          0.0031083751509464264
+        ],
+        "fewer_than_500_instances": false
+      },
+      "subtype:phone/landline": {
+        "entities": 368,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9896690947457734,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_grouped": {
+        "entities": 292,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870151435305172,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_plain": {
+        "entities": 293,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9870588869365711,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:phone/mobile_prefixed": {
+        "entities": 247,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9846857098566234,
+          0.9999999999999998
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:project/codename": {
+        "entities": 336,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9886963206492184,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/api_key_known_format": {
+        "entities": 304,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9875213075741781,
+          1
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:secret/password_with_context": {
+        "entities": 160,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 0,
+        "exact_recall_ci95": [
+          1.6704265453155625e-19,
+          0.02344619553271408
+        ],
+        "complete_coverage_recall": 0,
+        "complete_coverage_recall_ci95": [
+          1.6704265453155625e-19,
+          0.02344619553271408
+        ],
+        "fewer_than_500_instances": true
+      },
+      "subtype:url/url": {
+        "entities": 288,
+        "candidates": 0,
+        "exact_precision": 0,
+        "exact_precision_ci95": [
+          0,
+          0
+        ],
+        "exact_recall": 1,
+        "exact_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "complete_coverage_recall": 1,
+        "complete_coverage_recall_ci95": [
+          0.9868371721549731,
+          1
+        ],
+        "fewer_than_500_instances": true
+      }
+    },
+    "negative_documents": 60,
+    "negative_documents_with_a_candidate": 0
+  }
+}

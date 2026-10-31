@@ -1,0 +1,23 @@
+{
+  "requested_sheet_mib": 100,
+  "unique_strings": 200000,
+  "python": "3.13.16",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "rows": 499120,
+  "source_bytes": 15393778,
+  "generate_seconds": 1.218,
+  "rewrite_seconds": 39.656,
+  "output_bytes": 15342744,
+  "report": {
+    "cells": 1996480,
+    "cells_changed": 99824,
+    "strings": 200000,
+    "strings_edited": 66667,
+    "strings_blanked": 0
+  },
+  "verify_seconds": 10.077,
+  "remaining_marker_units": 0,
+  "replaced_marker_units": 166491,
+  "peak_rss_bytes": 32129024,
+  "note": "single run; development machine; not R1; not a distribution; no Excel/WPS opening check"
+}

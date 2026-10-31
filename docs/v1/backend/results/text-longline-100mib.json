@@ -1,0 +1,16 @@
+{
+  "shape": "longline",
+  "requested_mib": 100,
+  "python": "3.13.16",
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "source_bytes": 104857262,
+  "scan_seconds": 3.597,
+  "events": 3874,
+  "rewrite_seconds": 3.774,
+  "output_bytes": 104048802,
+  "verify_seconds": 3.607,
+  "remaining_markers": 0,
+  "replaced_markers": 80846,
+  "peak_rss_bytes": 31309824,
+  "note": "single run; development machine; not R1; not a distribution"
+}
