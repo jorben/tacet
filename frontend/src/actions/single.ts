@@ -15,6 +15,7 @@ import { leaveBatchFile, reportLeftBatchFile } from "./batch";
 import { enterBatchReview } from "./review";
 import { needModel } from "./models";
 import { openSubpage } from "./navigation";
+import { addLiveManual, cancelLiveSingle, chooseOutputFolder, exportLiveSingle } from "./live";
 
 const plain = <T,>(v: T): T => (isDraft(v) ? (current(v as Draft<T>) as T) : v);
 
@@ -66,12 +67,14 @@ export function runSingleProcessing(): void {
 }
 
 export function cancelSingle(): void {
+  if (getState().single?.live) { cancelLiveSingle(); return; }
   stopSingleTimer();
   store.update((d) => { d.single = null; d.view = "home"; });
   toast("已停止");
 }
 
 export function exportSingle(): void {
+  if (getState().single?.live) { void exportLiveSingle(); return; }
   closePop();
   const runId = nextRunId();
   store.update((d) => {
@@ -212,6 +215,12 @@ export function setSameAll(on: boolean): void {
 
 /** Mask the selected text by hand. */
 export function addManualRedaction(type: CategoryId, sel: ManualSelection): void {
+  if (getState().single?.live) {
+    void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + CATEGORIES[type].l); });
+    window.getSelection()?.removeAllRanges();
+    closePop();
+    return;
+  }
   decide((s) => addManualHit(s, sel, type));
   window.getSelection()?.removeAllRanges();
   closePop();
@@ -241,13 +250,16 @@ export function setSinglePhase(phase: "result" | "manifest"): void {
 
 export function openCategoryMenu(anchor: PopAnchor, t: CategoryId): void {
   const s = getState().single!;
-  const items: MenuEntry[] = [
-    { h: CATEGORIES[t].l },
-    { l: "涂抹", s: "■■■", k: "mask", on: treatmentOf(s, t) === "mask" },
-    { l: "占位符", s: "［" + CATEGORIES[t].ph + "］", k: "ph", on: treatmentOf(s, t) === "ph" },
-    "-",
-    { l: "全部保留", k: "keepAll" },
-  ];
+  // the kernel writes one fixed placeholder form per category; the form cannot be chosen per document yet
+  const items: MenuEntry[] = s.live
+    ? [{ h: CATEGORIES[t].l }, { l: "全部保留", k: "keepAll" }]
+    : [
+      { h: CATEGORIES[t].l },
+      { l: "涂抹", s: "■■■", k: "mask", on: treatmentOf(s, t) === "mask" },
+      { l: "占位符", s: "［" + CATEGORIES[t].ph + "］", k: "ph", on: treatmentOf(s, t) === "ph" },
+      "-",
+      { l: "全部保留", k: "keepAll" },
+    ];
   openMenu(anchor, items, (it) => {
     decide((x) => {
       if (it.k === "keepAll") x.hits.forEach((h) => { if (h.type === t) { h.state = "keep"; h.seen = true; } });
@@ -288,6 +300,12 @@ export function openImageMenu(anchor: PopAnchor, index: number): void {
 
 export function openOutputMenu(anchor: PopAnchor): void {
   const s = getState().single!;
+  if (s.live) {
+    openMenu(anchor, [{ l: s.out || "默认位置", k: "cur", on: true }, { l: "选择…", ic: "folder", k: "pick" }], (it) => {
+      if (it.k === "pick") void chooseOutputFolder((dir) => store.update((d) => { if (d.single) d.single.out = dir; }));
+    });
+    return;
+  }
   openMenu(anchor, [
     { l: "桌面 / 已脱敏", k: "桌面 / 已脱敏", on: s.out === "桌面 / 已脱敏" },
     { l: "与原文件相同位置", k: "原文件旁", on: s.out === "原文件旁" },
@@ -337,7 +355,8 @@ export function showKeyboardHelp(anchor: PopAnchor): void {
 
 export function revealOutput(): void {
   closeModal();
-  toast("已在访达中显示");
+  const out = getState().single?.out ?? getState().batch?.out;
+  toast(getState().single?.live || getState().batch?.live ? "已导出到 " + out : "已在访达中显示");
 }
 
 export function saveFile(name: string): void {

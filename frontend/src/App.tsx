@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
+import { startLive } from "./actions/live";
 import { requestClose } from "./actions/window";
 import { Rail } from "./features/shell/Rail";
 import { MainView } from "./features/shell/MainView";
@@ -48,9 +49,11 @@ export default function App() {
       if (alive) store.update((d) => { d.update.current = info.version; });
     }).catch(() => {});
     const off = svc.onCloseRequested(requestClose);
+    const offLive = startLive();
     return () => {
       alive = false;
       off();
+      offLive();
     };
   }, []);
 

@@ -3,6 +3,7 @@ import { treatmentOf } from "../../../domain/single";
 import type { Block, Single } from "../../../domain/types";
 import { HitSpan } from "./HitSpan";
 import { ImageBlock } from "./ImageBlock";
+import { RasterPage } from "./RasterPage";
 
 interface PaperProps {
   single: Single;
@@ -18,7 +19,12 @@ interface PaperProps {
 }
 
 /** One page of the document. */
-export const Paper = memo(function Paper({ single, pageIndex, revealed, effectColumn, pageId, hitIds }: PaperProps) {
+export const Paper = memo(function Paper(props: PaperProps) {
+  if (props.single.live?.raster) return <RasterPage {...props} />;
+  return <TextPaper {...props} />;
+});
+
+const TextPaper = memo(function TextPaper({ single, pageIndex, revealed, effectColumn, pageId, hitIds }: PaperProps) {
   const page = single.pages[pageIndex]!;
   const readOnly = single.from === "batch";
 

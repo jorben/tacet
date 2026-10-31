@@ -43,5 +43,8 @@ export function bumpVersion(o: Versioned): void {
 
 /** A fresh copy under a new name (“复制”). */
 export function duplicate<T extends Versioned>(o: T, id: string): T {
-  return { ...JSON.parse(JSON.stringify(o)), id, name: o.name + " 副本", ver: "v1", builtin: false, plugin: null, edited: "刚刚", hist: [] };
+  const copy = { ...JSON.parse(JSON.stringify(o)), id, name: o.name + " 副本", ver: "v1", builtin: false, plugin: null, edited: "刚刚", hist: [], stored: undefined };
+  // a copy is a new object: it is stored under new ids, and its rules get ids of their own
+  if (Array.isArray(copy.rules) && copy.rules.length && typeof copy.rules[0] === "object") copy.rules.forEach((r: { rid?: string }) => { delete r.rid; });
+  return copy;
 }

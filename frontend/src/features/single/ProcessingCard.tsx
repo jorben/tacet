@@ -12,7 +12,7 @@ export function ProcessingCard({ single }: { single: Single }) {
           <div style={{ minWidth: 0 }}>
             <div className="fn">{single.name}</div>
             <div className="fm">
-              {single.size} · {single.pages.length} 页
+              {single.live ? single.ext.toUpperCase() : single.size + " · " + single.pages.length + " 页"}
             </div>
           </div>
           <IconButton icon="x" label="停止" tooltip="停止" onClick={cancelSingle} />

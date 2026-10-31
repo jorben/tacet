@@ -210,7 +210,7 @@ export function ReviewSidebar({ single, undoCount }: { single: Single; undoCount
         <div style={{ minWidth: 0 }}>
           <div className="fn">{single.name}</div>
           <div className="fm">
-            {single.pages.length} 页 · {single.size}
+            {single.live ? single.ext.toUpperCase() + " · " + single.pages.length + " 页" : single.pages.length + " 页 · " + single.size}
           </div>
         </div>
       </div>

@@ -92,7 +92,10 @@ export function singleManifest(s: Single): BatchSummary {
   const man = s.hits.some((h) => h.manual || h.state === "keep") || partial || Object.keys(s.catAct || {}).length > 0;
   return {
     title: s.name, n: 1, out: s.out, phase: "result", manifestFilter: s.manifestFilter, manifestLimit: s.manifestLimit,
-    files: [{ i: 0, id: "T0001", ext: s.ext, outputName: outputName(s.name, s.ext), st: partial ? "partial" : "done", man }],
+    files: [{
+      i: 0, id: "T0001", ext: s.ext, outputName: s.live ? s.live.output : outputName(s.name, s.ext), st: partial ? "partial" : "done", man,
+      ...(s.live ? { sha: s.live.digest ?? "" } : {}),
+    }],
   };
 }
 

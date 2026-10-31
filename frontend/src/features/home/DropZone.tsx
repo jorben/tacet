@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from "react";
 import { type IncomingFile, takeFiles } from "../../actions/home";
+import { isLive, pickAndTake } from "../../actions/live";
 import { Icon } from "../../ui";
 import { openHomePresetMenu } from "./homeMenus";
 
@@ -14,7 +15,8 @@ export function DropZone({ compact, preset }: { compact: boolean; preset: string
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
-    takeFiles(toIncoming(e.dataTransfer.files));
+    // on the desktop host the paths of a drop arrive as a native event (a browser file has none)
+    if (!isLive()) takeFiles(toIncoming(e.dataTransfer.files));
   };
   return (
     <div
@@ -25,7 +27,7 @@ export function DropZone({ compact, preset }: { compact: boolean; preset: string
       onDragLeave={(e) => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
       onDrop={onDrop}
     >
-      <button type="button" className={["drop", compact && "sm", over && "over"].filter(Boolean).join(" ")} aria-label="选择待脱敏文档，或将文档拖入此处" onClick={() => input.current?.click()}>
+      <button type="button" className={["drop", compact && "sm", over && "over"].filter(Boolean).join(" ")} aria-label="选择待脱敏文档，或将文档拖入此处" onClick={() => (isLive() ? void pickAndTake() : input.current?.click())}>
         <span className="drop-g" aria-hidden="true">
           <Icon name="file" size={56} strokeWidth={1.5} />
           <span className="drop-plus">

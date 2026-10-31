@@ -5,15 +5,19 @@ import { closeModal, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openKeepMenu } from "./batch";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { slotBusy } from "../store/selectors";
+import { saveSettingsSoon } from "./liveConfig";
+import { isLive } from "./live";
 
 const systemTheme = (): "light" | "dark" => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
 export function setThemePref(pref: ThemePref): void {
   store.update((d) => { d.themePref = pref; d.theme = pref === "system" ? systemTheme() : pref; });
+  saveSettingsSoon();
 }
 
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
   store.update((d) => { d.settings[key] = value; });
+  saveSettingsSoon();
 }
 
 export const setRedactStyle = (v: RedactStyle): void => setSetting("redact", v);
@@ -25,6 +29,7 @@ export function openSettingsKeepMenu(anchor: PopAnchor): void {
 /* ── Updates ──────────────────────────────────────────────────────────────── */
 
 export function checkForUpdate(): void {
+  if (isLive()) { toast("更新通道尚未配置，当前版本无法检查更新"); return; }
   if (["checking", "updating"].includes(getState().update.status)) return;
   store.update((d) => { d.update.status = "checking"; });
   setTimeout(() => {
@@ -39,6 +44,7 @@ export function checkForUpdate(): void {
 }
 
 export function startUpdate(): void {
+  if (isLive()) return;
   if (getState().update.status !== "available") return;
   openModal({ type: "updateApp" });
 }

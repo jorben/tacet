@@ -51,7 +51,7 @@ export function DocumentPane({ single, undoCount, scrollRef, onMode }: DocumentP
         {single.mode === "orig" ? (
           <span className="tool-hint">
             <Icon name="mark" size={14} />
-            选中文字可补充涂抹
+            {single.live?.raster ? "点击框线可保留或涂抹" : "选中文字可补充涂抹"}
           </span>
         ) : (
           <span className="tool-hint" tabIndex={0} {...tip("按当前决定模拟，导出后以验证结果为准", { align: "end" })}>

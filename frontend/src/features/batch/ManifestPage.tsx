@@ -41,7 +41,7 @@ const ManifestRow = memo(function ManifestRow({ file: f, groups }: { file: Manif
         </Pill>
       </td>
       <td className="muted">{ok ? (f.man ? "自动 + 人工" : "自动") : ""}</td>
-      <td className="mono muted">{ok ? fakeHash(f.i) : ""}</td>
+      <td className="mono muted">{ok ? (f.sha === undefined ? fakeHash(f.i) : f.sha || "—") : ""}</td>
     </tr>
   );
 });

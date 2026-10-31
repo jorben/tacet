@@ -19,6 +19,10 @@ import { needModel } from "./models";
 import { newSingle } from "./single";
 import { nextId, stopBatchTimer, timers } from "./timers";
 import { setContinuation } from "./pending";
+import {
+  cancelLiveBatch, chooseOutputFolder, flushLiveDecisions, openLiveFile, publishLiveBatch, resumeLiveBatch, runLiveBatch, setLiveOutput,
+  stopLiveBatch, toggleLivePause,
+} from "./live";
 
 const BATCH_TICK_MS = 240;
 const plain = <T,>(v: T): T => (isDraft(v) ? (current(v as Draft<T>) as T) : v);
@@ -38,6 +42,7 @@ export function startBatchClock(): void {
 
 export function startBatch(): void {
   const b = getState().batch!;
+  if (b.live) { void runLiveBatch(); return; }
   if (!needModel(b.preset, () => startBatch(), b.title + " · " + b.n + " 份", b.modelId)) return;
   store.update((d) => beginRun(d.batch!));
   startBatchClock();
@@ -79,6 +84,7 @@ const guarded = (what: string): boolean => {
 
 export function setBatchMode(mode: BatchMode): void {
   if (guarded("设置")) return;
+  if (mode === "strict" && getState().batch?.live) { toast("当前版本暂不支持“严格”方式的逐份确认"); return; }
   store.update((d) => { d.batch!.mode = mode; });
 }
 
@@ -103,6 +109,12 @@ export function openBatchImageMenu(anchor: PopAnchor): void {
 
 export function openBatchOutputMenu(anchor: PopAnchor): void {
   const b = getState().batch!;
+  if (b.live) {
+    openMenu(anchor, [{ l: b.out || "默认位置", k: "cur", on: true }, { l: "选择…", ic: "folder", k: "pick" }], (it) => {
+      if (it.k === "pick") void chooseOutputFolder(setLiveOutput);
+    }, { alignRight: true });
+    return;
+  }
   openMenu(anchor, [
     { l: "桌面 / 已脱敏", k: "桌面 / 已脱敏", on: b.out === "桌面 / 已脱敏" },
     { l: "选择…", ic: "folder", k: "文稿 / 脱敏批次" },
@@ -130,6 +142,7 @@ export function showUnprocessableFiles(anchor: PopAnchor): void {
 }
 
 export function cancelBatch(): void {
+  if (getState().batch?.live) cancelLiveBatch();
   setContinuation(null);
   store.update((d) => { d.modelPending = null; d.batch = null; d.view = "home"; });
 }
@@ -137,6 +150,7 @@ export function cancelBatch(): void {
 /* ── Running ──────────────────────────────────────────────────────────────── */
 
 export function togglePause(): void {
+  if (getState().batch?.live) { toggleLivePause(); return; }
   store.update((d) => { d.batch!.paused = !d.batch!.paused; });
   toast(getState().batch!.paused ? "已暂停派发，进行中的会完成" : "已继续");
 }
@@ -175,6 +189,13 @@ export function discardBatch(d: Draft<AppState>): void {
 
 export function openStopMenu(anchor: PopAnchor): void {
   const b = getState().batch!;
+  if (b.live) {
+    openMenu(anchor, [
+      { l: "暂停并保留以便继续", ic: "clock", k: "keep" },
+      { l: "停止并清理", ic: "trash", k: "clean", d: true },
+    ], (it) => { void stopLiveBatch(it.k === "keep"); }, { alignRight: true });
+    return;
+  }
   const days = keepDays(b);
   openMenu(anchor, [
     { l: "停止并保留以便恢复", ic: "clock", k: "keep", s: days + " 天" },
@@ -196,6 +217,11 @@ export function resumeBatch(entryId: string): void {
   const entry = getState().history.find((h) => h.id === entryId);
   const saved = entry?.saved as import("../domain/types").Batch | undefined;
   if (!entry || !saved) return;
+  if (saved.live) {
+    store.update((d) => { d.history = d.history.filter((h) => h.id !== entryId); });
+    void resumeLiveBatch(saved);
+    return;
+  }
   if (!needModel(saved.preset, () => resumeBatch(entryId), entry.name, saved.modelId)) return;
   store.update((d) => {
     d.history = d.history.filter((h) => h.id !== entryId);
@@ -280,6 +306,7 @@ export function openGroupMenu(anchor: PopAnchor, gid: string): void {
 }
 
 export function publishValidated(): void {
+  if (getState().batch?.live) { void publishLiveBatch(); return; }
   let n = 0;
   store.update((d) => { n = publishReady(d.batch!); });
   closeModal();
@@ -320,6 +347,7 @@ export function openSampleDrawer(category: CategoryId | "img", again = false): v
 
 export function openBatchFile(fi: number): void {
   const b = getState().batch!;
+  if (b.live) { void openLiveFile(fi); return; }
   const f = b.files[fi]!;
   closeModal();
   if (f.st === "bad") { toast("无法打开 · " + f.reason); return; }
@@ -361,6 +389,19 @@ function commitBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
 export function leaveBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
   const s = d.single;
   if (!s || s.from !== "batch") return null;
+  if (s.live) {
+    // the choices go to the kernel, which redoes the file; there is no local copy to keep
+    const { job } = s.live;
+    const findingOf = plain(s.live.findingOf);
+    const hits = plain(s.hits);
+    const changed = d.undo.length > 0;
+    const behind = d.behind;
+    d.single = behind ? behind.single : null;
+    d.undo = behind ? behind.undo : [];
+    d.behind = null;
+    if (changed) { queueMicrotask(() => flushLiveDecisions(job, hits, findingOf)); return "saved"; }
+    return null;
+  }
   const r = commitBatchFile(d);
   const behind = d.behind;
   d.single = behind ? behind.single : null;

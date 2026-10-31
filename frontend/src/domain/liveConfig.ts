@@ -1,0 +1,318 @@
+// How the screens' schemes and rule sets are stored by the kernel, and back. Pure: no store, no service.
+//
+// A screen "scheme" is two stored objects: a preset (which rule sets, which model, how confident) and a
+// scheme (what is done to each category). The screen shows them as one. A rule set maps one to one.
+import type { ConfigItem, EnginePlugin, EngineSettings } from "../services/types";
+import { OFFICE_CATEGORIES } from "./catalog";
+import { engineCategory, uiCategory } from "./live";
+import type {
+  KeepDays, PluginInfo, RedactStyle, Settings, ThemePref,
+  Boundary, ImageAction, ModelPlugin, OfficeCategoryId, Preset, PresetTreatment, Rule, Ruleset,
+} from "./types";
+
+/** Engine category of each category the screens know. */
+const OFFICE_ENGINE: Record<OfficeCategoryId, string> = {
+  org: "organization", name: "person", phone: "phone", email: "email", id: "id_number", addr: "address", card: "payment_card", date: "date",
+};
+const ENGINE_MODEL_CATEGORIES = ["person", "address", "date", "phone", "email", "account", "payment_card", "ip_address", "url", "secret"];
+/** Categories only a model finds: a rules-only scheme cannot offer them. */
+const MODEL_ONLY: OfficeCategoryId[] = ["name", "addr", "org"];
+
+interface RuleJSON {
+  id: string;
+  name?: string;
+  category: string;
+  pattern?: string;
+  terms?: string[];
+  boundary?: string;
+  validator?: string;
+  suspect?: boolean;
+  fold_case?: boolean;
+  context?: string[];
+  context_window?: number;
+  disabled?: boolean;
+}
+
+const parse = <T,>(text: string, fallback: T): T => {
+  try { return JSON.parse(text) as T; } catch { return fallback; }
+};
+
+/* ── rule sets ────────────────────────────────────────────────────────────── */
+
+/** Settings of a rule the screen has no control for; they travel with the rule so that saving does not lose them. */
+const EXT_KEYS = ["validator", "suspect", "fold_case", "context", "context_window"] as const;
+
+export const BUILTIN_MODEL_PROFILE = "builtin-model-astrlink";
+export const BUILTIN_MODEL_PRESET = "builtin-preset-model";
+export const BUILTIN_RULES_PRESET = "builtin-preset-office";
+
+export const schemeIdOf = (preset: ConfigItem): string => parse<{ scheme_id?: string }>(preset.content, {}).scheme_id ?? "";
+
+/** Two stored contents mean the same when their parsed JSON is equal (the kernel stores a canonical form). */
+export function sameContent(a: string, b: string): boolean {
+  const norm = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(norm) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, norm((v as Record<string, unknown>)[k])])) : v;
+  try { return JSON.stringify(norm(JSON.parse(a))) === JSON.stringify(norm(JSON.parse(b))); } catch { return false; }
+}
+
+const ruleFromJSON = (r: RuleJSON): Rule => {
+  const kind = r.terms?.length ? "词表" : r.validator ? "校验" : "正则";
+  const body = r.terms?.length ? r.terms.join("\n") : r.validator ? `${r.pattern ?? ""}${r.validator ? "  ·  校验 " + r.validator : ""}` : (r.pattern ?? "");
+  return {
+    name: r.name || r.id, kind, cat: uiCategory(r.category), body, bd: (["digit", "word"].includes(r.boundary ?? "") ? r.boundary : "") as Boundary,
+    on: !r.disabled, ecat: r.category, rid: r.id, ext: extOf(r),
+  };
+};
+
+function extOf(r: RuleJSON): Record<string, unknown> | undefined {
+  const out: Record<string, unknown> = {};
+  for (const k of EXT_KEYS) if (r[k] !== undefined) out[k] = r[k];
+  if (r.boundary === "cjk") out.boundary = "cjk";
+  return Object.keys(out).length ? out : undefined;
+}
+
+export const versionLabel = (it: Pick<ConfigItem, "readOnly" | "version">): string => (it.readOnly ? "内建" : "v" + it.version);
+
+export function rulesetFromItem(it: ConfigItem): Ruleset {
+  const content = parse<{ rules?: RuleJSON[] }>(it.content, {});
+  return {
+    id: it.id, name: it.name, ver: versionLabel(it), builtin: it.readOnly, rules: (content.rules ?? []).map(ruleFromJSON), edited: "",
+    hist: [], stored: { id: it.id, version: it.version },
+  };
+}
+
+/** The stored form of a rule set. Rules keep their stored ids; new ones get an id no other rule of the set uses. */
+export function rulesetContent(rs: Pick<Ruleset, "id" | "rules">): string {
+  const used = new Set(rs.rules.map((r) => r.rid).filter(Boolean));
+  const seed = rs.id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80);
+  let n = 0;
+  const fresh = (): string => {
+    let id: string;
+    do id = `${seed}.${++n}`; while (used.has(id));
+    used.add(id);
+    return id;
+  };
+  const rules: RuleJSON[] = rs.rules.map((r) => {
+    const id = r.rid ?? fresh();
+    const out: RuleJSON = { id, category: r.ecat ?? engineCategory(r.cat) };
+    if (r.name && r.name !== id) out.name = r.name;
+    if (r.kind === "词表") out.terms = r.body.split("\n").map((t) => t.trim()).filter(Boolean);
+    else out.pattern = r.body.replace(/\s+·\s+校验.*$/s, "");
+    if (r.bd) out.boundary = r.bd;
+    if (!r.on) out.disabled = true;
+    return { ...out, ...(r.ext as Partial<RuleJSON> | undefined) };
+  });
+  return JSON.stringify({ rules });
+}
+
+/** Engine categories a set of rule sets detects (rules that are switched off do not count). */
+export function ruleCategories(sets: Pick<Ruleset, "rules">[]): Set<string> {
+  const out = new Set<string>();
+  sets.forEach((s) => s.rules.forEach((r) => { if (r.on) out.add(r.ecat ?? engineCategory(r.cat)); }));
+  return out;
+}
+
+/* ── schemes ──────────────────────────────────────────────────────────────── */
+
+export interface Model {
+  /** Engine id of the stored model profile. */
+  profile: string;
+  floor: number;
+  calibrated: number;
+  /** Engine categories its labels produce. */
+  categories: string[];
+}
+
+export function modelFromItem(it: ConfigItem): { plugin: ModelPlugin; model: Model } | null {
+  const c = parse<{ model_id?: string; adapter_floor?: number; calibrated?: number; label_map?: Record<string, string> }>(it.content, {});
+  if (!c.model_id || c.adapter_floor == null || c.calibrated == null) return null;
+  return {
+    model: { profile: it.id, floor: c.adapter_floor, calibrated: c.calibrated, categories: [...new Set(Object.values(c.label_map ?? {}))] },
+    plugin: {
+      id: "astr", name: "AstrLink Guard", version: "0.1.3", variant: "INT8", languages: "中文 / 中英混排", weightMiB: 36, recommended: true,
+      confRec: c.calibrated, confMin: c.adapter_floor, status: "ready", progress: 100, error: null,
+    },
+  };
+}
+
+interface SchemeJSON { category_actions: Record<string, string>; image_default: string; human_review?: string[] }
+interface PresetJSON {
+  ruleset_id: string;
+  extra_ruleset_ids?: string[];
+  scheme_id: string;
+  scheme_rev?: number;
+  model_profile_id?: string;
+  mode: string;
+  rules_only: boolean;
+  min_confidence?: number;
+  memory_bytes: number;
+  dpi: number;
+  style: string;
+  retention_days: number;
+}
+
+const toTreatment = (a: string | undefined): PresetTreatment | null => (a === "placeholder" ? "ph" : a === "mask" || a === "delete" ? "mask" : null);
+
+/** The screen's scheme from its two stored objects. */
+export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefined, rulesets: Ruleset[], model: Model | null): Preset {
+  const p = parse<PresetJSON>(preset.content, {} as PresetJSON);
+  const s = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}) } as SchemeJSON;
+  const det = p.rules_only || !model ? "rules" : "model";
+  const cats = {} as Record<OfficeCategoryId, PresetTreatment>;
+  for (const c of OFFICE_CATEGORIES) {
+    const t = toTreatment(s.category_actions[OFFICE_ENGINE[c]]);
+    cats[c] = t ?? (MODEL_ONLY.includes(c) && det === "rules" ? "na" : MODEL_ONLY.includes(c) && c === "org" ? "na" : "off");
+  }
+  const ids = [p.ruleset_id, ...(p.extra_ruleset_ids ?? [])].filter((id) => rulesets.some((r) => r.id === id));
+  return {
+    id: preset.id, name: preset.name, ver: versionLabel(preset), builtin: preset.readOnly, det, model: "astr",
+    conf: det === "model" ? (p.min_confidence ?? model?.calibrated ?? null) : null,
+    rules: ids, cats, img: (s.image_default === "review" ? "keep" : "remove") as ImageAction, edited: "", hist: [],
+    stored: { id: preset.id, version: preset.version, schemeId: scheme?.id, schemeVersion: scheme?.version },
+  };
+}
+
+export interface Written {
+  scheme: string;
+  /** `schemeRev` is the stored version of the scheme object this version of the preset goes with. */
+  preset: (schemeId: string, schemeRev?: number) => string;
+  /** Screen categories the scheme could not keep because nothing detects them. */
+  dropped: OfficeCategoryId[];
+}
+
+/**
+ * The stored objects of a screen scheme. `previous` holds the stored scheme and preset so that settings the
+ * screen has no control for (resource profile, extra engine categories) are kept as they were.
+ */
+export function presetContents(p: Preset, rulesets: Ruleset[], model: Model | null, previous?: { scheme?: ConfigItem; preset?: ConfigItem }): Written {
+  const prevScheme = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(previous?.scheme?.content ?? "{}", {}) } as SchemeJSON;
+  const prevPreset = parse<Partial<PresetJSON>>(previous?.preset?.content ?? "{}", {});
+  const chosen = p.rules.map((id) => rulesets.find((r) => r.id === id)).filter((r): r is Ruleset => !!r);
+  const useModel = p.det === "model" && !!model;
+  const covered = ruleCategories(chosen);
+  if (useModel) model!.categories.forEach((c) => covered.add(c));
+
+  const actions: Record<string, string> = {};
+  const dropped: OfficeCategoryId[] = [];
+  const officeEngine = new Set<string>(Object.values(OFFICE_ENGINE));
+  for (const c of OFFICE_CATEGORIES) {
+    const t = p.cats[c];
+    if (t !== "mask" && t !== "ph") continue;
+    const e = OFFICE_ENGINE[c];
+    if (!covered.has(e)) { dropped.push(c); continue; }
+    actions[e] = t === "ph" ? "placeholder" : "mask";
+  }
+  // categories the screen has no switch for: every one a chosen rule set detects is handled, as it was before
+  for (const e of covered) {
+    if (officeEngine.has(e)) continue;
+    const before = prevScheme.category_actions[e];
+    actions[e] = before === "delete" || before === "mask" || before === "keep" ? before : "placeholder";
+  }
+  const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };
+  if (prevScheme.human_review?.length) scheme.human_review = prevScheme.human_review.filter((c) => c in actions);
+
+  const [primary, ...extra] = chosen.map((r) => r.stored?.id ?? r.id);
+  const preset = (schemeId: string, schemeRev?: number): string => {
+    const out: PresetJSON = {
+      ruleset_id: primary ?? "", scheme_id: schemeId, mode: prevPreset.mode ?? "guided", rules_only: !useModel,
+      memory_bytes: prevPreset.memory_bytes ?? 1 << 30, dpi: prevPreset.dpi ?? 200, style: prevPreset.style ?? "solid", retention_days: prevPreset.retention_days ?? 0,
+    };
+    if (extra.length) out.extra_ruleset_ids = extra;
+    if (schemeRev) out.scheme_rev = schemeRev;
+    if (useModel) {
+      out.model_profile_id = model!.profile;
+      out.min_confidence = Math.max(p.conf ?? model!.calibrated, model!.floor);
+    }
+    return JSON.stringify(out);
+  };
+  return { scheme: JSON.stringify(scheme), preset, dropped };
+}
+
+/* ── exchange files ───────────────────────────────────────────────────────── */
+
+const PACKAGE_VERSION = 1;
+
+/** A rule set as an exchange file: current content only, no ids, no history (FR-19). */
+export function exportRuleset(rs: Pick<Ruleset, "id" | "name" | "rules">): string {
+  return JSON.stringify({ tacet_config: PACKAGE_VERSION, kind: "ruleset", name: rs.name, ...(JSON.parse(rulesetContent(rs)) as object) }, null, 2);
+}
+
+/** A scheme as an exchange file: rule sets are named, not referenced by id; the model is not included. */
+export function exportScheme(p: Preset, rulesets: Ruleset[]): string {
+  const w = presetContents(p, rulesets, { profile: "", floor: 0, calibrated: p.conf ?? 0.5, categories: [...ENGINE_MODEL_CATEGORIES] });
+  const preset = JSON.parse(w.preset("")) as PresetJSON;
+  const names = p.rules.map((id) => rulesets.find((r) => r.id === id)?.name).filter((n): n is string => !!n);
+  return JSON.stringify({
+    tacet_config: PACKAGE_VERSION, kind: "scheme", name: p.name, rulesets: names, confidence: p.conf, detection: p.det,
+    scheme: JSON.parse(w.scheme), settings: { mode: preset.mode, memory_bytes: preset.memory_bytes, dpi: preset.dpi, style: preset.style, retention_days: preset.retention_days },
+  }, null, 2);
+}
+
+export type Imported =
+  | { kind: "ruleset"; name: string; ruleset: Ruleset }
+  | { kind: "scheme"; name: string; preset: Preset }
+  | { error: "format" | "kind" | "rulesets" | "content"; detail?: string };
+
+const item = (kind: string, name: string, content: unknown): ConfigItem => ({ id: "", kind, name, note: "", version: 1, readOnly: false, content: JSON.stringify(content) });
+
+/** Reads an exchange file. Nothing in it names an object of this installation except rule sets, by name. */
+export function importPackage(text: string, want: "ruleset" | "preset", rulesets: Ruleset[], model: Model | null): Imported {
+  let p: Record<string, unknown>;
+  try { p = JSON.parse(text); } catch { return { error: "format" }; }
+  if (!p || typeof p !== "object" || p.tacet_config !== PACKAGE_VERSION || typeof p.name !== "string" || !p.name.trim() || p.name.length > 256) return { error: "format" };
+  if (want === "ruleset") {
+    if (p.kind !== "ruleset" || !Array.isArray(p.rules)) return { error: "kind" };
+    const rs = rulesetFromItem(item("ruleset", p.name, { rules: p.rules }));
+    if (rs.rules.length > 5000 || rs.rules.some((r) => !r.name || typeof r.body !== "string" || !r.body.trim())) return { error: "content" };
+    return { kind: "ruleset", name: p.name, ruleset: { ...rs, ver: "v1", stored: undefined } };
+  }
+  if (p.kind !== "scheme" || !p.scheme || !Array.isArray(p.rulesets)) return { error: "kind" };
+  const ids: string[] = [];
+  for (const n of p.rulesets as unknown[]) {
+    const rs = rulesets.find((r) => r.name === n);
+    if (!rs) return { error: "rulesets", detail: String(n) };
+    ids.push(rs.id);
+  }
+  if (!ids.length) return { error: "rulesets" };
+  const s = (p.settings ?? {}) as Partial<PresetJSON>;
+  const useModel = p.detection === "model" && !!model;
+  const presetJSON: PresetJSON = {
+    ruleset_id: ids[0]!, scheme_id: "", mode: "guided", rules_only: !useModel, memory_bytes: s.memory_bytes ?? 1 << 30, dpi: s.dpi ?? 200, style: s.style ?? "solid",
+    retention_days: s.retention_days ?? 0, ...(ids.length > 1 ? { extra_ruleset_ids: ids.slice(1) } : {}),
+    ...(useModel ? { model_profile_id: model!.profile, min_confidence: typeof p.confidence === "number" ? p.confidence : model!.calibrated } : {}),
+  };
+  const preset = presetFromItems(item("preset", p.name, presetJSON), item("scheme", p.name, p.scheme), rulesets, model);
+  return { kind: "scheme", name: p.name, preset: { ...preset, ver: "v1", stored: undefined, builtin: false } };
+}
+
+/* ── application preferences ──────────────────────────────────────────────── */
+
+export function settingsFromEngine(e: EngineSettings): { settings: Settings; theme: ThemePref } {
+  const keep = String(e.retentionDays) as KeepDays;
+  return {
+    settings: {
+      redact: e.redactStyle as RedactStyle, tier: e.resourceTier === "std" ? "std" : "comfort", autoUpd: e.autoUpdate,
+      keep: keep === "0" || keep === "30" ? keep : "7", closeAct: e.closeBehavior === "quit" ? "quit" : "tray",
+    },
+    theme: e.theme === "light" || e.theme === "dark" ? e.theme : "system",
+  };
+}
+
+export const settingsToEngine = (s: Settings, theme: ThemePref): EngineSettings => ({
+  closeBehavior: s.closeAct, theme, redactStyle: s.redact || "black", resourceTier: s.tier, retentionDays: Number(s.keep), autoUpdate: s.autoUpd,
+});
+
+/* ── plugins ──────────────────────────────────────────────────────────────── */
+
+const PLUGIN_NAMES: Record<string, string> = {
+  "tacet.docx": "DOCX", "tacet.pdf": "PDF · 文字型", "tacet.text": "文本 · Markdown · 日志", "tacet.csv": "CSV", "tacet.json": "JSON · JSONL",
+  "tacet.xlsx": "XLSX · 值子集", "tacet.astrlink": "AstrLink Guard 检测",
+};
+
+export function pluginFromEngine(p: EnginePlugin): PluginInfo {
+  const roles = p.roles ?? [];
+  const role = roles.includes("detect") ? "模型" : roles.includes("format") ? "格式" : "规则";
+  return {
+    id: p.id, name: PLUGIN_NAMES[p.id] ?? p.id, role, fmt: (p.formats ?? []).map((f) => "." + f).join(" "), ver: p.version, builtin: p.builtin, on: p.enabled,
+  };
+}

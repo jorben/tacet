@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { stopAllTimers } from "../actions/timers";
 import { setContinuation } from "../actions/pending";
@@ -27,4 +27,19 @@ beforeEach(() => {
 afterEach(() => {
   stopAllTimers();
   vi.useRealTimers();
+});
+
+// The Wails runtime polls for its environment with window.setInterval for up to five seconds after it is imported.
+// A test file that ends sooner would see that timer fire after jsdom was torn down ("window is not defined"), so
+// the intervals started while a file runs are cleared when it ends.
+const intervals = new Set<number>();
+const realSetInterval = window.setInterval.bind(window);
+window.setInterval = ((...args: Parameters<typeof window.setInterval>) => {
+  const id = realSetInterval(...args);
+  intervals.add(id);
+  return id;
+}) as typeof window.setInterval;
+afterAll(() => {
+  intervals.forEach((id) => window.clearInterval(id));
+  intervals.clear();
 });

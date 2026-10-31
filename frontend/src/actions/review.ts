@@ -5,6 +5,7 @@ import { getState, store } from "../store";
 import { closePop, toast } from "../overlay/store";
 import { needSlot } from "./home";
 import { openBatchFile, resumeBatch } from "./batch";
+import { openLiveGroup } from "./live";
 
 /** Opens the review at the first pending item, optionally of one group and/or one file. */
 export function enterBatchReview(gid?: string | null, fi?: number | null): void {
@@ -15,6 +16,7 @@ export function enterBatchReview(gid?: string | null, fi?: number | null): void 
 /** “开始复核” / “去处理”. From a history result the batch may first have to take back its slot. */
 export function startReview(gid?: string | null): void {
   const s = getState();
+  if (s.batch?.live && s.view !== "history") { openLiveGroup(gid ?? null); return; }
   if (s.view === "history") {
     const go = () => {
       store.update((d) => { d.view = "batch"; });

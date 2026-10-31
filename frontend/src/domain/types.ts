@@ -90,6 +90,38 @@ export interface Single extends DocContent {
   manifestLimit?: number;
   /** Identifies the current processing/export run so a stale timer can tell it was superseded. */
   runId: number;
+  /** Set when the task runs on the real engine: which batch and file it is, and how the document maps back. */
+  live?: LiveSingle;
+}
+
+/** One rendered page: the image the engine serves, and where the candidates lie on it (pixels). */
+export interface RasterPage {
+  image: string;
+  width: number;
+  height: number;
+  boxes: { finding: number; rect: [number, number, number, number] }[];
+  unmapped: number;
+}
+export interface RasterDoc {
+  pages: Record<number, RasterPage>;
+  failed: Record<number, boolean>;
+}
+
+/** Link between a displayed document and the engine's file. */
+export interface LiveSingle {
+  batch: string;
+  job: string;
+  /** Engine finding id of each hit, by hit id. */
+  findingOf: number[];
+  /** Engine unit sequence number of each block, by page and block. */
+  seqOf: number[][];
+  /** Only the first part of a very long document is shown. */
+  truncated: boolean;
+  /** A PDF is shown as its page images with the candidates outlined; `pages` counts them. */
+  raster?: RasterDoc;
+  /** Name and checksum of the published file once done. */
+  output?: string;
+  digest?: string;
 }
 
 /* ── Models, presets, rule sets, plugins ──────────────────────────────────── */
@@ -133,6 +165,21 @@ export interface Rule {
   /** Number of word-list entries when the list itself is not kept in `body`. */
   n?: number;
   on: boolean;
+  /** Category id of the engine, kept for rules the screen has no category of (account, url, …). */
+  ecat?: string;
+  /** Id of the stored rule; a rule made on screen gets one when it is first stored. */
+  rid?: string;
+  /** Settings of the stored rule the screen has no control for (validator, context words, …). */
+  ext?: Record<string, unknown>;
+}
+
+/** Where a displayed object is stored by the kernel, and which version of it was last seen there. */
+export interface StoredRef {
+  id: string;
+  version: number;
+  /** A scheme's own stored object (a preset is stored as preset + scheme). */
+  schemeId?: string;
+  schemeVersion?: number;
 }
 
 export interface VersionRecord<T> {
@@ -154,6 +201,7 @@ export interface Preset {
   img: ImageAction;
   edited: string;
   hist?: VersionRecord<PresetContent>[];
+  stored?: StoredRef;
 }
 export type PresetContent = Pick<Preset, "det" | "model" | "conf" | "rules" | "cats" | "img">;
 
@@ -167,6 +215,7 @@ export interface Ruleset {
   edited?: string;
   rules: Rule[];
   hist?: VersionRecord<{ rules: Rule[] }>[];
+  stored?: StoredRef;
 }
 
 export type PluginRole = "格式" | "规则" | "模型";
@@ -235,6 +284,8 @@ export interface BatchFile {
   outputName?: string;
   /** Saved single-file review state of the file. */
   sv?: DecisionSnapshot | null;
+  /** Checksum of the delivered file (real batches only). */
+  sha?: string;
 }
 
 export interface GroupAction {
@@ -316,7 +367,7 @@ export interface BatchSummary {
   manifestLimit?: number;
 }
 export type ManifestFile = Pick<BatchFile, "i" | "id" | "ext" | "st"> &
-  Partial<Pick<BatchFile, "outputName" | "ver" | "reason" | "g" | "man" | "partial">>;
+  Partial<Pick<BatchFile, "outputName" | "ver" | "reason" | "g" | "man" | "partial" | "sha">>;
 
 export interface Batch extends BatchSummary {
   files: BatchFile[];
@@ -335,6 +386,17 @@ export interface Batch extends BatchSummary {
   /** Replacements applied automatically after output validation found residue. */
   widened?: number;
   rv?: ReviewState;
+  /** Set when the batch runs on the real engine. */
+  live?: LiveBatch;
+}
+
+export interface LiveBatch {
+  /** Engine batch id; empty until the import returned. */
+  id: string;
+  /** Engine file id of each row. */
+  jobs: string[];
+  /** Absolute output folder. */
+  outputDir: string;
 }
 
 export type KeepDays = "7" | "30" | "0";

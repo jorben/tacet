@@ -8,6 +8,8 @@ import { getState, store, type AppState } from "../store";
 import { closeModal, openMenu, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
 import { nextId } from "./timers";
+import { isLive } from "./live";
+import { exportLive, finishImportLive, importLive, openVersions, rollbackLive } from "./liveConfig";
 import type { Draft } from "immer";
 
 const allCategories = <T,>(v: T): Record<OfficeCategoryId, T> => Object.fromEntries(OFFICE_CATEGORIES.map((t) => [t, v])) as Record<OfficeCategoryId, T>;
@@ -150,7 +152,7 @@ export function openPresetMoreMenu(anchor: PopAnchor): void {
     { l: "导出", ic: "download", k: "exp" },
     ...(p.builtin ? [] : (["-", { l: "删除", ic: "trash", k: "del", d: true }] as const)),
   ], (it) => {
-    if (it.k === "hist") openModal({ type: "versions", kind: "preset" });
+    if (it.k === "hist") { if (isLive()) void openVersions("preset"); else openModal({ type: "versions", kind: "preset" }); }
     else if (it.k === "del") {
       store.update((d) => {
         d.presets = d.presets.filter((x) => x.id !== p.id);
@@ -158,7 +160,8 @@ export function openPresetMoreMenu(anchor: PopAnchor): void {
         if (d.homePreset === p.name) d.homePreset = d.presets[0]!.name;
       });
       toast("已删除");
-    } else toast("已导出（不含模型）");
+    } else if (isLive()) void exportLive("preset", p.id);
+    else toast("已导出（不含模型）");
   }, { alignRight: true });
 }
 
@@ -199,8 +202,8 @@ export function openRulesetMoreMenu(anchor: PopAnchor): void {
     { l: "导出", ic: "download", k: "exp" },
     ...(lock ? [] : (["-", { l: "删除", ic: "trash", k: "del", d: true }] as const)),
   ], (it) => {
-    if (it.k === "hist") { openModal({ type: "versions", kind: "ruleset" }); return; }
-    if (it.k === "exp") { toast("已导出 " + r.name); return; }
+    if (it.k === "hist") { if (isLive()) void openVersions("ruleset"); else openModal({ type: "versions", kind: "ruleset" }); return; }
+    if (it.k === "exp") { if (isLive()) void exportLive("ruleset", r.id); else toast("已导出 " + r.name); return; }
     const used = getState().presets.filter((p) => p.rules.includes(r.id));
     if (used.length) { toast("正在被「" + used[0]!.name + "」使用"); return; }
     store.update((d) => { d.rulesets = d.rulesets.filter((x) => x.id !== r.id); d.rulesetSel = null; });
@@ -237,7 +240,7 @@ export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult
   store.update((d) => {
     const r = rulesetOf(d);
     bumpVersion(r);
-    if (index != null) Object.assign(r.rules[index]!, x, { n: 0 });
+    if (index != null) Object.assign(r.rules[index]!, x, { n: 0, ecat: old && old.cat === x.cat ? old.ecat : undefined, rid: old?.rid });
     else r.rules.push(x);
     ver = r.ver;
   });
@@ -264,6 +267,10 @@ export const versionTarget = (s: AppState, kind: "preset" | "ruleset"): Versione
 
 /** Rolling back saves the chosen version's content as a new version; the other versions stay. */
 export function rollback(kind: "preset" | "ruleset", index: number): void {
+  if (isLive()) {
+    void rollbackLive(kind, index).then((from) => { closeModal(); if (from) toast("已用 " + from + " 的内容保存为新版本"); });
+    return;
+  }
   let from = "";
   let ver = "";
   store.update((d) => {
@@ -309,12 +316,14 @@ export function importNameClashes(kind: "preset" | "ruleset", name: string): boo
 }
 
 export function startImport(kind: "preset" | "ruleset"): void {
+  if (isLive()) { void importLive(kind); return; }
   const name = importSource[kind]().name;
   if (!importNameClashes(kind, name)) finishImport(kind, name);
   else openModal({ type: "importConflict", kind, name });
 }
 
 export function finishImport(kind: "preset" | "ruleset", name: string): void {
+  if (isLive()) { finishImportLive(kind, name); return; }
   const common = { name, ver: "v1", edited: "刚刚", hist: [] };
   store.update((d) => {
     if (kind === "ruleset") {

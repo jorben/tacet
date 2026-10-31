@@ -1,6 +1,6 @@
 import type { ModalSpec } from "../../overlay/store";
 import { UpdateAppDialog, AboutLinkDialog, LicensesDialog, CleanWorkspaceDialog, CloseWindowDialog } from "./appDialogs";
-import { BulkConfirmDialog, ExportReadyDialog, PasswordDialog } from "./batchDialogs";
+import { BulkConfirmDialog, ExportReadyDialog, LivePasswordDialog, PasswordDialog } from "./batchDialogs";
 import { ImportConflictDialog, RuleEditorDialog, VersionsDialog } from "./configDialogs";
 import { HistoryItemDialog, RecentTasksDialog, ResumeBatchDialog } from "./history";
 import { InstallPluginDialog, UninstallPluginDialog } from "./pluginDialogs";
@@ -17,6 +17,7 @@ export function ModalContent({ spec }: { spec: ModalSpec }) {
     case "bulkConfirm": return <BulkConfirmDialog gid={spec.gid} k={spec.k} />;
     case "password": return <PasswordDialog gid={spec.gid} members={spec.members} />;
     case "exportReady": return <ExportReadyDialog />;
+    case "livePassword": return <LivePasswordDialog targets={spec.targets} />;
     case "ruleEditor": return <RuleEditorDialog rulesetId={spec.rulesetId} index={spec.index} />;
     case "versions": return <VersionsDialog kind={spec.kind} />;
     case "importConflict": return <ImportConflictDialog kind={spec.kind} name={spec.name} />;

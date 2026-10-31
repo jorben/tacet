@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { takeFiles } from "../../actions/home";
+import { isLive } from "../../actions/live";
 import flowUrl from "../../assets/flow.webp";
 import { useAppState } from "../../store";
 import { Icon, LOGO_URL, Page } from "../../ui";
@@ -13,7 +14,7 @@ import { useLiveHistory } from "./useLiveHistory";
 function useWindowDrop() {
   useEffect(() => {
     const onDrop = (e: DragEvent) => {
-      if (!(e.target as Element | null)?.closest?.("#drop") && e.dataTransfer) takeFiles(toIncoming(e.dataTransfer.files));
+      if (!isLive() && !(e.target as Element | null)?.closest?.("#drop") && e.dataTransfer) takeFiles(toIncoming(e.dataTransfer.files));
     };
     document.addEventListener("drop", onDrop);
     return () => document.removeEventListener("drop", onDrop);

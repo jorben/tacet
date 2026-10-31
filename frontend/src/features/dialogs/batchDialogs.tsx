@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { unlockLive } from "../../actions/live";
 import { publishValidated, resolveException } from "../../actions/batch";
 import { enterBatchReview } from "../../actions/review";
 import { countFiles, groupMembers, groupTotal } from "../../domain/batch";
@@ -118,6 +119,50 @@ export function ExportReadyDialog() {
         </Button>
         <Button variant="primary" onClick={publishValidated}>
           导出
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Asks for the password of each locked file. A password is handed to the kernel once and forgotten here. */
+export function LivePasswordDialog({ targets }: { targets: { job: string; name: string }[] }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    const entries = Object.entries(values).filter(([, v]) => v);
+    setValues({});
+    for (const [job, pw] of entries) await unlockLive(job, pw);
+    setBusy(false);
+    closeModal();
+  };
+  return (
+    <Modal>
+      <ModalHeader title="输入密码" subtitle="仅本次使用，不会保存" />
+      <ModalBody>
+        {targets.map((t) => (
+          <div key={t.job}>
+            <div className="sm" style={{ marginTop: 12, color: "var(--ink-2)" }}>
+              {t.name}
+            </div>
+            <Field
+              icon="lock"
+              type="password"
+              aria-label={"密码 " + t.name}
+              autoComplete="off"
+              value={values[t.job] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [t.job]: e.target.value }))}
+            />
+          </div>
+        ))}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={closeModal}>
+          取消
+        </Button>
+        <Button variant="primary" disabled={busy || !Object.values(values).some(Boolean)} onClick={() => void submit()}>
+          解锁
         </Button>
       </ModalFooter>
     </Modal>

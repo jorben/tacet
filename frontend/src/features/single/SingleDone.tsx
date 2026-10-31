@@ -19,7 +19,7 @@ export function SingleDone({ single, onManifest }: { single: Single; onManifest:
         subtitle={
           <div className="fn">
             <Icon name="folder" size={13} />
-            {single.out} / {outputName(single.name, single.ext)}
+            {single.out} / {single.live ? (single.live.output ?? "") : outputName(single.name, single.ext)}
           </div>
         }
         stats={[
