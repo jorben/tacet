@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"io/fs"
 	"log"
 
@@ -17,15 +18,25 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	svc := gui.NewService()
+	host := &gui.WailsHost{}
+	// The engine opens on first use, so a busy workspace or an unavailable key
+	// store is reported inside the window instead of ending the program.
+	svc := gui.NewService(func(ctx context.Context) (app.Core, error) {
+		ws, err := app.DefaultWorkspace("desktop")
+		if err != nil {
+			return nil, err
+		}
+		return app.OpenWith(ctx, app.Config{Workspace: ws})
+	}, host)
 	a := application.New(application.Options{
 		Name:        app.Name,
 		Description: "Local document redaction",
+		OnShutdown:  func() { gui.Shutdown(svc) },
 		Services: []application.Service{
 			application.NewService(svc),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: svc.AssetHandler(application.AssetFileServerFS(assets)),
 		},
 		// One GUI instance per OS user (architecture 6.2). Handing files dropped
 		// on a second launch to this instance comes with the lifecycle module.
@@ -46,9 +57,11 @@ func main() {
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarHiddenInset,
 		},
+		EnableFileDrop:   true,
 		BackgroundColour: application.NewRGB(250, 250, 248),
 		URL:              "/",
 	})
+	host.Bind(a, win)
 	gui.InterceptClose(a, win, svc)
 	if err := a.Run(); err != nil {
 		log.Fatal(err)

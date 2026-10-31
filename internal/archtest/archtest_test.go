@@ -44,8 +44,10 @@ var allowed = map[string][]string{
 	"kernel": {},
 	"gui":    {"app", "query"},
 	"cli":    {"app", "query"},
-	"app":    plus(domain, "store", "update"),
-	"query":  plus(domain, "store"),
+	// app is the composition root: besides the domain it wires the process, resource and
+	// key infrastructure that no domain module may reach (documented deviation from 2.3).
+	"app":   plus(domain, "store", "update", "host", "refs", "keys", "netgate", "platform", "lifecycle", "retention"),
+	"query": plus(domain, "store"),
 	// lifecycle runs the start-up and exit orders across these modules.
 	"lifecycle": {"app", "workspace", "jobs", "sched", "host", "publish", "review", "retention", "platform"},
 	// update reaches the exit order through an injected interface, not lifecycle.

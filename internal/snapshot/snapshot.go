@@ -18,5 +18,6 @@ type CompatReport struct {
 // DetectFacet is the detect facet as read by detection. Fields are added
 // with the implementation; Digest identifies the frozen content.
 type DetectFacet struct {
-	Digest string
+	Digest  string
+	Content DetectContent
 }

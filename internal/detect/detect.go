@@ -14,6 +14,11 @@ type Candidate struct {
 	Source   kernel.FindingSource
 	Score    float64 // model score; not comparable across models (FR-12)
 	LowConf  bool    // below the model's calibrated value (FR-21)
+	// RuleID names the rule or dictionary entry set that matched; empty for models.
+	RuleID string
+	// ValidatorMismatch marks a "suspect" rule hit whose deterministic check
+	// failed; policy turns it into an exception rather than a silent drop.
+	ValidatorMismatch bool
 }
 
 // Detector runs rules and models over text units. Any source failing fails
