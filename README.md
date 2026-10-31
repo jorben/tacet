@@ -41,7 +41,8 @@
 | 命令 | 作用 |
 | --- | --- |
 | `wails3 task dev` | 开发模式运行桌面应用 |
-| `wails3 task build` | 构建桌面应用到 `bin/` |
+| `wails3 task build` | 编译桌面可执行文件：macOS 为 `bin/tacet`，Windows 为 `bin/tacet.exe` |
+| `wails3 task package` | 构建并打包桌面应用：macOS 生成 `bin/tacet.app`，Windows 生成安装程序 |
 | `wails3 task build:cli` | 构建 CLI 到 `bin/cli/` |
 | `wails3 task test` | Go 测试，含模块依赖规则检查 |
 | `wails3 task lint` | `go vet` 与前端类型检查 |

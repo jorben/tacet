@@ -19,7 +19,7 @@ includes:
 
 tasks:
   build:
-    summary: Builds the desktop application
+    summary: Compiles the desktop executable into bin/ (use package to create a macOS .app or Windows installer)
     cmds:
       - task: "{{.GOOS}}:build"
 
@@ -29,7 +29,7 @@ tasks:
       - go build -o "{{.BIN_DIR}}/cli/tacet{{exeExt}}" ./cmd/tacet
 
   package:
-    summary: Packages a production build of the desktop application
+    summary: Builds and packages the desktop application (macOS .app or Windows installer)
     cmds:
       - task: "{{.GOOS}}:package"
 
