@@ -40,11 +40,27 @@
         },
         "handle": {
           "type": "integer",
+          "minimum": 3,
           "description": "Platform handle inherited by the worker"
         },
         "digest": {
           "type": "string",
-          "pattern": "^sha256:"
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "encryption": {
+          "type": "object",
+          "required": ["version", "resource_id", "key_hex"],
+          "properties": {
+            "version": {"const": 1},
+            "resource_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "key_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$", "writeOnly": true, "x-secret": true}
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

@@ -1,0 +1,1583 @@
+{
+  "version": 1,
+  "note": "Verdicts of the shared JSON Schema contract. Go (internal/host) and Python (tacet_plugin_sdk) must both agree with every case; valid is the verdict required by JSON Schema draft 2020-12 with ECMA-262 regular expressions.",
+  "cases": [
+    {
+      "name": "request",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "request string id",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "x",
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "request id as float 1.0",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1.0,
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "request null id",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": null,
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "request boolean id",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": true,
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "request fractional id",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1.5,
+        "method": "health",
+        "params": {}
+      }
+    },
+    {
+      "name": "notification",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "method": "task.cancel",
+        "params": {}
+      }
+    },
+    {
+      "name": "version 1.0",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "1.0",
+        "id": 1,
+        "method": "m",
+        "params": {}
+      }
+    },
+    {
+      "name": "empty method",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "",
+        "params": {}
+      }
+    },
+    {
+      "name": "method of 128 code points",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "params": {}
+      }
+    },
+    {
+      "name": "method of 129 code points",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "params": {}
+      }
+    },
+    {
+      "name": "params as array",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "m",
+        "params": []
+      }
+    },
+    {
+      "name": "request with an extra member",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "m",
+        "params": {},
+        "x": 1
+      }
+    },
+    {
+      "name": "success",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {}
+      }
+    },
+    {
+      "name": "success and error together",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {},
+        "error": {}
+      }
+    },
+    {
+      "name": "failure",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": true,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+          "code": -32000,
+          "message": "Plugin request failed",
+          "data": {
+            "code": "PLUGIN_TASK_FAILED",
+            "retry": "none"
+          }
+        }
+      }
+    },
+    {
+      "name": "failure with a free-text message",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+          "code": -32000,
+          "message": "Traceback: TEST_SECRET",
+          "data": {
+            "code": "PLUGIN_TASK_FAILED",
+            "retry": "none"
+          }
+        }
+      }
+    },
+    {
+      "name": "failure without data",
+      "schema": "rpc.schema.json",
+      "def": "Message",
+      "valid": false,
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+          "code": -32000,
+          "message": "Plugin request failed"
+        }
+      }
+    },
+    {
+      "name": "error code",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": true,
+      "value": {
+        "code": "PLUGIN_TASK_FAILED",
+        "retry": "none"
+      }
+    },
+    {
+      "name": "error code lower case",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": false,
+      "value": {
+        "code": "plugin",
+        "retry": "none"
+      }
+    },
+    {
+      "name": "error code with trailing newline",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": false,
+      "value": {
+        "code": "PLUGIN\n",
+        "retry": "none"
+      }
+    },
+    {
+      "name": "error code with a non-ASCII digit",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": false,
+      "value": {
+        "code": "A٣",
+        "retry": "none"
+      }
+    },
+    {
+      "name": "error retry outside the enum",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": false,
+      "value": {
+        "code": "A",
+        "retry": "later"
+      }
+    },
+    {
+      "name": "error params with a non-string value",
+      "schema": "common.schema.json",
+      "def": "Error",
+      "valid": false,
+      "value": {
+        "code": "A",
+        "retry": "none",
+        "params": {
+          "k": 1
+        }
+      }
+    },
+    {
+      "name": "task",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, integers written as 1.0",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7.0,
+        "job_version": 1.0,
+        "protocol": "1.0",
+        "deadline_ms": 1000.0,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, integer written in exponent form",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000.0,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, fractional version",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1.5,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, generation at the 2^53-1 limit",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 9007199254740991,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, generation one above the limit",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 9007199254740992,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, generation beyond uint64",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 18446744073709551616,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, generation zero",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 0,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, negative generation",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": -1,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, job version zero",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 0,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, deadline of one day",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 86400000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, deadline above one day",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 86400001,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, zero deadline",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 0,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, byte credit at 4 MiB",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 4194304,
+            "items": 65536
+          }
+        }
+      }
+    },
+    {
+      "name": "task, byte credit above 4 MiB",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 4194305,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, item credit above 65536",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1,
+            "items": 65537
+          }
+        }
+      }
+    },
+    {
+      "name": "task, zero item credit",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1,
+            "items": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "task, credit with only one dimension",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1024
+          }
+        }
+      }
+    },
+    {
+      "name": "task, credit with an extra dimension",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1,
+            "items": 1,
+            "pages": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, protocol 2.0",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "2.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, job id of 128 emoji",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, job id of 129 emoji",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, empty job id",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, empty stream id",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "task, params of the plugin method are allowed",
+      "schema": "lifecycle.schema.json",
+      "def": "Task",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "protocol": "1.0",
+        "deadline_ms": 1000,
+        "stream": {
+          "id": "s",
+          "credit": {
+            "bytes": 1048576,
+            "items": 1
+          }
+        },
+        "input": {
+          "ref": "r_1"
+        }
+      }
+    },
+    {
+      "name": "cancel",
+      "schema": "lifecycle.schema.json",
+      "def": "Cancel",
+      "valid": true,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1
+      }
+    },
+    {
+      "name": "cancel with an extra member",
+      "schema": "lifecycle.schema.json",
+      "def": "Cancel",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7,
+        "job_version": 1,
+        "reason": "x"
+      }
+    },
+    {
+      "name": "cancel without the job version",
+      "schema": "lifecycle.schema.json",
+      "def": "Cancel",
+      "valid": false,
+      "value": {
+        "job_id": "j",
+        "attempt_id": "a",
+        "owner_generation": 7
+      }
+    },
+    {
+      "name": "empty params",
+      "schema": "lifecycle.schema.json",
+      "def": "Empty",
+      "valid": true,
+      "value": {}
+    },
+    {
+      "name": "non-empty params where none are allowed",
+      "schema": "lifecycle.schema.json",
+      "def": "Empty",
+      "valid": false,
+      "value": {
+        "x": 1
+      }
+    },
+    {
+      "name": "health",
+      "schema": "lifecycle.schema.json",
+      "def": "Health",
+      "valid": true,
+      "value": {
+        "status": "ready"
+      }
+    },
+    {
+      "name": "health with another status",
+      "schema": "lifecycle.schema.json",
+      "def": "Health",
+      "valid": false,
+      "value": {
+        "status": "busy"
+      }
+    },
+    {
+      "name": "item",
+      "schema": "stream.schema.json",
+      "def": "Item",
+      "valid": true,
+      "value": {
+        "stream": "s",
+        "seq": 1,
+        "item": {
+          "kind": "k"
+        }
+      }
+    },
+    {
+      "name": "item without a kind",
+      "schema": "stream.schema.json",
+      "def": "Item",
+      "valid": false,
+      "value": {
+        "stream": "s",
+        "seq": 1,
+        "item": {}
+      }
+    },
+    {
+      "name": "item with a non-object body",
+      "schema": "stream.schema.json",
+      "def": "Item",
+      "valid": false,
+      "value": {
+        "stream": "s",
+        "seq": 1,
+        "item": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "item with a negative sequence",
+      "schema": "stream.schema.json",
+      "def": "Item",
+      "valid": false,
+      "value": {
+        "stream": "s",
+        "seq": -1,
+        "item": {
+          "kind": "k"
+        }
+      }
+    },
+    {
+      "name": "credit",
+      "schema": "stream.schema.json",
+      "def": "Credit",
+      "valid": true,
+      "value": {
+        "stream": "s",
+        "committed_seq": 3,
+        "bytes": 10,
+        "items": 1
+      }
+    },
+    {
+      "name": "credit with negative bytes",
+      "schema": "stream.schema.json",
+      "def": "Credit",
+      "valid": false,
+      "value": {
+        "stream": "s",
+        "committed_seq": 3,
+        "bytes": -1,
+        "items": 1
+      }
+    },
+    {
+      "name": "credit without the committed sequence",
+      "schema": "stream.schema.json",
+      "def": "Credit",
+      "valid": false,
+      "value": {
+        "stream": "s",
+        "bytes": 1
+      }
+    },
+    {
+      "name": "end",
+      "schema": "stream.schema.json",
+      "def": "End",
+      "valid": true,
+      "value": {
+        "type": "stream.end",
+        "stream": "s",
+        "last_seq": 3,
+        "status": "completed"
+      }
+    },
+    {
+      "name": "end with a failure",
+      "schema": "stream.schema.json",
+      "def": "End",
+      "valid": true,
+      "value": {
+        "type": "stream.end",
+        "stream": "s",
+        "last_seq": 0,
+        "status": "failed",
+        "error": {
+          "code": "PLUGIN_TASK_FAILED",
+          "retry": "none"
+        }
+      }
+    },
+    {
+      "name": "end with an unknown status",
+      "schema": "stream.schema.json",
+      "def": "End",
+      "valid": false,
+      "value": {
+        "type": "stream.end",
+        "stream": "s",
+        "last_seq": 0,
+        "status": "done"
+      }
+    },
+    {
+      "name": "end of the wrong type",
+      "schema": "stream.schema.json",
+      "def": "End",
+      "valid": false,
+      "value": {
+        "type": "stream.item",
+        "stream": "s",
+        "last_seq": 0,
+        "status": "completed"
+      }
+    },
+    {
+      "name": "initialize params",
+      "schema": "initialize.schema.json",
+      "def": "Params",
+      "valid": true,
+      "value": {
+        "protocol": {
+          "min": "1.0",
+          "max": "1.0"
+        },
+        "owner_generation": 7,
+        "limits": {
+          "max_message_bytes": 4194304
+        }
+      }
+    },
+    {
+      "name": "initialize with a message limit above 4 MiB",
+      "schema": "initialize.schema.json",
+      "def": "Params",
+      "valid": false,
+      "value": {
+        "protocol": {
+          "min": "1.0",
+          "max": "1.0"
+        },
+        "owner_generation": 7,
+        "limits": {
+          "max_message_bytes": 4194305
+        }
+      }
+    },
+    {
+      "name": "initialize result",
+      "schema": "initialize.schema.json",
+      "def": "Result",
+      "valid": true,
+      "value": {
+        "protocol": "1.0",
+        "plugin": {
+          "id": "p",
+          "version": "0.1.0"
+        },
+        "roles": [
+          "format"
+        ],
+        "capabilities": {
+          "streaming": true
+        }
+      }
+    },
+    {
+      "name": "initialize result with an unknown role",
+      "schema": "initialize.schema.json",
+      "def": "Result",
+      "valid": false,
+      "value": {
+        "protocol": "1.0",
+        "plugin": {
+          "id": "p",
+          "version": "0.1.0"
+        },
+        "roles": [
+          "root"
+        ]
+      }
+    },
+    {
+      "name": "initialize result with a non-boolean capability",
+      "schema": "initialize.schema.json",
+      "def": "Result",
+      "valid": false,
+      "value": {
+        "protocol": "1.0",
+        "plugin": {
+          "id": "p",
+          "version": "0.1.0"
+        },
+        "roles": [
+          "format"
+        ],
+        "capabilities": {
+          "x": "yes"
+        }
+      }
+    },
+    {
+      "name": "resource reference",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": true,
+      "value": {
+        "ref": "r_1",
+        "mode": "read",
+        "handle": 3,
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "version": 1,
+        "encryption": {
+          "version": 1,
+          "resource_id": "res",
+          "key_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    {
+      "name": "resource key with a trailing newline",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": false,
+      "value": {
+        "ref": "r_1",
+        "encryption": {
+          "version": 1,
+          "resource_id": "res",
+          "key_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+        }
+      }
+    },
+    {
+      "name": "resource key in upper case",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": false,
+      "value": {
+        "ref": "r_1",
+        "encryption": {
+          "version": 1,
+          "resource_id": "res",
+          "key_hex": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+        }
+      }
+    },
+    {
+      "name": "resource key of 63 digits",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": false,
+      "value": {
+        "ref": "r_1",
+        "encryption": {
+          "version": 1,
+          "resource_id": "res",
+          "key_hex": "000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "digest with a trailing newline",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": false,
+      "value": {
+        "ref": "r_1",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+      }
+    },
+    {
+      "name": "handle below 3",
+      "schema": "common.schema.json",
+      "def": "ResourceRef",
+      "valid": false,
+      "value": {
+        "ref": "r_1",
+        "handle": 2
+      }
+    },
+    {
+      "name": "span",
+      "schema": "common.schema.json",
+      "def": "Span",
+      "valid": true,
+      "value": {
+        "start": 0,
+        "end": 5
+      }
+    },
+    {
+      "name": "span with a negative start",
+      "schema": "common.schema.json",
+      "def": "Span",
+      "valid": false,
+      "value": {
+        "start": -1,
+        "end": 5
+      }
+    },
+    {
+      "name": "span with an extra member",
+      "schema": "common.schema.json",
+      "def": "Span",
+      "valid": false,
+      "value": {
+        "start": 0,
+        "end": 5,
+        "unit": "byte"
+      }
+    },
+    {
+      "name": "probe result",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": true,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx",
+        "encryption": "password_required",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10
+      }
+    },
+    {
+      "name": "probe result with an unknown encryption state",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx",
+        "encryption": "rot13",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10
+      }
+    },
+    {
+      "name": "probe result with a negative page count",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx",
+        "encryption": "password_required",
+        "pages": -1,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10
+      }
+    },
+    {
+      "name": "probe result with an extra member",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx",
+        "encryption": "password_required",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10,
+        "path": "/tmp/x"
+      }
+    },
+    {
+      "name": "probe result with a format that is not an identifier",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "Docx; rm",
+        "encryption": "password_required",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10
+      }
+    },
+    {
+      "name": "probe result with a trailing-newline format",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx\n",
+        "encryption": "password_required",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0,
+        "bytes": 10
+      }
+    },
+    {
+      "name": "probe result missing bytes",
+      "schema": "format.schema.json",
+      "def": "ProbeResult",
+      "valid": false,
+      "value": {
+        "kind": "probe_result",
+        "format": "docx",
+        "encryption": "password_required",
+        "pages": 0,
+        "images": 1,
+        "embedded": 0
+      }
+    },
+    {
+      "name": "unlock done",
+      "schema": "format.schema.json",
+      "def": "UnlockDone",
+      "valid": true,
+      "value": {
+        "kind": "unlock_done",
+        "bytes": 5
+      }
+    },
+    {
+      "name": "unlock done with zero bytes",
+      "schema": "format.schema.json",
+      "def": "UnlockDone",
+      "valid": false,
+      "value": {
+        "kind": "unlock_done",
+        "bytes": 0
+      }
+    },
+    {
+      "name": "plan text line",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": true,
+      "value": {
+        "kind": "text",
+        "id": "op_1",
+        "part": "word/document.xml",
+        "ordinal": 3,
+        "start": 2,
+        "end": 13,
+        "replacement": "[手机号]"
+      }
+    },
+    {
+      "name": "plan text line without a part",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": false,
+      "value": {
+        "kind": "text",
+        "id": "op_1",
+        "ordinal": 3,
+        "start": 2,
+        "end": 13,
+        "replacement": "[手机号]"
+      }
+    },
+    {
+      "name": "plan text line with a path-like extra member",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": false,
+      "value": {
+        "kind": "text",
+        "id": "op_1",
+        "part": "word/document.xml",
+        "ordinal": 3,
+        "start": 2,
+        "end": 13,
+        "replacement": "[手机号]",
+        "path": "/tmp/x"
+      }
+    },
+    {
+      "name": "plan text line with a negative start",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": false,
+      "value": {
+        "kind": "text",
+        "id": "op_1",
+        "part": "word/document.xml",
+        "ordinal": 3,
+        "start": -1,
+        "end": 13,
+        "replacement": "[手机号]"
+      }
+    },
+    {
+      "name": "plan part line",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": true,
+      "value": {
+        "kind": "part",
+        "id": "op_2",
+        "part": "docProps/app.xml"
+      }
+    },
+    {
+      "name": "plan line of an unknown kind",
+      "schema": "format.schema.json",
+      "def": "PlanLine",
+      "valid": false,
+      "value": {
+        "kind": "region",
+        "id": "op_3",
+        "part": "p"
+      }
+    },
+    {
+      "name": "op result executed",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": true,
+      "value": {
+        "kind": "op_result",
+        "op": "op_1",
+        "status": "executed"
+      }
+    },
+    {
+      "name": "op result with a free-text reason",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": false,
+      "value": {
+        "kind": "op_result",
+        "op": "op_1",
+        "status": "not_executed",
+        "reason": "cannot open /Users/x/secret.docx"
+      }
+    },
+    {
+      "name": "op result not executed with a code",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": true,
+      "value": {
+        "kind": "op_result",
+        "op": "op_1",
+        "status": "not_executed",
+        "reason": "PART_UNSUPPORTED"
+      }
+    },
+    {
+      "name": "part fate redacted",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": true,
+      "value": {
+        "kind": "part_fate",
+        "part": "word/document.xml",
+        "fate": "redacted"
+      }
+    },
+    {
+      "name": "part fate unknown",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": false,
+      "value": {
+        "kind": "part_fate",
+        "part": "word/document.xml",
+        "fate": "vanished"
+      }
+    },
+    {
+      "name": "write complete",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": true,
+      "value": {
+        "kind": "write_complete",
+        "complete": true,
+        "operations": 2,
+        "parts": 5,
+        "bytes": 1000
+      }
+    },
+    {
+      "name": "write complete with zero bytes",
+      "schema": "format.schema.json",
+      "def": "WriteItem",
+      "valid": false,
+      "value": {
+        "kind": "write_complete",
+        "complete": true,
+        "operations": 2,
+        "parts": 5,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "output part",
+      "schema": "format.schema.json",
+      "def": "ValidateItem",
+      "valid": true,
+      "value": {
+        "kind": "output_part",
+        "part": "word/document.xml",
+        "content_type": "application/xml",
+        "source": "word/document.xml",
+        "references": []
+      }
+    },
+    {
+      "name": "op check",
+      "schema": "format.schema.json",
+      "def": "ValidateItem",
+      "valid": true,
+      "value": {
+        "kind": "op_check",
+        "op": "op_1",
+        "executed": true,
+        "residual": false
+      }
+    },
+    {
+      "name": "op check without residual flag",
+      "schema": "format.schema.json",
+      "def": "ValidateItem",
+      "valid": false,
+      "value": {
+        "kind": "op_check",
+        "op": "op_1",
+        "executed": true
+      }
+    },
+    {
+      "name": "validate complete",
+      "schema": "format.schema.json",
+      "def": "ValidateItem",
+      "valid": true,
+      "value": {
+        "kind": "validate_complete",
+        "complete": true,
+        "input_parts": 5,
+        "output_parts": 4,
+        "operations": 2,
+        "reopened": true
+      }
+    },
+    {
+      "name": "validate complete not complete",
+      "schema": "format.schema.json",
+      "def": "ValidateItem",
+      "valid": false,
+      "value": {
+        "kind": "validate_complete",
+        "complete": false,
+        "input_parts": 5,
+        "output_parts": 4,
+        "operations": 2,
+        "reopened": true
+      }
+    }
+  ]
+}

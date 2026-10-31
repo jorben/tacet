@@ -1,0 +1,16 @@
+[
+  {
+    "name": "empty",
+    "key_hex": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+    "resource_id": "interop-vector-empty",
+    "plaintext_hex": "",
+    "encoded_hex": "54414345545245530001470e06a1b35577d45834c8be940f4701360874f5411f948d76c0bd4e6f96ca19c1904ec5663ece4486bf6d8e3ccf18ac2c875aa50f5d1f2d751b82317db3a1036ec724cfd012644043fc8963da4519d9"
+  },
+  {
+    "name": "unicode",
+    "key_hex": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+    "resource_id": "interop-vector-unicode",
+    "plaintext_hex": "e4b8ade6968720f09f98802073796e746865746963",
+    "encoded_hex": "54414345545245530001d58dd7d85dfdba424c639e5018f97f76684c6d7cefa5793c8a7b169acd4968ed56f1bf11a5f92e97d08d7dafddd26f71da44776e7f5b5d7a2f449054ffa8c5f3df2299520f6dd0390096206f85f5295a85607ab45678961164c1a5acff0122e74d8345c91b"
+  }
+]

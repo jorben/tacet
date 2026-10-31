@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Built-in Tacet plugin. AstrLink Guard model adapter: tokenisation, windows, decoding and label mapping (architecture 8.2)"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["tacet-plugin-sdk"]
+dependencies = ["tacet-plugin-sdk", "onnxruntime>=1.24,<2", "tokenizers>=0.22,<1", "numpy>=2,<3"]
 
 [tool.uv.sources]
 tacet-plugin-sdk = { workspace = true }

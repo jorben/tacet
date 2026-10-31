@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Built-in Tacet plugin. Text PDF: text-layer consistency checks and rasterised safe output (architecture 4.5)"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["tacet-plugin-sdk"]
+dependencies = ["tacet-plugin-sdk", "pypdfium2>=4.30,<6", "Pillow>=12,<13"]
 
 [tool.uv.sources]
 tacet-plugin-sdk = { workspace = true }

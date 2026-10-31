@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/lifecycle.schema.json",
+  "title": "Task lifecycle and streaming admission",
+  "$defs": {
+    "Identity": {
+      "type": "object",
+      "required": ["job_id", "attempt_id", "owner_generation", "job_version"],
+      "properties": {
+        "job_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "attempt_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "owner_generation": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "job_version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+      }
+    },
+    "Cancel": {
+      "allOf": [{"$ref": "#/$defs/Identity"}],
+      "unevaluatedProperties": false
+    },
+    "Empty": {
+      "type": "object",
+      "maxProperties": 0
+    },
+    "Health": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"const": "ready"}},
+      "additionalProperties": false
+    },
+    "Task": {
+      "allOf": [{"$ref": "#/$defs/Identity"}],
+      "type": "object",
+      "required": ["protocol", "deadline_ms", "stream"],
+      "properties": {
+        "protocol": {"const": "1.0"},
+        "deadline_ms": {"type": "integer", "minimum": 1, "maximum": 86400000},
+        "stream": {
+          "type": "object",
+          "required": ["id", "credit"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "credit": {
+              "type": "object",
+              "required": ["bytes", "items"],
+              "properties": {
+                "bytes": {"type": "integer", "minimum": 1, "maximum": 4194304},
+                "items": {"type": "integer", "minimum": 1, "maximum": 65536}
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

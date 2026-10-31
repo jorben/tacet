@@ -1,0 +1,1228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/format.schema.json",
+  "title": "M0 format inventory contract (remaining format roles not frozen)",
+  "$defs": {
+    "InventoryParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "Part": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part_id",
+        "content_type",
+        "bytes",
+        "classification",
+        "referenced"
+      ],
+      "properties": {
+        "kind": {
+          "const": "part"
+        },
+        "part_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "content_type": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8589934592
+        },
+        "classification": {
+          "enum": [
+            "text",
+            "relationships",
+            "content_types",
+            "uninspected"
+          ]
+        },
+        "referenced": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Relation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source",
+        "id",
+        "type",
+        "target",
+        "external"
+      ],
+      "properties": {
+        "kind": {
+          "const": "relation"
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "external": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "InventoryComplete": {
+      "type": "object",
+      "required": [
+        "kind",
+        "complete",
+        "parts",
+        "relations"
+      ],
+      "properties": {
+        "kind": {
+          "const": "inventory_complete"
+        },
+        "complete": {
+          "const": true
+        },
+        "parts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        },
+        "relations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16384
+        }
+      },
+      "additionalProperties": false
+    },
+    "InventoryItem": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Part"
+        },
+        {
+          "$ref": "#/$defs/Relation"
+        },
+        {
+          "$ref": "#/$defs/InventoryComplete"
+        }
+      ]
+    },
+    "ExtractParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "TextUnit": {
+      "type": "object",
+      "required": [
+        "kind",
+        "unit_id",
+        "part",
+        "ordinal",
+        "text",
+        "visibility"
+      ],
+      "properties": {
+        "kind": {
+          "const": "text_unit"
+        },
+        "unit_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "part": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "visibility": {
+          "enum": [
+            "visible",
+            "hidden",
+            "revision"
+          ],
+          "description": "hidden text and tracked changes are reported apart from visible body text and never mixed into it"
+        },
+        "source_map": {
+          "type": "object",
+          "required": [
+            "kind",
+            "part",
+            "ordinal"
+          ],
+          "properties": {
+            "kind": {
+              "const": "paragraph_ordinal"
+            },
+            "part": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "ordinal": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "PartState": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part",
+        "class",
+        "state"
+      ],
+      "properties": {
+        "kind": {
+          "const": "part_state"
+        },
+        "part": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "state": {
+          "enum": [
+            "inspected",
+            "not_inspected",
+            "unsupported",
+            "failed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "maxLength": 64
+        },
+        "class": {
+          "enum": [
+            "text",
+            "other",
+            "unknown"
+          ],
+          "description": "text: carries document text; other: structural, no text; unknown: not recognised by the plugin"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExtractComplete": {
+      "type": "object",
+      "required": [
+        "kind",
+        "complete",
+        "units",
+        "parts"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extract_complete"
+        },
+        "complete": {
+          "const": true
+        },
+        "units": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "parts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExtractItem": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TextUnit"
+        },
+        {
+          "$ref": "#/$defs/PartState"
+        },
+        {
+          "$ref": "#/$defs/ExtractComplete"
+        }
+      ]
+    },
+    "UnlockParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "password"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "output": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "encryption"
+          ],
+          "properties": {
+            "mode": {
+              "const": "write"
+            }
+          }
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "writeOnly": true,
+          "x-secret": true
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "UnlockDone": {
+      "type": "object",
+      "required": [
+        "kind",
+        "bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unlock_done"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8589934592
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProbeParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "ProbeResult": {
+      "type": "object",
+      "required": [
+        "kind",
+        "format",
+        "encryption",
+        "pages",
+        "images",
+        "embedded",
+        "bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "probe_result"
+        },
+        "format": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        },
+        "encryption": {
+          "enum": [
+            "none",
+            "password_required",
+            "permission_only",
+            "unsupported"
+          ]
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "images": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "embedded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        }
+      },
+      "additionalProperties": false
+    },
+    "PlanLine": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "part",
+            "ordinal",
+            "start",
+            "end",
+            "replacement"
+          ],
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "part": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "ordinal": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            },
+            "start": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "replacement": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "part"
+          ],
+          "properties": {
+            "kind": {
+              "const": "part"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "part": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WriteParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input",
+        "plan",
+        "candidate"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "candidate": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "encryption"
+          ],
+          "properties": {
+            "mode": {
+              "const": "write"
+            }
+          }
+        },
+        "dpi": {
+          "enum": [
+            150,
+            200,
+            300
+          ]
+        },
+        "style": {
+          "$ref": "#/$defs/RedactStyle"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "OpResult": {
+      "type": "object",
+      "required": [
+        "kind",
+        "op",
+        "status"
+      ],
+      "properties": {
+        "kind": {
+          "const": "op_result"
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "enum": [
+            "executed",
+            "not_executed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "maxLength": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "PartFate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part",
+        "fate"
+      ],
+      "properties": {
+        "kind": {
+          "const": "part_fate"
+        },
+        "part": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "fate": {
+          "enum": [
+            "kept",
+            "redacted",
+            "removed",
+            "converted"
+          ]
+        },
+        "expected_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "additionalProperties": false
+    },
+    "WriteComplete": {
+      "type": "object",
+      "required": [
+        "kind",
+        "complete",
+        "operations",
+        "parts",
+        "bytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "write_complete"
+        },
+        "complete": {
+          "const": true
+        },
+        "operations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "parts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1099511627776
+        }
+      },
+      "additionalProperties": false
+    },
+    "WriteItem": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OpResult"
+        },
+        {
+          "$ref": "#/$defs/PartFate"
+        },
+        {
+          "$ref": "#/$defs/WriteComplete"
+        }
+      ]
+    },
+    "ValidateParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input",
+        "plan",
+        "candidate"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "candidate": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "dpi": {
+          "enum": [
+            150,
+            200,
+            300
+          ]
+        },
+        "style": {
+          "$ref": "#/$defs/RedactStyle"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "InputPart": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part",
+        "content_type"
+      ],
+      "properties": {
+        "kind": {
+          "const": "input_part"
+        },
+        "part": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "additionalProperties": false
+    },
+    "OutputPart": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part",
+        "content_type"
+      ],
+      "properties": {
+        "kind": {
+          "const": "output_part"
+        },
+        "part": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "OpCheck": {
+      "type": "object",
+      "required": [
+        "kind",
+        "op",
+        "executed",
+        "residual"
+      ],
+      "properties": {
+        "kind": {
+          "const": "op_check"
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "executed": {
+          "type": "boolean"
+        },
+        "residual": {
+          "type": "boolean"
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "additionalProperties": false
+    },
+    "Unverified": {
+      "type": "object",
+      "required": [
+        "kind",
+        "scope",
+        "reason"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unverified"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "maxLength": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidateComplete": {
+      "type": "object",
+      "required": [
+        "kind",
+        "complete",
+        "input_parts",
+        "output_parts",
+        "operations",
+        "reopened"
+      ],
+      "properties": {
+        "kind": {
+          "const": "validate_complete"
+        },
+        "complete": {
+          "const": true
+        },
+        "input_parts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "output_parts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "operations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967296
+        },
+        "reopened": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidateItem": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/InputPart"
+        },
+        {
+          "$ref": "#/$defs/OutputPart"
+        },
+        {
+          "$ref": "#/$defs/OpCheck"
+        },
+        {
+          "$ref": "#/$defs/Unverified"
+        },
+        {
+          "$ref": "#/$defs/ValidateComplete"
+        }
+      ]
+    },
+    "PreviewMark": {
+      "type": "object",
+      "required": [
+        "id",
+        "ordinal",
+        "start",
+        "end"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      },
+      "additionalProperties": false
+    },
+    "PreviewParams": {
+      "allOf": [
+        {
+          "$ref": "lifecycle.schema.json#/$defs/Task"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "page"
+      ],
+      "properties": {
+        "input": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "version"
+          ],
+          "properties": {
+            "mode": {
+              "const": "read"
+            }
+          }
+        },
+        "output": {
+          "allOf": [
+            {
+              "$ref": "common.schema.json#/$defs/ResourceRef"
+            }
+          ],
+          "required": [
+            "ref",
+            "mode",
+            "handle",
+            "encryption"
+          ],
+          "properties": {
+            "mode": {
+              "const": "write"
+            }
+          }
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "dpi": {
+          "enum": [
+            72,
+            100,
+            150
+          ]
+        },
+        "marks": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/PreviewMark"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "PreviewRect": {
+      "type": "object",
+      "required": [
+        "id",
+        "rect"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "rect": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PreviewItem": {
+      "type": "object",
+      "required": [
+        "kind",
+        "page",
+        "pages",
+        "width_px",
+        "height_px",
+        "image",
+        "bytes",
+        "rects",
+        "unmapped"
+      ],
+      "properties": {
+        "kind": {
+          "const": "page_preview"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "width_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20000
+        },
+        "height_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20000
+        },
+        "image": {
+          "const": "png"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "rects": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {
+            "$ref": "#/$defs/PreviewRect"
+          }
+        },
+        "unmapped": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RedactStyle": {
+      "description": "Look of the painted regions of a rasterised output (requirements FR-29); it never changes which pixels are covered.",
+      "enum": [
+        "black",
+        "gray",
+        "mosaic",
+        "stripe",
+        "heart",
+        "paw",
+        "snow",
+        "seal",
+        "star",
+        "dot",
+        "rainbow",
+        "plaid"
+      ]
+    }
+  }
+}

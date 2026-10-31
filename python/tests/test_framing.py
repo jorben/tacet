@@ -27,6 +27,14 @@ class FramingTest(unittest.TestCase):
         with self.assertRaises(framing.FrameError):
             framing.read(io.BytesIO(struct.pack(">I", 3) + b"\xff\xfe!"))
 
+    def test_nonfinite_numbers_are_not_json_protocol_values(self):
+        for value in (float('nan'), float('inf'), float('-inf')):
+            with self.subTest(value=value), self.assertRaises(framing.FrameError):
+                framing.encode({'score': value})
+        for body in (b'{"score":NaN}', b'{"score":Infinity}', b'{"score":-Infinity}'):
+            with self.assertRaises(framing.FrameError):
+                framing.read(io.BytesIO(struct.pack('>I', len(body)) + body))
+
     def test_encode_refuses_oversized_message(self):
         with self.assertRaises(framing.FrameError):
             framing.encode("x" * framing.MAX_MESSAGE_BYTES)

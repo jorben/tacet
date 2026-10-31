@@ -6,6 +6,7 @@ The JSON Schema files under `schema/v1` are the single source of the message con
 - Framing: a 4-byte big-endian length followed by that many bytes of UTF-8 JSON. Receivers check the length against the 4 MiB limit before allocating.
 - Task messages carry `job_id`, `attempt_id`, `owner_generation` and the protocol version. Large data travels through controlled resource references, never inside messages.
 - Streaming results, byte / item credit, heartbeats, deadlines and cancellation acknowledgements are Tacet extensions (`stream.schema.json`). Control messages must still flow while data is back-pressured.
+- The M0 segmented encrypted resource encoding is documented in [resource-v1.md](resource-v1.md), with shared Go/Python vectors under `testdata/`. Codec compatibility does not establish task authorization, OS-handle revocation or final protocol admission.
 
 | File | Contents |
 | --- | --- |

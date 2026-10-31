@@ -1,0 +1,394 @@
+{
+  "cases": [
+    {
+      "name": "one box at 72 dpi",
+      "boxes": [
+        [
+          20,
+          80,
+          60,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 72,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          20,
+          28,
+          60,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "margin and antialias at 200 dpi",
+      "boxes": [
+        [
+          20,
+          80,
+          60,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 200,
+      "margin_points": 1,
+      "antialias_pixels": 1,
+      "rects": [
+        [
+          51,
+          74,
+          171,
+          115
+        ]
+      ]
+    },
+    {
+      "name": "two boxes on one line merge",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          31,
+          80,
+          41,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 1,
+      "antialias_pixels": 1,
+      "rects": [
+        [
+          38,
+          55,
+          89,
+          87
+        ]
+      ]
+    },
+    {
+      "name": "two columns on one baseline stay apart",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          200,
+          80,
+          210,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 1,
+      "antialias_pixels": 1,
+      "rects": [
+        [
+          38,
+          55,
+          66,
+          87
+        ],
+        [
+          413,
+          55,
+          441,
+          87
+        ]
+      ]
+    },
+    {
+      "name": "two lines stay apart",
+      "boxes": [
+        [
+          20,
+          80,
+          60,
+          92
+        ],
+        [
+          20,
+          60,
+          60,
+          72
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 1,
+      "antialias_pixels": 1,
+      "rects": [
+        [
+          38,
+          55,
+          129,
+          87
+        ],
+        [
+          38,
+          96,
+          129,
+          129
+        ]
+      ]
+    },
+    {
+      "name": "clipped at the page edge",
+      "boxes": [
+        [
+          -5,
+          0,
+          10,
+          8
+        ],
+        [
+          230,
+          110,
+          245,
+          125
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 2,
+      "antialias_pixels": 2,
+      "rects": [
+        [
+          473,
+          0,
+          501,
+          27
+        ],
+        [
+          0,
+          227,
+          27,
+          251
+        ]
+      ]
+    },
+    {
+      "name": "fractional boxes round outward",
+      "boxes": [
+        [
+          20.3,
+          80.7,
+          60.2,
+          92.1
+        ]
+      ],
+      "page_w": 241.5,
+      "page_h": 120.5,
+      "dpi": 300,
+      "margin_points": 0.5,
+      "antialias_pixels": 1,
+      "rects": [
+        [
+          81,
+          115,
+          254,
+          169
+        ]
+      ]
+    },
+    {
+      "name": "gap wider than 1.5 box heights stays apart",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          50,
+          80,
+          60,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          41,
+          58,
+          63,
+          84
+        ],
+        [
+          104,
+          58,
+          126,
+          84
+        ]
+      ]
+    },
+    {
+      "name": "gap of exactly 1.5 box heights merges",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          48,
+          80,
+          58,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          41,
+          58,
+          121,
+          84
+        ]
+      ]
+    },
+    {
+      "name": "vertical overlap under half the shorter box stays apart",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          32,
+          87,
+          42,
+          99
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          66,
+          43,
+          88,
+          69
+        ],
+        [
+          41,
+          58,
+          63,
+          84
+        ]
+      ]
+    },
+    {
+      "name": "vertical overlap over half merges",
+      "boxes": [
+        [
+          20,
+          80,
+          30,
+          92
+        ],
+        [
+          32,
+          85,
+          42,
+          97
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 150,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          41,
+          47,
+          88,
+          84
+        ]
+      ]
+    },
+    {
+      "name": "lines given bottom first come out top first",
+      "boxes": [
+        [
+          20,
+          60,
+          60,
+          72
+        ],
+        [
+          20,
+          80,
+          60,
+          92
+        ]
+      ],
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 72,
+      "margin_points": 0,
+      "antialias_pixels": 0,
+      "rects": [
+        [
+          20,
+          28,
+          60,
+          40
+        ],
+        [
+          20,
+          48,
+          60,
+          60
+        ]
+      ]
+    },
+    {
+      "name": "no boxes",
+      "boxes": null,
+      "page_w": 240,
+      "page_h": 120,
+      "dpi": 200,
+      "margin_points": 1,
+      "antialias_pixels": 1,
+      "rects": []
+    }
+  ],
+  "note": "Regions vectors shared by Go (internal/plan) and the Python PDF plugin: one geometry for preview and write-back (MD-15). Rects are [left, top, right, bottom], half-open, unrotated pages.",
+  "version": 1
+}

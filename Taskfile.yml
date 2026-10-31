@@ -81,11 +81,17 @@ tasks:
     summary: Runs the Python SDK and built-in plugin tests
     dir: python
     cmds:
-      - uv run --locked python -m unittest discover -s tests
+      - uv run --locked --all-packages python -m unittest discover -s tests
+
+  check:backend-trace:
+    summary: Verifies every backend design identifier has a current module and acceptance mapping
+    cmds:
+      - python3 tools/backend_trace.py --check
 
   check:
     summary: Runs every check that CI runs
     cmds:
+      - task: check:backend-trace
       - task: lint
       - task: test
       - task: test:python

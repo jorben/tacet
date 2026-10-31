@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Built-in Tacet plugin. DOCX: full part inventory, cross-run write-back and image handling (architecture 4.5)"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["tacet-plugin-sdk"]
+dependencies = [
+    "tacet-plugin-sdk",
+    "lxml>=6.0,<7",
+    "msoffcrypto-tool>=5.4,<6",
+]
 
 [tool.uv.sources]
 tacet-plugin-sdk = { workspace = true }

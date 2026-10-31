@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorben/tacet/protocol/schema/v1/config.schema.json",
+  "title": "MVP configuration object content",
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "Score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "Action": {
+      "enum": [
+        "delete",
+        "placeholder",
+        "mask",
+        "keep"
+      ]
+    },
+    "Rule": {
+      "type": "object",
+      "required": [
+        "id",
+        "category"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "category": {
+          "$ref": "#/$defs/ID"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "terms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32768,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "boundary": {
+          "enum": [
+            "",
+            "digit",
+            "word",
+            "cjk"
+          ]
+        },
+        "validator": {
+          "enum": [
+            "",
+            "luhn",
+            "cn_id"
+          ]
+        },
+        "suspect": {
+          "type": "boolean"
+        },
+        "fold_case": {
+          "type": "boolean"
+        },
+        "context": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^\\r\\n]+$"
+          }
+        },
+        "context_window": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "pattern"
+          ],
+          "not": {
+            "required": [
+              "terms"
+            ]
+          }
+        },
+        {
+          "required": [
+            "terms"
+          ],
+          "not": {
+            "required": [
+              "pattern"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "ruleset": {
+      "type": "object",
+      "required": [
+        "rules"
+      ],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+            "$ref": "#/$defs/Rule"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "scheme": {
+      "type": "object",
+      "required": [
+        "category_actions",
+        "image_default"
+      ],
+      "properties": {
+        "category_actions": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "$ref": "#/$defs/ID"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Action"
+          }
+        },
+        "image_default": {
+          "enum": [
+            "remove",
+            "review"
+          ]
+        },
+        "human_review": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "type_change_authorized": {
+          "type": "boolean"
+        },
+        "auto_mismatch": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "model_profile": {
+      "type": "object",
+      "required": [
+        "model_id",
+        "manifest_digest",
+        "backend",
+        "adapter_floor",
+        "calibrated",
+        "label_map",
+        "memory_bytes"
+      ],
+      "properties": {
+        "model_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "manifest_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "backend": {
+          "const": "CPUExecutionProvider"
+        },
+        "adapter_floor": {
+          "$ref": "#/$defs/Score"
+        },
+        "calibrated": {
+          "$ref": "#/$defs/Score"
+        },
+        "label_map": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "additionalProperties": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        }
+      },
+      "additionalProperties": false
+    },
+    "preset": {
+      "type": "object",
+      "required": [
+        "ruleset_id",
+        "scheme_id",
+        "mode",
+        "rules_only",
+        "memory_bytes",
+        "dpi",
+        "style",
+        "retention_days"
+      ],
+      "properties": {
+        "ruleset_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "scheme_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "model_profile_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "mode": {
+          "enum": [
+            "guided",
+            "unattended",
+            "strict"
+          ]
+        },
+        "rules_only": {
+          "type": "boolean"
+        },
+        "min_confidence": {
+          "$ref": "#/$defs/Score"
+        },
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "dpi": {
+          "enum": [
+            150,
+            200,
+            300
+          ]
+        },
+        "style": {
+          "enum": [
+            "default",
+            "black",
+            "gray",
+            "mosaic",
+            "stripe",
+            "heart",
+            "paw",
+            "snow",
+            "seal",
+            "star",
+            "dot",
+            "rainbow",
+            "plaid"
+          ],
+          "description": "Redaction style (requirements FR-29). \"default\" follows the application setting; the style in effect is frozen into the snapshot when a task starts."
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365
+        },
+        "extra_ruleset_ids": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        },
+        "scheme_rev": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "if": {
+        "properties": {
+          "rules_only": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "model_profile_id",
+          "min_confidence"
+        ]
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -19,7 +19,10 @@ class FrameError(Exception):
 
 def encode(message: Any) -> bytes:
     """Encode one message as a frame."""
-    body = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    try:
+        body = json.dumps(message, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    except (ValueError, UnicodeEncodeError, TypeError):
+        raise FrameError("message is not UTF-8 JSON") from None
     if len(body) > MAX_MESSAGE_BYTES:
         raise FrameError(f"message of {len(body)} bytes exceeds {MAX_MESSAGE_BYTES}")
     return _HEADER.pack(len(body)) + body
@@ -35,9 +38,13 @@ def read(stream: BinaryIO) -> Any | None:
         raise FrameError(f"frame of {size} bytes exceeds {MAX_MESSAGE_BYTES}")
     body = _read_exact(stream, size, eof_ok=False)
     try:
-        return json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return json.loads(body.decode("utf-8"), parse_constant=_invalid_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise FrameError("frame body is not UTF-8 JSON") from exc
+
+
+def _invalid_constant(value):
+    raise ValueError("non-finite JSON number")
 
 
 def _read_exact(stream: BinaryIO, size: int, eof_ok: bool) -> bytes | None:
