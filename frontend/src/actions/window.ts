@@ -1,0 +1,67 @@
+// The application window: minimising and closing, including the guard for unfinished work.
+import { exportedCount, countFiles } from "../domain/batch";
+import { fmt } from "../domain/format";
+import { getService } from "../services";
+import { getState, store } from "../store";
+import { slotBusy } from "../store/selectors";
+import { closeModal, openModal, toast } from "../overlay/store";
+import { stopBatchTimer, stopSingleTimer } from "./timers";
+import { leaveBatchFile } from "./batch";
+
+export function minimiseWindow(): void {
+  void getService().minimiseWindow().catch(() => {});
+}
+
+/** In a browser there is no window to close; say so instead of silently doing nothing. */
+export function quitApp(): void {
+  const svc = getService();
+  if (svc.host === "browser") {
+    toast("浏览器预览：无法关闭窗口");
+    return;
+  }
+  void svc.quitApp().catch(() => {});
+}
+
+/** The user asked to close the window (title-bar button, Cmd+W). */
+export function requestClose(): void {
+  const s = getState();
+  if (s.settings.closeAct === "tray") {
+    minimiseWindow();
+    toast("已最小化到托盘" + (s.batch || s.single ? "，任务继续" : ""));
+    return;
+  }
+  if (!slotBusy(s, "single") && !slotBusy(s, "batch") && !s.history.some((h) => h.park)) { quitApp(); return; }
+  openModal({ type: "closeWindow" });
+}
+
+/** Keep unfinished work (paused, encrypted) and quit. */
+export function saveAndQuit(): void {
+  closeModal();
+  store.update((d) => { if (d.batch) d.batch.paused = true; });
+  quitApp();
+}
+
+/** Discard unfinished work and quit; exported files are not affected. */
+export function stopAndQuit(): void {
+  closeModal();
+  store.update((d) => {
+    if (d.single && d.single.from === "batch") leaveBatchFile(d);
+  });
+  const s = getState();
+  if (slotBusy(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
+  const bb = slotBusy(s, "batch");
+  if (bb) {
+    stopBatchTimer();
+    store.update((d) => {
+      if (bb.phase !== "precheck") {
+        d.history.unshift({
+          id: "stopped-" + Date.now(), k: "batch", name: bb.title, meta: fmt(bb.n) + " 份", st: "stop",
+          stl: "已停止 · 已导出 " + fmt(exportedCount(countFiles(d.batch!.files))) + " / " + fmt(bb.n), when: "刚刚",
+        });
+      }
+      d.batch = null;
+    });
+  }
+  store.update((d) => { d.history = d.history.filter((h) => !h.park); d.view = "home"; });
+  quitApp();
+}

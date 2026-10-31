@@ -1,42 +1,72 @@
-import { useEffect } from "react";
-import { start } from "./engine";
+import { lazy, Suspense, useEffect } from "react";
+import { requestClose } from "./actions/window";
+import { Rail } from "./features/shell/Rail";
+import { MainView } from "./features/shell/MainView";
+import { OverlayHost } from "./features/shell/OverlayHost";
+import { TitleBar } from "./features/shell/TitleBar";
 import { getService } from "./services";
+import { store, useAppState } from "./store";
 
 /** The scene navigator is a development/test aid: __SCENES__ is false in production builds, so it is compiled out. */
-const SCENES = __SCENES__;
+const SceneNavigator = __SCENES__ ? lazy(() => import("./dev/SceneNavigator")) : null;
 
-// Window chrome. On a desktop host the system draws the window frame and (on macOS) the traffic lights;
-// the title bar below is the draggable region. In a browser (dev/tests) the engine draws a stand-in frame.
+/** Files dropped outside a drop zone must not make the window navigate to them. */
+function usePreventFileNavigation() {
+  useEffect(() => {
+    const stop = (e: DragEvent) => e.preventDefault();
+    document.addEventListener("dragover", stop);
+    document.addEventListener("drop", stop);
+    return () => {
+      document.removeEventListener("dragover", stop);
+      document.removeEventListener("drop", stop);
+    };
+  }, []);
+}
+
+/** Facts about the host and the user's choices that the stylesheet reads from the root element. */
+function useDocumentAttributes() {
+  const theme = useAppState((s) => s.theme);
+  const redact = useAppState((s) => s.settings.redact);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.redact = redact || "black";
+  }, [theme, redact]);
+}
+
+/** Window chrome. On a desktop host the system draws the window frame and the title bar is the draggable region;
+ *  in a browser (dev/tests) a stand-in frame is drawn. */
 export default function App() {
   const host = getService().host;
+  const version = useAppState((s) => s.update.current);
+  usePreventFileNavigation();
+  useDocumentAttributes();
   useEffect(() => {
-    void start({ scenes: SCENES });
+    const svc = getService();
+    document.documentElement.dataset.host = svc.host;
+    let alive = true;
+    svc.appInfo().then((info) => {
+      if (alive) store.update((d) => { d.update.current = info.version; });
+    }).catch(() => {});
+    const off = svc.onCloseRequested(requestClose);
+    return () => {
+      alive = false;
+      off();
+    };
   }, []);
 
   return (
     <>
-      <div className="win" id="win" data-host={host}>
-        <header className="titlebar">
-          {host === "browser" && (
-            <div className="lights">
-              <button data-a="closeWin" aria-label="关闭窗口"></button>
-              <button aria-label="最小化" tabIndex={-1}></button>
-              <button aria-label="缩放" tabIndex={-1}></button>
-            </div>
-          )}
-          <span id="tbBack"></span>
-          <div className="tb-title" id="tbTitle"></div>
-          <div className="tb-right">
-            <button className="btn btn-g model-shell" id="modelShell" data-a="modelManage" hidden></button>
-            <span id="networkState" className="ib" data-tip="本机处理 · 未联网" data-tr="" tabIndex={0} aria-label="本机处理 · 未联网"></span>
-          </div>
-        </header>
-        <nav className="rail" id="rail" aria-label="主导航"></nav>
-        <main id="main"></main>
-        <div id="layer"></div>
+      <div className="win" id="win" data-host={host} data-version={version || undefined}>
+        <TitleBar />
+        <Rail />
+        <MainView />
+        <OverlayHost />
       </div>
-      {SCENES && <div id="proto"></div>}
-      <input type="file" id="fileIn" multiple hidden accept=".pdf,.docx,.txt,.md,.log,.csv,.jsonl,.json" />
+      {SceneNavigator && (
+        <Suspense fallback={null}>
+          <SceneNavigator />
+        </Suspense>
+      )}
     </>
   );
 }

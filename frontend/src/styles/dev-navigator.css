@@ -1,0 +1,11 @@
+/* Scene navigator (development and test builds only). */
+/* proto nav */
+#proto{position:fixed;right:14px;bottom:14px;z-index:100}
+#proto>button{height:30px;padding:0 12px;border-radius:15px;background:rgba(20,22,25,.82);color:#fff;font-size:12px;display:flex;align-items:center;gap:6px;opacity:.55;transition:opacity .2s;backdrop-filter:blur(8px)}
+#proto>button:hover,#proto.open>button{opacity:1}
+#proto .pm{position:absolute;right:0;bottom:38px;background:rgba(24,26,30,.96);color:#eee;border-radius:12px;padding:6px;width:220px;max-height:calc(100vh - 80px);overflow:auto;box-shadow:0 12px 32px rgba(0,0,0,.3);display:none}
+#proto.open .pm{display:block}
+#proto .pm button{display:block;width:100%;text-align:left;padding:6px 10px;border-radius:7px;font-size:12.5px;color:#e8e8e8}
+#proto .pm button:hover{background:rgba(255,255,255,.1)}
+#proto .pm .h{font-size:10.5px;color:#8a8f96;padding:8px 10px 2px;font-weight:600;letter-spacing:.05em}
+

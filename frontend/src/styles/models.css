@@ -1,0 +1,55 @@
+/* Local model preparation cards and notices. */
+/* local model preparation */
+.model-card{margin:0 0 16px;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:var(--surface);text-align:left}
+.model-head{display:flex;align-items:flex-start;gap:12px}
+.model-icon{width:34px;height:34px;border-radius:9px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;flex:none}
+.model-copy{flex:1;min-width:0}.model-title{font-size:14px;font-weight:600;line-height:1.6}.model-tags{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:10px;vertical-align:middle}.model-section-note{margin-left:auto;font-weight:400;font-size:12px}.model-title .pill{font-weight:400}
+.model-desc{font-size:12px;color:var(--ink-2);margin-top:3px;line-height:1.7;overflow-wrap:anywhere}
+.model-meta{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6}
+.model-ready{display:inline-flex;align-items:center;justify-content:center;min-width:84px;height:34px;color:var(--muted);font-size:12px;font-weight:400}
+.model-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.model-progress{margin-top:12px}.model-progress progress{display:block;width:100%;height:5px;border:0;border-radius:4px;overflow:hidden;accent-color:var(--primary);background:var(--line)}
+.model-progress progress::-webkit-progress-bar{background:var(--line)}.model-progress progress::-webkit-progress-value{background:var(--primary)}
+.model-progress-label{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:11px;margin-top:6px}
+.model-pending{border-top:1px solid var(--line-2);margin-top:14px;padding-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.model-pending>span{flex:1;min-width:100px;font-size:12px;overflow-wrap:anywhere}
+.model-card.intro .model-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:20px}.model-card.intro .model-copy>div,.model-card.intro .model-copy>p{grid-column:1}.model-card.intro .model-actions{grid-column:2!important;grid-row:1 / 4;margin:0;align-self:center}.home-inner:has(.model-card) .home-brand{padding:0 0 20px;gap:8px}.home-inner:has(.model-card) .home-brand-icon{width:64px;height:64px}.home-inner:has(.model-card) .drop{height:220px}
+.model-card.error .model-icon{color:var(--warn);background:var(--warn-soft)}
+.model-gate{padding:16px 24px 0;flex:none}.model-gate .model-card{max-width:var(--page-w);margin:0 auto}
+.model-shell{font-size:11px;height:28px;padding:0 8px;gap:5px;max-width:190px}
+.model-shell span{overflow:hidden;text-overflow:ellipsis}
+.model-shell[hidden]{display:none}
+@media(max-width:600px){.model-card.intro .model-copy{display:block}.model-card.intro .model-actions{margin-top:12px}.model-card{padding:14px}.model-head{gap:10px}.model-gate{padding:12px 12px 0}.model-shell{max-width:110px}.model-meta{font-size:11px}.model-actions .btn{height:36px}}
+
+/* Plugin model rows share the density and alignment of format rows. */
+#modelPlugins .model-card{margin-bottom:8px;min-height:60px;padding:10px 14px 10px 16px}
+#modelPlugins .model-head{align-items:center;gap:12px}
+#modelPlugins .model-icon{width:32px;height:32px;border-radius:8px}
+#modelPlugins .model-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:16px}
+#modelPlugins .model-copy>div,#modelPlugins .model-copy>p{grid-column:1}
+#modelPlugins .model-title{font-weight:500;line-height:1.5}
+#modelPlugins .model-meta{margin-top:2px;font-size:12px;line-height:1.5}
+#modelPlugins .model-actions{grid-column:2!important;grid-row:1 / span 4;margin:0;align-self:center}
+#modelPlugins .model-progress{margin-top:8px}
+#modelPlugins .model-ready{min-width:84px;text-align:center}
+@media(max-width:600px){
+ #modelPlugins .model-card{padding:10px 12px}
+ #modelPlugins .model-head{gap:10px}
+ #modelPlugins .model-copy{column-gap:10px}
+ #modelPlugins .model-meta{font-size:11px}
+ #modelPlugins .model-actions .btn{height:34px;padding:0 10px;font-size:12px}
+}
+
+/* Home preparation notice: one text block with independently aligned action. */
+.home-model-notice{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 18px;min-height:62px}
+.home-model-notice .model-icon{width:28px;height:28px;border-radius:8px}
+.home-model-notice .model-desc{margin:0;font-size:13px;line-height:1.65;overflow-wrap:normal;text-wrap:pretty}
+.home-model-notice .model-actions{margin:0;flex-wrap:nowrap}
+.home-model-notice .btn{height:32px;padding:0 12px;font-size:12px}
+@media(max-width:700px){
+ .home-model-notice{grid-template-columns:24px minmax(0,1fr);gap:10px 12px;padding:14px 16px}
+ .home-model-notice .model-icon{width:24px;height:24px;border-radius:7px;align-self:start}
+ .home-model-notice .model-desc{font-size:12px;line-height:1.75}
+ .home-model-notice .model-actions{grid-column:2;justify-self:start}
+}
+

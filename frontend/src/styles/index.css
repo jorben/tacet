@@ -1,0 +1,15 @@
+/* Order matters: later files override earlier ones exactly as in the original single stylesheet. */
+@import './tokens.css';
+@import './shell.css';
+@import './controls.css';
+@import './home.css';
+@import './models.css';
+@import './single.css';
+@import './result.css';
+@import './batch.css';
+@import './review.css';
+@import './redaction.css';
+@import './overlays.css';
+@import './config.css';
+@import './compare.css';
+@import './details.css';

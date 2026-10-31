@@ -1,0 +1,15 @@
+/* Disabled states, read-only rows and the review export panel. */
+.seg button:disabled{cursor:default}
+.seg button:disabled:not([aria-pressed=true]){opacity:.45}
+.sel:disabled{cursor:default}
+.tg:disabled{opacity:.5;cursor:default}
+.tool-hint{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-right:8px;white-space:nowrap}
+.mi.ro{cursor:default}.mi.ro:hover{background:none}
+.sum-row.ro{cursor:default}
+.side-note{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--muted);text-align:center}
+.rvx{margin:-6px 0 18px;text-align:left}
+.rvx-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13px;font-weight:500;margin-bottom:8px}
+.rvx-h .num{color:var(--muted);font-weight:400}
+.rvx-s{font-size:12px;color:var(--muted);margin-top:8px}
+.rvx-warn{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;color:var(--warn);margin:0 0 10px}
+.rvx-n{margin:0 0 20px;line-height:1.7}

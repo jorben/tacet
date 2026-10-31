@@ -1,0 +1,12 @@
+/* Side-by-side compare view and the responsive review layout. */
+/* compare */
+.review.cmp{grid-template-columns:minmax(0,1fr) 336px}
+.review.cmp .thumbs{display:none}
+.review.cmp .doc-scroll{padding:0 20px 80px}
+.cmp-h{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:10px 0 8px;background:var(--surface-2);font-size:12px;font-weight:600;color:var(--muted);text-align:center}
+.cmp-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;margin-bottom:18px;scroll-margin-top:40px}
+.cmp-row .paper{zoom:var(--z,.7);margin:0}
+.hit.twin{outline:1.5px solid color-mix(in srgb,var(--c) 85%,transparent);outline-offset:2px}
+@media (max-width:1180px){.review{grid-template-columns:minmax(0,1fr) 312px}.thumbs{display:none}}
+@media (max-width:860px){.split{grid-template-columns:1fr}.page{padding:24px 20px 48px}}
+

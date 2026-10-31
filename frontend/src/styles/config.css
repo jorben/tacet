@@ -1,0 +1,29 @@
+/* Schemes, rule sets, plugins and settings pages. */
+/* presets / plugins */
+.split{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;align-items:start}
+/* Keep tabs and the list in place; only editor content scrolls with the page. */
+.page.presets-page{display:flex;min-height:0;overflow:hidden;padding-bottom:0}
+.presets-page .page-inner{display:flex;flex-direction:column;min-height:0}
+.presets-page .tabs{flex-shrink:0}
+.presets-page .split{flex:1;min-height:0;grid-template-columns:220px minmax(0,1fr);grid-template-rows:minmax(0,1fr);align-items:stretch}
+.presets-page .preset-sidebar,.presets-page .preset-detail{min-width:0;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:56px}
+/* A long list stays independently accessible without moving the tabs or editor. */
+@media (max-width:860px){.presets-page .split{grid-template-columns:180px minmax(0,1fr)}}
+.plist{display:flex;flex-direction:column;gap:2px}
+.pitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;width:100%}
+.pitem:hover{background:var(--hover)}
+.pitem[aria-current=true]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.pitem .pn{font-weight:500}
+.pitem .pv{font-size:12px;color:var(--muted)}
+.phead{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--muted);font-weight:500}
+.tag.tp{background:var(--primary-soft);color:var(--primary)}
+
+/* settings */
+.text-link{color:var(--primary);font-size:12px;white-space:nowrap}
+.text-link:hover{text-decoration:underline;text-underline-offset:3px}
+.text-link:disabled{color:var(--muted);cursor:default;text-decoration:none}
+.row .version-controls{gap:12px;flex-wrap:wrap;justify-content:flex-end}
+.community-link{height:30px;padding:0 12px;gap:6px}
+.community-link:hover{background:var(--surface-2)}
+

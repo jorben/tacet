@@ -1,108 +1,189 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { S } from "../engine/state";
-import { $, $$, click, clickA, go, mountApp, tick, win } from "./helpers";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "@testing-library/react";
+import { getState, store } from "../store";
+import { $, $$, button, click, go, mountApp, pick, press, tick, type as typeInto, win } from "./helpers";
 
 beforeAll(mountApp);
 beforeEach(() => {
   vi.useFakeTimers();
 });
-afterEach(() => vi.useRealTimers());
-const menuItem = (t: string) => $$("#layer .mi").find((e) => e.textContent!.includes(t))!;
+
+const preset = () => getState().presets.find((x) => x.id === getState().presetSel)!;
+/** The control of the row titled `title` (a select button, switch, …). */
+const rowControl = (title: string, sel = "button") => $$(".row").find((r) => r.querySelector(".rl")?.textContent?.startsWith(title))!.querySelector<HTMLElement>(sel)!;
 
 describe("方案", () => {
   it("内建方案只读；列表含新建与导入", () => {
     go("presets");
     expect(win()).toContain("通用办公脱敏");
     expect(win()).toContain("内建");
-    expect($('[data-a="pdet"]')!.hasAttribute("disabled")).toBe(true);
-    expect($('[data-a="pnew"]')).toBeTruthy();
-    expect($('[data-a="pimp"]')).toBeTruthy();
+    expect(button("仅规则").hasAttribute("disabled")).toBe(true);
+    expect(button("新建")).toBeTruthy();
+    expect(button("导入")).toBeTruthy();
   });
 
   it("复制后可编辑：检测方式、类别处理、最低置信度提示、版本递增", () => {
     go("presets");
-    clickA("pcopy");
+    press("复制");
     expect(win()).toContain("通用办公脱敏 副本");
-    clickA("pdet", "rules");
+    press("仅规则");
     expect(win()).toContain("范围外");
-    clickA("pdet", "model");
-    clickA("pcat", "phone|ph");
-    const p = S.presets.find((x: any) => x.id === S.presetSel);
-    expect(p.cats.phone).toBe("ph");
-    expect(p.ver).toMatch(/^v\d+$/);
-    clickA("pconf");
-    click(menuItem("0.90"));
+    press("模型 + 规则");
+    click($$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button")[1]!);
+    expect(preset().cats.phone).toBe("ph");
+    expect(preset().ver).toMatch(/^v\d+$/);
+    click(rowControl("最低置信度"));
+    pick("0.90");
     expect(win()).toContain("可能漏检");
+  });
+
+  it("选择同一模型保持已设置的置信度", () => {
+    go("presets");
+    press("复制");
+    click(rowControl("最低置信度"));
+    pick("0.80");
+    expect(preset().conf).toBe(0.8);
+    click(rowControl("模型"));
+    pick("AstrLink Guard");
+    // same model: nothing to reset
+    expect(preset().conf).toBe(0.8);
   });
 
   it("规则集多选至少保留一个；历史版本回滚；删除", () => {
     go("presets");
-    clickA("psel", "cv");
-    clickA("prules");
-    click(menuItem("金融行业规则包"));
-    clickA("pmore");
-    click(menuItem("历史版本"));
+    press("简历脱敏", ".plist");
+    click(rowControl("规则集"));
+    pick("金融行业规则包");
+    // the menu stays available for further picks
+    expect($("#layer .pop")).toBeTruthy();
+    expect(preset().rules).toContain("fin");
+    pick("金融行业规则包");
+    pick("企业词条");
+    expect(preset().rules).toEqual(["cn"]);
+    pick("中国场景规则集");
+    expect($(".toast")!.textContent).toContain("至少保留一个规则集");
+    expect(preset().rules).toEqual(["cn"]);
+    press("更多");
+    pick("历史版本");
     expect($("#layer .modal")!.textContent).toContain("保留最近 5 个版本");
-    clickA("verBack", "0");
+    press("回滚");
     expect($(".toast")!.textContent).toContain("的内容保存为");
-    clickA("pcopy");
-    clickA("pmore");
-    click(menuItem("删除"));
+    press("复制");
+    press("更多");
+    pick("删除");
     expect($(".toast")!.textContent).toContain("已删除");
+  });
+
+  it("版本记录最多保留 5 个，回滚另存为新版本", () => {
+    go("presets");
+    press("复制");
+    const orgButtons = () => $$(".row").find((r) => r.querySelector(".rl")?.textContent === "公司名")!.querySelectorAll("button");
+    for (let i = 0; i < 8; i++) click(orgButtons()[i % 2 ? 1 : 2]!);
+    expect(preset().ver).toBe("v9");
+    // current + the latest four earlier ones = five versions
+    expect(preset().hist).toHaveLength(4);
+    press("更多");
+    pick("历史版本");
+    expect($$("#layer .modal .row")).toHaveLength(5);
+    press("回滚");
+    expect(preset().ver).toBe("v10");
+    expect(preset().hist).toHaveLength(4);
   });
 
   it("导入同名方案提示名称冲突并要求改名", () => {
     go("presets");
-    clickA("pimp");
+    press("导入");
     expect($("#layer .modal")!.textContent).toContain("名称冲突");
-    ($("#impName") as HTMLInputElement).value = "简历脱敏";
-    clickA("impGo");
+    typeInto("#impName", "简历脱敏");
+    press("改名导入");
     expect($("#impErr")!.textContent).toContain("仍与已有名称重复");
-    ($("#impName") as HTMLInputElement).value = "简历脱敏 (导入)";
-    clickA("impGo");
+    typeInto("#impName", "简历脱敏 (导入)");
+    press("改名导入");
     expect($(".toast")!.textContent).toContain("已导入");
+    expect(win()).toContain("简历脱敏 (导入)");
+  });
+
+  it("新建方案", () => {
+    go("presets");
+    press("新建");
+    expect(win()).toContain("新方案");
   });
 });
 
 describe("规则", () => {
   it("内建规则集只读；企业词条可添加、编辑、删除规则，版本递增", () => {
     go("presets");
-    clickA("ptab", "rules");
+    press("规则", "[role=tablist]");
     expect(win()).toContain("手机号");
-    expect($('[data-a="rtog"]')!.hasAttribute("disabled")).toBe(true);
-    clickA("rsel", "corp");
-    clickA("radd");
+    expect($$(".row button.tg")[0]!.hasAttribute("disabled")).toBe(true);
+    press("企业词条", ".plist");
+    press("添加规则");
     expect($("#layer .modal")!.textContent).toContain("添加规则");
-    ($("#rdName") as HTMLInputElement).value = "测试词";
-    ($("#rdBody") as HTMLTextAreaElement).value = "甲\n乙";
-    clickA("rdSave");
+    typeInto("#rdName", "测试词");
+    typeInto("#rdBody", "甲\n乙");
+    press("保存", "#layer .modal");
     expect($(".toast")!.textContent).toContain("已保存为 v3");
-    clickA("redit", "3");
-    clickA("rdDel");
+    const rows = $$(".row").filter((r) => r.querySelector('button[aria-label="编辑"]'));
+    click(rows.at(-1)!.querySelector('button[aria-label="编辑"]')!);
+    press("删除", "#layer .modal");
     expect($(".toast")!.textContent).toContain("已删除");
+  });
+
+  it("编辑规则但内容未变时版本不变", () => {
+    go("presets");
+    press("规则", "[role=tablist]");
+    press("企业词条", ".plist");
+    click($$('button[aria-label="编辑"]')[2]!);
+    press("保存", "#layer .modal");
+    expect($(".toast")!.textContent).toContain("内容未变，版本不变");
+  });
+
+  it("名称与内容必填", () => {
+    go("presets");
+    press("规则", "[role=tablist]");
+    press("企业词条", ".plist");
+    press("添加规则");
+    press("保存", "#layer .modal");
+    expect(document.activeElement?.id).toBe("rdName");
+    typeInto("#rdName", "x");
+    press("保存", "#layer .modal");
+    expect(document.activeElement?.id).toBe("rdBody");
   });
 
   it("正则不支持前后断言", () => {
     go("presets");
-    clickA("ptab", "rules");
-    clickA("rsel", "corp");
-    clickA("radd");
-    clickA("rdKind", "正则");
-    ($("#rdName") as HTMLInputElement).value = "x";
-    ($("#rdBody") as HTMLTextAreaElement).value = "(?<!a)b";
-    clickA("rdSave");
+    press("规则", "[role=tablist]");
+    press("企业词条", ".plist");
+    press("添加规则");
+    press("正则", "#layer .modal");
+    typeInto("#rdName", "x");
+    typeInto("#rdBody", "(?<!a)b");
+    press("保存", "#layer .modal");
     expect($(".toast")!.textContent).toContain("不支持前后断言");
+    expect($("#layer .modal")).toBeTruthy();
   });
 
   it("新建规则集；被方案使用时不能删除", () => {
     go("presets");
-    clickA("ptab", "rules");
-    clickA("rsnew");
+    press("规则", "[role=tablist]");
+    press("新建");
     expect(win()).toContain("新规则集");
-    clickA("rsel", "corp");
-    clickA("rsmore");
-    click(menuItem("删除"));
+    press("企业词条", ".plist");
+    press("更多");
+    pick("删除");
     expect($(".toast")!.textContent).toContain("正在被");
+  });
+
+  it("插件规则包只在插件启用时可用", () => {
+    go("plugins");
+    press("启用 金融行业规则包");
+    press("方案", "#rail");
+    press("规则", "[role=tablist]");
+    expect(win()).not.toContain("金融行业规则包");
+    press("插件", "#rail");
+    press("启用 金融行业规则包");
+    press("方案", "#rail");
+    expect(win()).toContain("金融行业规则包");
   });
 });
 
@@ -114,87 +195,120 @@ describe("插件", () => {
 
   it("启用开关与停用提示", () => {
     go("plugins");
-    clickA("pltog", "ofd");
+    press("启用 OFD");
     expect($(".toast")!.textContent).toContain("已停用");
-    clickA("pltog", "ofd");
+    press("启用 OFD");
     expect($(".toast")!.textContent).toContain("已启用");
   });
 
   it("安装：Git/本地文件夹 → 审查权限 → 安装", () => {
     go("plugins");
-    clickA("plinstall");
-    clickA("instKind", "dir");
-    clickA("fakeDir");
+    press("安装", ".phead");
+    press("本地文件夹");
+    click("#layer .modal button.field");
     expect(win()).toContain("~/plugins/tacet-eml");
-    clickA("instKind", "git");
-    clickA("instNext");
+    press("Git 仓库");
+    press("下一步");
     expect($("#layer .modal")!.textContent).toContain("无网络");
-    clickA("instDo");
+    press("安装", "#layer .modal");
     expect(win()).toContain("EML 邮件");
+    expect($("#layer .modal")).toBeNull();
   });
 
   it("更多菜单：授权完成判定；被任务引用时卸载需确认", () => {
     go("plugins");
-    clickA("plmore", "ofd");
-    click(menuItem("授权完成判定"));
+    const more = (name: string) => click($$(".row").find((r) => r.textContent!.includes(name))!.querySelector('button[aria-label="更多"]')!);
+    more("OFD");
+    pick("授权完成判定");
     expect($(".toast")!.textContent).toContain("已按策略完成");
-    clickA("plmore", "ofd");
-    click(menuItem("卸载"));
+    more("OFD");
+    pick("卸载");
     expect($("#layer .modal")!.textContent).toContain("1 个可恢复任务在使用此版本");
-    clickA("plrm", "ofd");
+    press("作废任务并卸载");
     expect(win()).not.toContain("tacet-ofd");
+  });
+
+  it("没有被任务引用的插件直接卸载", () => {
+    go("plugins");
+    click($$(".row").find((r) => r.textContent!.includes("金融行业规则包") && r.querySelector('button[aria-label="更多"]'))!.querySelector('button[aria-label="更多"]')!);
+    pick("卸载");
+    expect($(".toast")!.textContent).toBe("已卸载");
+    expect($("#layer .modal")).toBeNull();
   });
 });
 
 describe("设置", () => {
   it("外观切换写入 data-theme", () => {
     go("settings");
-    clickA("theme", "dark");
+    press("深色");
     expect(document.documentElement.dataset.theme).toBe("dark");
-    clickA("theme", "light");
+    press("浅色");
     expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   it("关闭行为、资源档位、保留天数、涂抹样式", () => {
     go("settings");
-    clickA("closeAct", "quit");
+    press("关闭程序");
     expect(win()).toContain("进行中的任务会暂停");
-    clickA("tier", "std");
+    press("标准");
     expect(win()).toContain("内存 4 GiB");
-    clickA("skeep");
-    click(menuItem("30"));
+    click(rowControl("中断后可恢复"));
+    pick("30");
     expect(win()).toContain("保留 30 天");
     expect($$(".rtile")).toHaveLength(12);
-    clickA("redact", "heart");
+    press("粉色爱心");
     expect(document.documentElement.dataset.redact).toBe("heart");
+    expect(button("粉色爱心").getAttribute("aria-checked")).toBe("true");
   });
 
   it("清理工作区、检查更新（含未完成任务的更新对话框）、关于", () => {
     go("settings");
-    clickA("cleanWs");
+    press("清理…");
     expect($("#layer .modal")!.textContent).toContain("清理工作区");
-    clickA("cleanDo");
+    press("清理", "#layer .modal");
     expect($(".toast")!.textContent).toContain("已清理");
-    clickA("checkUpd");
+    press("检查更新");
     expect(win()).toContain("检查中…");
     tick(1000);
     expect(win()).toContain("发现新版本 1.0.1");
-    clickA("updateApp");
+    press("更新", ".version-controls");
     expect($("#layer .modal")!.textContent).toContain("更新功能尚未接入");
-    clickA("updateDo");
+    press("更新", "#layer .modal");
     tick(1300);
     expect($("#currentVersion")!.textContent).toBe("1.0.1");
-    clickA("aboutLink", "discord");
+    press("Discord");
     expect($("#layer .modal")!.textContent).toContain("地址待配置");
-    clickA("closeModal");
-    clickA("licenses");
+    press("知道了");
+    press("开源许可");
     expect($("#layer .modal")!.textContent).toContain("Apache");
+  });
+
+  it("有未完成任务时更新需选择：作废并更新会清掉它们", () => {
+    go("b2");
+    press("设置", "#rail");
+    press("检查更新");
+    tick(1000);
+    press("更新", ".version-controls");
+    expect($("#layer .modal")!.textContent).toContain("个任务未完成");
+    press("作废并更新");
+    expect(getState().batch).toBeNull();
+    tick(1300);
+    expect($(".toast")!.textContent).toContain("已作废未完成的任务");
   });
 
   it("自动检查更新开关", () => {
     go("settings");
     const before = $("#autoUpdate")!.getAttribute("aria-checked");
-    clickA("autoUpd");
+    press("自动检查更新");
     expect($("#autoUpdate")!.getAttribute("aria-checked")).not.toBe(before);
+  });
+
+  it("没有更新时提示已是最新版本", () => {
+    go("settings");
+    act(() => store.update((d) => { d.update.current = "1.0.1"; }));
+    press("检查更新");
+    tick(1000);
+    expect(win()).toContain("已是最新版本");
+    expect($("#updateApp")).toBeNull();
   });
 });

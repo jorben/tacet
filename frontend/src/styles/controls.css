@@ -1,0 +1,50 @@
+/* Buttons, segmented controls, switches, pills, page scaffolds and list rows. */
+/* buttons */
+.btn{height:34px;padding:0 14px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:500;white-space:nowrap;transition:background .15s,box-shadow .15s,filter .15s,opacity .15s}
+.btn-p{background:var(--primary);color:var(--on-primary)}
+.btn-p:hover{filter:brightness(1.12)}
+.btn-s{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
+.btn-s:hover{background:var(--surface-2)}
+.btn-g{color:var(--ink-2)}.btn-g:hover{background:var(--hover)}
+.btn-d{color:var(--bad)}.btn-d:hover{background:var(--bad-soft)}
+.btn-lg{height:44px;padding:0 22px;font-size:15px;border-radius:10px}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.ib{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted);transition:background .15s,color .15s;flex:none}
+.ib:hover{background:var(--hover);color:var(--ink)}
+.sel{height:30px;padding:0 6px 0 10px;border-radius:7px;display:inline-flex;align-items:center;gap:4px;color:var(--ink-2);white-space:nowrap;transition:background .15s}
+.sel:hover{background:var(--hover);color:var(--ink)}
+.sel.sm{height:26px;font-size:12px;padding:0 4px 0 8px}
+.seg{display:inline-flex;background:var(--hover);border-radius:8px;padding:2px;gap:2px}
+.seg button{height:28px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border-radius:6px;font-size:13px;color:var(--muted);transition:background .15s,color .15s}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+.seg.full{display:flex}.seg.full button{flex:1}
+.tg{width:36px;height:22px;border-radius:11px;background:var(--line);position:relative;transition:background .2s;flex:none}
+.tg::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
+.tg[aria-checked=true]{background:var(--ok)}
+.tg[aria-checked=true]::after{transform:translateX(14px)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}.pill.pri{background:var(--primary-soft);color:var(--primary)}
+.pill.ghost{background:none;box-shadow:inset 0 0 0 1px var(--line)}
+button.pill:hover{filter:brightness(.97)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.sw{width:10px;height:10px;border-radius:3px;background:var(--c);flex:none}
+
+/* page scaffolds */
+.page{flex:1;overflow:auto;padding:32px 40px 56px}
+.page-inner{width:100%;max-width:var(--page-w);margin:0 auto}
+.center{flex:1;display:flex;align-items:center;justify-content:center;padding:40px}
+.sec-t{font-size:12px;font-weight:600;color:var(--muted);margin:28px 4px 10px;display:flex;align-items:center;gap:8px}
+.h1{font-size:22px;font-weight:650;letter-spacing:-.01em}
+.list{background:var(--surface);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line)}
+.row{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 14px 8px 16px;border-top:1px solid var(--line-2);width:100%}
+.row:first-child{border-top:0}
+button.row{transition:background .15s}button.row:hover{background:var(--surface-2)}
+.list>.row:first-child{border-radius:12px 12px 0 0}.list>.row:last-child{border-radius:0 0 12px 12px}.list>.row:only-child{border-radius:12px}
+.row .ri{color:var(--muted)}
+.row .rl{font-weight:500}
+.row .rs{font-size:12px;color:var(--muted)}
+.row .rv{margin-left:auto;display:flex;align-items:center;gap:8px}
+.card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow),0 0 0 1px var(--line)}
+

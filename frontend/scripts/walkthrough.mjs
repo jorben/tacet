@@ -1,11 +1,12 @@
 // Needs a build that includes the scene navigator: VITE_SCENES=1 npm run build && npx vite preview --port 4173
 // Headless-browser walkthrough: visits every prototype scene and the main flows, fails on page errors,
-// and writes screenshots plus docs/walkthrough.md. Usage: npm run build && npx vite preview & node scripts/walkthrough.mjs
+// and writes screenshots plus docs/walkthrough.md. Usage: npm run build:scenes, then npm run preview -- --port 4173, then npm run walkthrough
 import { mkdirSync, writeFileSync } from "node:fs";
 import { launch } from "./walk-lib.mjs";
+import { resolve, join } from "node:path";
 
 const BASE = process.env.BASE_URL || "http://127.0.0.1:4173/";
-const OUT = new URL("../docs/walkthrough/", import.meta.url).pathname;
+const OUT = process.env.WALKTHROUGH_OUT ? resolve(process.env.WALKTHROUGH_OUT) : new URL("../docs/walkthrough/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 
 const browser = await launch();
@@ -21,7 +22,7 @@ async function shot(name, expects) {
   const text = (await page.locator("#win").innerText()).replace(/\s+/g, " ");
   const miss = expects.filter((e) => !text.includes(e));
   const file = String(++n).padStart(2, "0") + "-" + name + ".png";
-  await page.screenshot({ path: OUT + file });
+  await page.screenshot({ path: join(OUT, file) });
   rows.push({ name, file, ok: miss.length === 0, miss });
   if (miss.length) errors.push(name + ": 缺少文案 " + miss.join(" | "));
 }
@@ -63,58 +64,57 @@ await scene("close", "关闭窗口", ["最小化到托盘"]);
 
 // flows
 await page.goto(BASE + "#scene=home"); await page.reload(); await page.waitForTimeout(400);
-await page.locator('[data-a="allHistory"]').click();
+await page.getByRole('button', { name: '查看全部', exact: false }).click();
 await shot("最近任务对话框", ["最近任务", "季度客户材料"]);
 await page.keyboard.press("Escape");
-await page.locator('[data-a="homePreset"]').click();
+await page.locator('.drop-preset').click();
 await shot("方案菜单", ["简历脱敏", "日志清理", "管理方案"]);
 await page.keyboard.press("Escape");
 
 await page.goto(BASE + "#scene=presets"); await page.reload(); await page.waitForTimeout(300);
-await page.locator('[data-a="ptab"][data-v="rules"]').click();
+await page.getByRole('tab', { name: '规则', exact: true }).click();
 await shot("规则集", ["中国场景规则集", "手机号", "企业词条"]);
-await page.locator('[data-a="rsel"][data-v="corp"]').click();
-await page.locator('[data-a="radd"]').click();
+await page.locator('.pitem').filter({ hasText: '企业词条' }).click();
+await page.getByRole('button', { name: '添加规则', exact: true }).click();
 await shot("添加规则对话框", ["添加规则", "词表", "正则", "命中归类"]);
 await page.keyboard.press("Escape");
-await page.locator('[data-a="pimp"]').click().catch(() => {});
 
 await page.goto(BASE + "#scene=plugins"); await page.reload(); await page.waitForTimeout(300);
-await page.locator('[data-a="plinstall"]').click();
+await page.getByRole('button', { name: '安装', exact: true }).click();
 await shot("安装插件", ["安装插件", "Git 仓库", "本地文件夹"]);
-await page.locator('[data-a="instNext"]').click();
+await page.getByRole('button', { name: '下一步', exact: true }).click();
 await shot("安装插件 · 审查", ["EML 邮件", "插件可读取文档原文", "安装"]);
-await page.locator('[data-a="instDo"]').click();
+await page.getByRole('dialog').getByRole('button', { name: '安装', exact: true }).click();
 await shot("安装插件 · 完成", ["EML 邮件"]);
 
 await page.goto(BASE + "#scene=settings"); await page.reload(); await page.waitForTimeout(300);
-await page.locator('[data-a="checkUpd"]').click();
+await page.getByRole('button', { name: '检查更新', exact: true }).click();
 await page.waitForTimeout(1200);
 await shot("检查更新", ["发现新版本"]);
-await page.locator('[data-a="updateApp"]').click();
+await page.locator('#updateApp').click();
 await shot("更新对话框", ["更新至", "更新功能尚未接入"]);
 await page.keyboard.press("Escape");
-await page.locator('[data-a="licenses"]').click();
+await page.getByRole('button', { name: '开源许可', exact: false }).click();
 await shot("开源许可", ["开源许可", "Apache"]);
 await page.keyboard.press("Escape");
-await page.locator('[data-a="theme"][data-v="dark"]').click();
+await page.getByRole('button', { name: '深色', exact: true }).click();
 await shot("深色外观", ["外观"]);
-await page.locator('[data-a="theme"][data-v="light"]').click();
+await page.getByRole('button', { name: '浅色', exact: true }).click();
 
 // batch main flow: precheck -> run -> review decide -> result -> manifest
 await page.goto(BASE + "#scene=b1"); await page.reload(); await page.waitForTimeout(300);
-await page.locator('[data-a="startBatch"]').click();
+await page.getByRole('button', { name: '开始处理', exact: true }).click();
 await page.waitForTimeout(6000);
 await shot("批量 · 运行一段时间", ["已导出"]);
-if (await page.locator('[data-a="review"]').count()) {
-  await page.locator('button[data-a="review"]').first().click();
+if (await page.getByRole('button', { name: '开始复核', exact: true }).count()) {
+  await page.getByRole('button', { name: '开始复核', exact: true }).first().click();
   await shot("批量 · 进入复核", ["请决策"]);
-  await page.locator('[data-a="rvDo"]').first().click();
+  await page.locator('.dopt').first().click();
   await shot("批量 · 复核决策后", ["已决定"]);
 }
 
 writeFileSync(
-  new URL("../docs/walkthrough.md", import.meta.url).pathname,
+  process.env.WALKTHROUGH_OUT ? join(OUT, "walkthrough.md") : new URL("../docs/walkthrough.md", import.meta.url).pathname,
   "# 无头浏览器走查记录\n\n由 `scripts/walkthrough.mjs` 生成（Playwright + Chromium，1440×920）。每行对应一张截图（`docs/walkthrough/`），并断言关键中文文案存在、页面无脚本错误。\n\n| # | 页面 / 流程 | 结果 | 截图 |\n| --- | --- | --- | --- |\n" +
     rows.map((r, i) => "| " + (i + 1) + " | " + r.name + " | " + (r.ok ? "通过" : "缺失：" + r.miss.join("、")) + " | `" + r.file + "` |").join("\n") +
     "\n\n页面错误：" + (errors.length ? "\n\n" + errors.map((e) => "- " + e).join("\n") : "无") + "\n",

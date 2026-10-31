@@ -1,0 +1,37 @@
+/* Design tokens (light and dark), reset and small utilities. */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#E8E8E6;--win:#FAFAF8;--surface:#FFFFFF;--surface-2:#F1F4F0;--hover:rgba(47,78,53,.05);
+ --ink:#172032;--ink-2:#465064;--muted:#747C8E;--faint:#A0A6AC;--line:#E1E5E1;--line-2:#EDF0EC;
+ --primary:#34734F;--on-primary:#fff;--primary-soft:#EDF5EE;--ring:#4F8E68;
+ --ok:#13834C;--ok-soft:#E6F5EC;--warn:#985A06;--warn-soft:#FAEFD8;--bad:#B42318;--bad-soft:#FBE7E4;
+ --redact:#141619;--paper:#FFFFFF;--paper-ink:#23262A;
+ --t-org:#8C6A1F;--t-name:#6550C8;--t-phone:#0B7A8F;--t-email:#2F6FB5;--t-id:#B4570B;--t-addr:#4E7A12;--t-card:#B0234F;--t-date:#8A4FC2;--t-other:#5B6470;--t-img:#5B6470;
+ --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+ --pop:0 12px 32px rgba(0,0,0,.16),0 1px 3px rgba(0,0,0,.08);
+ --ease:cubic-bezier(.2,.8,.2,1);
+ --page-w:880px;--rail-w:60px;
+ --botanical-soft:#F0F5EC;--drop-bg:rgba(247,251,247,.75);--drop-line:#C4D8C9;--icon-bg:#EDF6EF;--home-caption:#8A8D97;
+ font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif;
+}
+[data-theme=dark]{
+ --bg:#0A0B0D;--win:#16181B;--surface:#1D2024;--surface-2:#23272C;--hover:rgba(255,255,255,.06);
+ --ink:#ECEDEF;--ink-2:#C6C9CE;--muted:#8F959D;--faint:#5E646C;--line:#2C3036;--line-2:#25292E;
+ --primary:#9BC8A8;--on-primary:#13251A;--primary-soft:rgba(155,200,168,.12);--ring:#9BC8A8;
+ --botanical-soft:#213026;--drop-bg:rgba(27,38,30,.72);--drop-line:#3B5844;--icon-bg:#263A2D;--home-caption:#929A94;
+ --ok:#5CC48C;--ok-soft:rgba(92,196,140,.14);--warn:#E3AE55;--warn-soft:rgba(227,174,85,.14);--bad:#F2877B;--bad-soft:rgba(242,135,123,.14);
+ --paper:#EEEDE9;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);--pop:0 12px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06);
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:inherit}
+input,select{font:inherit;color:inherit}
+.i{flex:none;display:block}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .sm{font-size:12px} .sp{flex:1}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px}
+
+
+#root{width:100%;height:100%;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center}

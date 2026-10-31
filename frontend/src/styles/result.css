@@ -1,0 +1,15 @@
+/* Result cards shared by single, batch and review. */
+/* done */
+.donecard{width:440px;text-align:center;padding:40px 32px 28px}
+.done-ic{width:60px;height:60px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;background:var(--ok-soft);color:var(--ok);animation:popin .35s var(--ease)}
+.done-ic.warn{background:var(--warn-soft);color:var(--warn)}
+.donecard h2{font-size:20px;font-weight:650}
+.donecard .fn{margin-top:6px;color:var(--muted);font-size:13px;display:flex;justify-content:center;gap:6px;align-items:center}
+.stats{display:flex;justify-content:center;flex-wrap:wrap;gap:14px 28px;margin:24px 0 26px}
+.stats div{display:flex;flex-direction:column;gap:2px}
+.stats b{font-size:20px;font-weight:600}
+.stats span{font-size:12px;color:var(--muted)}
+.donecard .acts{display:flex;gap:8px;justify-content:center}
+.foot-note{margin-top:22px;font-size:12px;color:var(--faint);display:flex;align-items:center;justify-content:center;gap:5px}
+@keyframes popin{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+

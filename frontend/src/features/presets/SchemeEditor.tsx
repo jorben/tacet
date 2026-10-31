@@ -1,0 +1,125 @@
+import { useAppState } from "../../store";
+import { openConfidenceMenu, openPresetModelMenu, openPresetMoreMenu, openPresetRulesMenu, copyPreset, newPreset, selectPreset, setCategoryTreatment, setDetection, startImport } from "../../actions/presets";
+import { MODEL_LABELS, CATEGORIES, OFFICE_CATEGORIES } from "../../domain/catalog";
+import { availableRulesets, confidenceOf, formatConfidence, modelById, presetConfidence } from "../../domain/presets";
+import type { OfficeCategoryId, Preset, PresetTreatment } from "../../domain/types";
+import { Icon, List, Pill, Row, SelectButton, Segmented, Swatch, categoryColor, tip } from "../../ui";
+import { ConfigHeader } from "./ConfigHeader";
+import { ItemList } from "./ItemList";
+
+const TREATMENT_OPTIONS = [
+  { value: "mask", label: "涂抹" },
+  { value: "ph", label: "占位" },
+  { value: "off", label: "关闭" },
+] as const;
+
+function ConfidenceRow({ preset: p, locked }: { preset: Preset; locked: boolean }) {
+  const models = useAppState((s) => s.models);
+  const c = confidenceOf(modelById(models, p.model));
+  const v = presetConfidence(p, models);
+  return (
+    <div className="row" style={{ flexWrap: "wrap", rowGap: 8 }}>
+      <span className="ri">
+        <Icon name="sliders" size={17} />
+      </span>
+      <div style={{ minWidth: 0, flex: "1 1 140px" }}>
+        <div className="rl">最低置信度</div>
+        <div className="rs">低于此值的模型命中不做涂抹</div>
+      </div>
+      <span className="rv">
+        {v > c.rec && (
+          <Pill tone="warn" tabIndex={0} {...tip("高于推荐值，可能漏掉更多敏感信息；模型识别的类别不能无人值守处理", { align: "end" })}>
+            <Icon name="alert" size={12} />
+            可能漏检
+          </Pill>
+        )}
+        <SelectButton disabled={locked} chevron={!locked} onClick={(e) => openConfidenceMenu(e.currentTarget)}>
+          {formatConfidence(v)}
+          <span className="muted sm">{v === c.rec ? "推荐" : "推荐 " + formatConfidence(c.rec)}</span>
+        </SelectButton>
+      </span>
+    </div>
+  );
+}
+
+function CategoryRow({ category, value, locked }: { category: OfficeCategoryId; value: PresetTreatment; locked: boolean }) {
+  return (
+    <div className="row" style={categoryColor(category)}>
+      <Swatch category={category} />
+      <span className="rl">{CATEGORIES[category].l}</span>
+      <span className="rv">
+        {value === "na" ? (
+          <Pill tone="ghost" {...tip("仅规则模式无法检查此类", { align: "end" })}>
+            <Icon name="alert" size={12} />
+            范围外
+          </Pill>
+        ) : (
+          <Segmented value={value} disabled={locked} onChange={(k) => setCategoryTreatment(category, k)} options={[...TREATMENT_OPTIONS]} />
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** Schemes: the list on the left, the selected scheme's settings on the right. */
+export function SchemeEditor() {
+  const presets = useAppState((s) => s.presets);
+  const models = useAppState((s) => s.models);
+  const rulesets = useAppState((s) => s.rulesets);
+  const plugins = useAppState((s) => s.plugins);
+  const selected = useAppState((s) => s.presetSel);
+  const p = presets.find((x) => x.id === selected) || presets[0]!;
+  const locked = !!p.builtin;
+  const model = modelById(models, p.model);
+  const sets = availableRulesets(rulesets, plugins).filter((rs) => p.rules.includes(rs.id));
+  return (
+    <div className="split">
+      <ItemList
+        items={presets.map((x) => ({ id: x.id, icon: "layers", title: x.name, subtitle: x.ver + (x.edited ? " · " + x.edited : "") }))}
+        selectedId={p.id}
+        onSelect={selectPreset}
+        onCreate={newPreset}
+        onImport={() => startImport("preset")}
+      />
+      <div className="preset-detail" role="region" aria-label="方案内容" tabIndex={0}>
+        <ConfigHeader name={p.name} version={p.ver} locked={locked} lockedHint="内建方案，复制后可编辑" onCopy={copyPreset} onMore={openPresetMoreMenu} />
+        <List style={{ marginBottom: 14 }}>
+          <Row icon="scan" title="检测方式">
+            <Segmented
+              value={p.det}
+              disabled={locked}
+              onChange={setDetection}
+              options={[{ value: "model", label: "模型 + 规则" }, { value: "rules", label: "仅规则" }]}
+            />
+          </Row>
+          {p.det === "model" && (
+            <Row icon="cpu" title="模型">
+              <SelectButton disabled={locked} chevron={!locked} onClick={(e) => openPresetModelMenu(e.currentTarget)}>
+                {model?.name || "模型不可用"}
+                <span className="muted sm">
+                  {model?.version || ""} · {(model && MODEL_LABELS[model.status]) || "不可用"}
+                </span>
+              </SelectButton>
+            </Row>
+          )}
+          {p.det === "model" && <ConfidenceRow preset={p} locked={locked} />}
+          <Row icon="hash" title="规则集">
+            <SelectButton disabled={locked} chevron={!locked} onClick={(e) => openPresetRulesMenu(e.currentTarget)}>
+              {sets.length ? sets.map((x) => x.name).join(" · ") : <span style={{ color: "var(--bad)" }}>未选择</span>}
+            </SelectButton>
+          </Row>
+          <Row icon="image" title="图像与嵌入">
+            <span className="muted" style={{ paddingRight: 10 }}>
+              涂抹
+            </span>
+          </Row>
+        </List>
+        <List>
+          {OFFICE_CATEGORIES.map((t) => (
+            <CategoryRow key={t} category={t} value={p.cats[t]} locked={locked} />
+          ))}
+        </List>
+      </div>
+    </div>
+  );
+}
