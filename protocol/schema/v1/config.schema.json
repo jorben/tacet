@@ -281,9 +281,12 @@
             "star",
             "dot",
             "rainbow",
-            "plaid"
+            "plaid",
+            "solid",
+            "diagonal",
+            "pattern"
           ],
-          "description": "Redaction style (requirements FR-29). \"default\" follows the application setting; the style in effect is frozen into the snapshot when a task starts."
+          "description": "Redaction style (requirements FR-29). \"default\" follows the application setting; the style in effect is frozen into the snapshot when a task starts. The earlier values solid, diagonal, mosaic and pattern were never offered for choice on any screen; solid, diagonal and pattern are still read and follow the application setting like \"default\"."
         },
         "retention_days": {
           "type": "integer",

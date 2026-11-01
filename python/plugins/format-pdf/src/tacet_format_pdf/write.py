@@ -23,6 +23,21 @@ from .raster import PDFError, rasterize_text_subset
 from .styles import DEFAULT as DEFAULT_STYLE
 
 _CODE = re.compile(r'^[A-Z][A-Z0-9_]*$')
+_IMAGES = re.compile(r'^page/([1-9][0-9]{0,5})/images$')
+
+
+def image_page(part):
+    """Page index of a ``page/N/images`` part (the images of page N), or None."""
+    m = _IMAGES.match(part)
+    return int(m.group(1)) - 1 if m else None
+
+
+def image_regions(facts, dpi):
+    """Pixel rectangles over a page's images: each image's box on its own, with the shared margin."""
+    out = []
+    for box in facts.images:
+        out.extend(regions([box], facts.width, facts.height, dpi))
+    return out
 DEFAULT_DPI = 200
 
 
@@ -65,6 +80,7 @@ def write(source, ops, sink, task, schemas, dpi=DEFAULT_DPI, style=DEFAULT_STYLE
     names = {name for name, _ in parts}
     results: dict[str, tuple[str, str | None]] = {}
     text_ops: dict[int, dict[int, list]] = defaultdict(lambda: defaultdict(list))
+    image_ops: dict[int, list] = defaultdict(list)
     for op in ops:
         if op.kind == 'text':
             index = page_index(op.part)
@@ -74,6 +90,8 @@ def write(source, ops, sink, task, schemas, dpi=DEFAULT_DPI, style=DEFAULT_STYLE
                 text_ops[index][op.ordinal].append(op)
         elif op.part in DROPPED and op.part in names:
             results[op.id] = ('executed', None)  # rasterising leaves them out
+        elif image_page(op.part) is not None and 0 <= image_page(op.part) < pages:
+            image_ops[image_page(op.part)].append(op)
         elif op.part in names or op.part.startswith('page/'):
             results[op.id] = ('not_executed', 'PART_OPERATION_UNSUPPORTED')
         else:
@@ -98,6 +116,17 @@ def write(source, ops, sink, task, schemas, dpi=DEFAULT_DPI, style=DEFAULT_STYLE
                     continue
                 rects.extend(found)
                 results[op.id] = ('executed', None)
+        for op in image_ops.get(facts.page - 1, []):
+            # the images of the page are painted over where they are visible (requirements 4.2)
+            try:
+                found = image_regions(facts, dpi)
+            except GeometryError:
+                found = []
+            if not found:
+                results[op.id] = ('not_executed', 'PART_NOT_FOUND' if not facts.images else 'UNRELIABLE_LOCATION')
+                continue
+            rects.extend(found)
+            results[op.id] = ('executed', None)
         return rects
 
     source.seek(0)

@@ -19,6 +19,11 @@ TEXT = 'Call 13812345678 today'   # the number is characters 5..16
 DOC = build([TEXT, 'second page'], info={'Title': 'T'})
 
 
+def vector_pdf(text):
+    # text and a curved filled shape, the way outlined text is drawn: not admitted
+    return build([text], extra={11: ('<< ', f'BT /F1 12 Tf 20 100 Td ({text}) Tj ET 20 150 m 30 170 40 150 50 160 c f'.encode())})
+
+
 def schemas():
     s = Schemas()
     for d in ('WriteItem', 'ValidateItem', 'ExtractItem'):
@@ -99,7 +104,7 @@ class WriteTest(unittest.TestCase):
         _, items = run_write(DOC, ops)
         self.assertEqual(results(items), {
             'op_1': ('not_executed', 'UNIT_NOT_FOUND'), 'op_2': ('not_executed', 'RANGE_INVALID'), 'op_3': ('not_executed', 'PART_NOT_TEXT'),
-            'op_4': ('not_executed', 'PART_NOT_TEXT'), 'op_5': ('executed', None), 'op_6': ('not_executed', 'PART_OPERATION_UNSUPPORTED'),
+            'op_4': ('not_executed', 'PART_NOT_TEXT'), 'op_5': ('executed', None), 'op_6': ('not_executed', 'PART_NOT_FOUND'),
             'op_7': ('not_executed', 'PART_OPERATION_UNSUPPORTED'), 'op_8': ('not_executed', 'PART_UNKNOWN'), 'op_9': ('not_executed', 'PART_UNKNOWN')})
 
     def test_a_range_made_only_of_generated_characters_cannot_be_located(self):
@@ -112,8 +117,8 @@ class WriteTest(unittest.TestCase):
         self.assertEqual((reason, len(boxes)), (None, 2))  # b and c: the empty boxes of the line break are dropped
 
     def test_a_page_the_rasteriser_refuses_fails_every_operation_with_its_reason(self):
-        out, items = run_write(image_pdf('Call 13812345678 today'), [text_op(1)])
-        self.assertEqual(results(items), {'op_1': ('not_executed', 'PDF_NON_TEXT_COVERAGE_POLICY_REQUIRED')})
+        out, items = run_write(vector_pdf('Call 13812345678 today'), [text_op(1)])
+        self.assertEqual(results(items), {'op_1': ('not_executed', 'PDF_VECTOR_COVERAGE_GAP')})
         self.assertEqual({v[0] for v in fates(items).values()}, {'kept'})
         self.assertEqual(items[-1]['kind'], 'write_complete')
 

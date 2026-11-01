@@ -13,6 +13,7 @@ from typing import BinaryIO, Callable
 
 from tacet_plugin_sdk.safezip import Archive, Limits
 
+from .structure import STRUCTURE_TYPES
 from .xmlparts import Edit, Paragraph, XMLPartError, rewrite
 
 from tacet_plugin_sdk import opc
@@ -30,9 +31,14 @@ TEXT_TYPES = {
 # prototype does not label any uninspected XML as harmless structural content.
 
 
+def _classify(name, content_type):
+    if content_type in TEXT_TYPES:
+        return "text"
+    return "structure" if content_type in STRUCTURE_TYPES else "uninspected"
+
+
 def inventory(archive: Archive) -> Inventory:
-    return opc.inventory(archive, prefix="DOCX", main_type=WORD_TYPE,
-                         classify=lambda name, content_type: "text" if content_type in TEXT_TYPES else "uninspected")
+    return opc.inventory(archive, prefix="DOCX", main_type=WORD_TYPE, classify=_classify)
 
 
 def rewrite_text_subset(source: BinaryIO, candidate: BinaryIO,
@@ -47,7 +53,7 @@ def rewrite_text_subset(source: BinaryIO, candidate: BinaryIO,
     archive = Archive(source, limits)
     try:
         before = inventory(archive)
-        if any(p.role == "uninspected" for p in before.parts):
+        if any(p.role in ("uninspected", "structure") for p in before.parts):
             raise PackageError("DOCX_UNINSPECTED_PART_POLICY_REQUIRED")
         if any(r.external for r in before.relationships):
             raise PackageError("DOCX_EXTERNAL_RELATIONSHIP_POLICY_REQUIRED")

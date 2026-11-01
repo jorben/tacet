@@ -96,7 +96,8 @@ class PDFRasterTest(unittest.TestCase):
             writer.finish()
         finally:
             image.close()
-        with self.assertRaisesRegex(PDFError, 'PDF_NON_TEXT_COVERAGE_POLICY_REQUIRED'):
+        # a page that is one image and no text is a scanned page: never painted over by default
+        with self.assertRaisesRegex(PDFError, 'PDF_SCAN_PAGE_REQUIRES_OCR'):
             rasterize_text_subset(io.BytesIO(output.getvalue()), io.BytesIO(), lambda p, size: [])
 
     def test_append_only_writer_and_output_budget(self):

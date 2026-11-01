@@ -19,6 +19,7 @@ from tacet_plugin_sdk.safezip import Archive, ArchiveError
 from .package import inventory
 from tacet_plugin_sdk.plan import Op
 from tacet_plugin_sdk.textjudge import judge  # noqa: F401  (re-exported: the DOCX tests use it from here)
+from .structure import inspect
 from .xmlparts import XMLPartError, scan
 
 
@@ -75,6 +76,12 @@ def validate(inp, ops: list[Op], cand, task, schemas) -> None:
                 task.check()
                 if p.role == 'uninspected':
                     emit({'kind': 'unverified', 'scope': p.name, 'reason': 'PART_NOT_INSPECTED'})
+                elif p.role == 'structure':
+                    # inspected again in the candidate itself, not taken from the writer's word
+                    with out.open(p.name) as stream:
+                        reason = inspect(stream)
+                    if reason:
+                        emit({'kind': 'unverified', 'scope': p.name, 'reason': reason})
             output_names = {p.name for p in after.parts}
             by_part: dict[str, dict[int, list[Op]]] = defaultdict(lambda: defaultdict(list))
             for op in ops:

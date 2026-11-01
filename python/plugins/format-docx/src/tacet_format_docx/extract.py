@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from tacet_plugin_sdk.safezip import Archive
 
-from .package import inventory
-from .xmlparts import XMLPartError, scan
+from .locate import Locator, layout
+from .package import WORD_TYPE, inventory
+from .structure import inspect
+from .xmlparts import XMLPartError, scan_located
 
 _REASON = {'uninspected': 'PART_NOT_INSPECTED'}
 
@@ -33,28 +35,52 @@ def extract(source, task, schemas) -> None:
             if part.role == 'uninspected':
                 emit({'kind': 'part_state', 'part': part.name, 'class': 'unknown', 'state': 'not_inspected', 'reason': _REASON['uninspected']})
                 continue
+            if part.role == 'structure':
+                with archive.open(part.name) as stream:
+                    reason = inspect(stream)
+                if reason:
+                    emit({'kind': 'part_state', 'part': part.name, 'class': 'unknown', 'state': 'not_inspected', 'reason': reason})
+                else:
+                    emit({'kind': 'part_state', 'part': part.name, 'class': 'other', 'state': 'inspected'})
+                continue
             if part.role != 'text':
                 # content types and relationships carry no document text; the inventory parser
                 # already refused non-whitespace character data in them
                 emit({'kind': 'part_state', 'part': part.name, 'class': 'other', 'state': 'inspected'})
                 continue
-            found = []
+            # Page hints exist only where the document was saved with page markers; whether it was is known
+            # only at the end of the part, so the main document is read once for that first.
+            paged = False
+            if part.content_type == WORD_TYPE:
+                def look(paragraph, element, cell):
+                    nonlocal paged
+                    task.check()
+                    paged = paged or layout(element, bool(paragraph.text)).markers
+                try:
+                    with archive.open(part.name) as stream:
+                        scan_located(stream, look)
+                except XMLPartError:
+                    paged = False  # the reading below reports the part as failed
+            locator = Locator(paged)
 
-            def take(paragraph, part=part, found=found):
+            def take(paragraph, element, cell, part=part):
                 task.check()
+                at = locator.place(paragraph.ordinal, layout(element, bool(paragraph.text)), cell)
                 if not paragraph.text:
                     return
                 visibility = 'hidden' if paragraph.hidden else 'revision' if paragraph.revision else 'visible'
-                found.append(None)
                 nonlocal units
                 units += 1
-                emit({'kind': 'text_unit', 'unit_id': f'u{units}', 'part': part.name, 'ordinal': paragraph.ordinal,
-                      'text': paragraph.text, 'visibility': visibility,
-                      'source_map': {'kind': 'paragraph_ordinal', 'part': part.name, 'ordinal': paragraph.ordinal}})
+                item = {'kind': 'text_unit', 'unit_id': f'u{units}', 'part': part.name, 'ordinal': paragraph.ordinal,
+                        'text': paragraph.text, 'visibility': visibility,
+                        'source_map': {'kind': 'paragraph_ordinal', 'part': part.name, 'ordinal': paragraph.ordinal}}
+                if at:
+                    item['location'] = at
+                emit(item)
 
             try:
                 with archive.open(part.name) as stream:
-                    scan(stream, take)
+                    scan_located(stream, take)
             except XMLPartError:
                 # units already emitted for this part stay valid; the part is reported as a gap
                 emit({'kind': 'part_state', 'part': part.name, 'class': 'text', 'state': 'failed', 'reason': 'PART_UNREADABLE'})

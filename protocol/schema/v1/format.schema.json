@@ -68,7 +68,8 @@
             "text",
             "relationships",
             "content_types",
-            "uninspected"
+            "uninspected",
+            "structure"
           ]
         },
         "referenced": {
@@ -253,6 +254,9 @@
             }
           },
           "additionalProperties": false
+        },
+        "location": {
+          "$ref": "#/$defs/UnitLocation"
         }
       },
       "additionalProperties": false
@@ -1223,6 +1227,49 @@
         "rainbow",
         "plaid"
       ]
+    },
+    "UnitLocation": {
+      "description": "Where a text unit is, for review and reports (requirements 4.3): numbers only, never document text. page_hint is the page the document's saved page markers put it on (approximate; absent without markers); section is the paragraph ordinal, in the same part, of the nearest heading; table is the cell of a unit inside a table (tables numbered in document order).",
+      "type": "object",
+      "properties": {
+        "page_hint": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "section": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "table": {
+          "type": "object",
+          "required": [
+            "index",
+            "row",
+            "col"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            },
+            "row": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            },
+            "col": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

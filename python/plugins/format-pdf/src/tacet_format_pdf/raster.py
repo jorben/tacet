@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .styles import DEFAULT as DEFAULT_STYLE, STYLES, paint
 
+import ctypes
 import math
 import zlib
 from dataclasses import dataclass
@@ -20,6 +21,64 @@ from PIL import Image
 
 
 OBJECT_DEPTH = 16  # deepest Form nesting the traversal descends into
+SCAN_SHARE = 0.5   # images covering this share of a page without text make it a scanned page
+# A vector path drawn by the page is admitted only when it is plainly structure (table rules, cell borders,
+# shading): straight horizontal and vertical segments, few per subpath, each subpath either thin like a
+# rule or larger than any glyph. Anything else may be outlined text, which cannot be read (a coverage gap,
+# requirements 6.3), so the page is refused.
+THIN_POINTS = 3.0
+LARGE_POINTS = 36.0
+MAX_SUBPATH_SEGMENTS = 5
+MAX_PATH_SEGMENTS = 4096
+AXIS_EPSILON = 0.01
+
+
+def _structural(obj) -> bool:
+    m = raw.FS_MATRIX()
+    if not raw.FPDFPageObj_GetMatrix(obj.raw, m) or abs(m.b) > 1e-6 or abs(m.c) > 1e-6 or m.a == 0 or m.d == 0:
+        return False  # rotated or sheared: not a plain rule
+    n = raw.FPDFPath_CountSegments(obj.raw)
+    if not 0 < n <= MAX_PATH_SEGMENTS:
+        return False
+    x, y = ctypes.c_float(), ctypes.c_float()
+    subpaths, current = [], None
+    for i in range(n):
+        seg = raw.FPDFPath_GetPathSegment(obj.raw, i)
+        kind = raw.FPDFPathSegment_GetType(seg)
+        if not seg or not raw.FPDFPathSegment_GetPoint(seg, x, y) or kind == raw.FPDF_SEGMENT_BEZIERTO:
+            return False
+        point = (m.a * x.value + m.e, m.d * y.value + m.f)
+        if not all(math.isfinite(v) for v in point):
+            return False
+        if kind == raw.FPDF_SEGMENT_MOVETO or current is None:
+            current = [point]
+            subpaths.append(current)
+        else:
+            # PDFium reports the edge a close (h) implies as a segment of its own, flagged closing, so it is
+            # checked like any other edge
+            current.append(point)
+    for points in subpaths:
+        if len(points) - 1 > MAX_SUBPATH_SEGMENTS:
+            return False
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            if abs(x1 - x0) > AXIS_EPSILON and abs(y1 - y0) > AXIS_EPSILON:
+                return False  # diagonal
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        w, h = max(xs) - min(xs), max(ys) - min(ys)
+        if not (min(w, h) <= THIN_POINTS or max(w, h) >= LARGE_POINTS):
+            return False  # glyph-sized
+    return True
+
+
+def _covered_share(boxes, width, height):
+    """Upper bound of the page share the boxes cover (their clipped areas summed)."""
+    total = 0.0
+    for left, bottom, right, top in boxes:
+        w = min(right, width) - max(left, 0)
+        h = min(top, height) - max(bottom, 0)
+        if w > 0 and h > 0:
+            total += w * h
+    return total / (width * height)
 
 
 class PDFError(ValueError):
@@ -47,6 +106,8 @@ class PageText:
     width: float
     height: float
     characters: tuple[Character, ...]
+    # visible bounds (left, bottom, right, top, in points) of the page's images, after their transform
+    images: tuple[tuple[float, float, float, float], ...] = ()
 
     @property
     def text(self):
@@ -143,6 +204,7 @@ def _page_text(page, ordinal, limits):
     if page.get_bbox() != (0, 0, width, height):
         raise PDFError('PDF_PAGE_ORIGIN_UNSUPPORTED')
     count = 0
+    images = []
     for obj in page.get_objects(max_depth=OBJECT_DEPTH):
         count += 1
         if count > limits.objects:
@@ -156,6 +218,21 @@ def _page_text(page, ordinal, limits):
             # path or an image is still refused.
             if obj.level >= OBJECT_DEPTH - 1:
                 raise PDFError('PDF_FORM_DEPTH_COVERAGE_GAP')
+            continue
+        if obj.type == raw.FPDF_PAGEOBJ_IMAGE:
+            # An image drawn by the page itself is located by its transformed bounding box, which the
+            # plan may paint over (requirements 4.2). One inside a Form is in the Form's coordinates and
+            # under its clip; it is not located here.
+            if obj.level != 0:
+                raise PDFError('PDF_NESTED_IMAGE_COVERAGE_GAP')
+            bounds = tuple(float(v) for v in obj.get_bounds())
+            if not all(math.isfinite(v) for v in bounds) or bounds[2] < bounds[0] or bounds[3] < bounds[1]:
+                raise PDFError('PDF_UNRELIABLE_LOCATION')
+            images.append(bounds)
+            continue
+        if obj.type == raw.FPDF_PAGEOBJ_PATH and obj.level == 0:
+            if not _structural(obj):
+                raise PDFError('PDF_VECTOR_COVERAGE_GAP')
             continue
         if obj.type != raw.FPDF_PAGEOBJ_TEXT:
             raise PDFError('PDF_NON_TEXT_COVERAGE_POLICY_REQUIRED')
@@ -174,7 +251,11 @@ def _page_text(page, ordinal, limits):
             if not all(math.isfinite(number) for number in box):
                 raise PDFError('PDF_UNRELIABLE_LOCATION')
             characters.append(Character(chr(value), box))
-        return PageText(ordinal, width, height, tuple(characters))
+        if images and not characters and _covered_share(images, width, height) >= SCAN_SHARE:
+            # a scanned page: removing its image removes the page; that needs OCR (P1) or the person's
+            # explicit choice, never a default (requirements 4.2)
+            raise PDFError('PDF_SCAN_PAGE_REQUIRES_OCR')
+        return PageText(ordinal, width, height, tuple(characters), tuple(images))
     finally:
         textpage.close()
 

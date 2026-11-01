@@ -20,7 +20,7 @@ from .geometry import GeometryError, regions
 from .parts import DROPPED, INPUT_PAGE_TYPE, OUTPUT_PAGE_TYPE, input_parts, page_index
 from .raster import Limits, PDFError, _page_text
 from .styles import DEFAULT as DEFAULT_STYLE, STYLES, expected
-from .write import DEFAULT_DPI, op_boxes
+from .write import DEFAULT_DPI, image_page, image_regions, op_boxes
 
 TOLERANCE = 8      # a channel this close to the texture counts as painted
 COVERED = 0.995    # share of an operation's pixels that must be painted
@@ -92,6 +92,12 @@ def _check_operations(source, out, ops, dpi, task, style):
                 checks[op.id] = (False, False, op.part)
             else:
                 wanted.setdefault(index, []).append(op)
+        elif image_page(op.part) is not None:
+            index = image_page(op.part)
+            if 0 <= index < len(source):
+                wanted.setdefault(index, []).append(op)
+            else:
+                checks[op.id] = (False, False, op.part)
         elif op.part in DROPPED and op.part in names:
             gone = not _has_part(out, op.part)
             checks[op.id] = (gone, not gone, op.part)
@@ -119,6 +125,14 @@ def _check_operations(source, out, ops, dpi, task, style):
         image = bitmap.to_pil().convert('RGB')
         try:
             for op in group:
+                if op.kind == 'part':  # the images of the page: painted where they were visible
+                    try:
+                        rects = image_regions(facts, dpi)
+                    except GeometryError:
+                        rects = []
+                    done = bool(rects) and all(_covered(image, r, style, dpi) for r in rects)
+                    checks[op.id] = (done, bool(rects) and not done, op.part)
+                    continue
                 boxes, reason = op_boxes(facts.text, facts.characters, op.ordinal, op.start, op.end)
                 try:
                     rects = regions(boxes, facts.width, facts.height, dpi) if boxes else []
