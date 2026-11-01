@@ -165,8 +165,8 @@
 
 基线文档变化后重新生成并复核新增/修改要求；摘要变化不代表已完成的新验收。
 
-- `tacet-requirements.md`: `d967abf6019c22c761aa3b6fa558c9febd21a207a22c84c62aa2c1023217b21e`
-- `tacet-architecture.md`: `fc6de71e9f9db9ef9567ca7884afe3c2fd97aeaf7643e2236fddc6821173da77`
+- `tacet-requirements.md`: `3eb7d55bfc55d6f27f240ec172d659efac4eadcb26ca882ac0c999a222a03d36`
+- `tacet-architecture.md`: `a5623cfaaf0a99b16fd9aa21adfece9083800a01a858c2b7fecac16a75a7f4d5`
 - `tacet-module-design.md`: `c25340194d143ed98a8e21ee3f1d58eb9ae1510b0e25ece534be45a757f427a2`
 
 ## 模块边界与实现盘点

@@ -177,7 +177,7 @@ type Settings struct {
 	ResourceTier  string `json:"resourceTier"` // comfort or std
 	RetentionDays int    `json:"retentionDays"`
 	AutoUpdate    bool   `json:"autoUpdate"`
-	// GPUAcceleration: use the GPU build of a model when it is downloaded (Apple Silicon); off by default.
+	// GPUAcceleration defaults on; CPU fallback keeps the same model build.
 	GPUAcceleration bool `json:"gpuAcceleration"`
 }
 
@@ -195,7 +195,7 @@ type PluginInfo struct {
 // are and what it runs on.
 type ModelRuntime struct {
 	ID        string `json:"id"`    // model id and variant, as in the model profile
-	Build     string `json:"build"` // the build that runs: the accelerated one's id when acceleration is on, else ID
+	Build     string `json:"build"` // the installed build, independent of execution device
 	Name      string `json:"name"`
 	Version   string `json:"version"`
 	Variant   string `json:"variant"`
@@ -210,16 +210,14 @@ type ModelRuntime struct {
 	MinMemory  uint64 `json:"minMemory"`  // installed memory the machine needs; 0 = any
 	Eligible   bool   `json:"eligible"`   // this machine has that memory
 	Dir        string `json:"dir"`        // absolute directory of its files once installed, else ""
-	Backend    string `json:"backend"`    // ONNX Runtime execution provider from the integrity manifest
-	Device     string `json:"device"`     // cpu or gpu
+	Backend    string `json:"backend"`    // actual provider, or auto before the first load
+	Device     string `json:"device"`     // cpu, gpu or auto (not loaded yet)
 	// Repository is the model's Hugging Face id ("owner/name") from its integrity manifest; empty if unknown.
 	Repository string `json:"repository"`
-	// Accelerable: this installation offers the optional accelerated build (Apple Silicon, FP16 via Core ML);
-	// Accel is that build's own download state.
+	// Accelerable identifies GPU-compatible weights; Accel is reserved for legacy clients.
 	Accelerable bool         `json:"accelerable"`
 	Accel       *BuildStatus `json:"accel"`
-	// Accelerated: GPU acceleration is on and the accelerated build is downloaded, so batches started now
-	// run it (the fields above describe it).
+	// Accelerated means a worker confirmed a GPU provider for the current preference.
 	Accelerated bool `json:"accelerated"`
 }
 

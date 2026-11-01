@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
+import { availableRulesets, bumpVersion, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
 
 describe("置信度", () => {
@@ -17,6 +17,22 @@ describe("置信度", () => {
 });
 
 describe("方案", () => {
+  it("完整列出模型类别并合并启用规则，随模型和检测方式更新", () => {
+    const p = seedPresets()[0]!;
+    const models = seedModels();
+    const rules = seedRulesets();
+    const cats = presetCategories(p, models, rules);
+    expect(cats).toEqual(["name", "phone", "email", "id", "addr", "card", "date", "account", "ip_address", "url", "secret", "other"]);
+    expect(cats).not.toContain("org");
+    models.push({ ...models[0]!, id: "pf", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
+    const minimal = [{ ...rules[0]!, rules: rules[0]!.rules.filter((r) => r.cat === "phone") }];
+    expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("ip_address");
+    expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("card");
+    expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual(["phone"]);
+    minimal[0]!.rules.forEach((r) => { r.on = false; });
+    expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual([]);
+  });
+
   it("仅规则的方案不需要模型", () => {
     const ps = seedPresets();
     expect(presetNeedsModel(ps, "日志清理")).toBe(false);
@@ -58,7 +74,7 @@ describe("版本", () => {
   it("复制得到独立副本：新名称、v1、无历史、可编辑", () => {
     const p = seedPresets()[0]!;
     const c = duplicate(p, "p2");
-    expect(c).toMatchObject({ id: "p2", name: "通用办公脱敏 副本", ver: "v1", builtin: false, hist: [] });
+    expect(c).toMatchObject({ id: "p2", name: "办公外发 副本", ver: "v1", builtin: false, hist: [] });
     c.cats.name = "off";
     expect(p.cats.name).toBe("mask");
   });

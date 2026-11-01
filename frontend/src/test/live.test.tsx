@@ -498,13 +498,13 @@ describe("真实引擎：批次", () => {
     expect(await unlockLive("j2", "")).toBe(false);
     expect(fake.calls).not.toContain("unlock");
     fake.unlockFails = new Error("NOT_ALLOWED");
-    expect(await unlockLive("j2", "secret")).toBe(false);
-    expect(fake.unlocked).toEqual([["j2", "secret"]]);
+    expect(await unlockLive("j2", "wrong-document-password-7429")).toBe(false);
+    expect(fake.unlocked).toEqual([["j2", "wrong-document-password-7429"]]);
     fake.unlockFails = null;
     expect(await unlockLive("j2", "right")).toBe(true);
     // the password is not part of the state anywhere
     expect(JSON.stringify(getState())).not.toContain("right");
-    expect(JSON.stringify(getState())).not.toContain("secret");
+    expect(JSON.stringify(getState())).not.toContain("wrong-document-password-7429");
   });
 
   it("暂停/继续调用引擎；失败时界面状态回滚", async () => {

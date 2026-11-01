@@ -43,12 +43,14 @@ def main(argv):
     parser = argparse.ArgumentParser(prog='tacet_detect_privacy_filter')
     parser.add_argument('--model-dir', required=True)
     parser.add_argument('--manifest', required=True)
+    parser.add_argument('--cache-dir')
+    parser.add_argument('--backend', default='auto')
     args = parser.parse_args(argv)
     from .detector import Detector
     manifest = json.loads(Path(args.manifest).read_text(encoding='utf-8'))
-    _detector = Detector(Path(args.model_dir), manifest)
+    _detector = Detector(Path(args.model_dir), manifest, cache_dir=Path(args.cache_dir) if args.cache_dir else None, backend=args.backend)
     return Worker(sys.stdin.buffer, sys.stdout.buffer, 'tacet.privacy-filter', '0.1.0',
-                  ['detect'], {'detect.run': detect_run}).run()
+                  ['detect'], {'detect.run': detect_run}, capabilities={'backend.' + _detector.backend: True}).run()
 
 
 if __name__ == '__main__':

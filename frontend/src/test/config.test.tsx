@@ -15,8 +15,10 @@ const rowControl = (title: string, sel = "button") => $$(".row").find((r) => r.q
 describe("方案", () => {
   it("内建方案只读；列表含新建与导入", () => {
     go("presets");
-    expect(win()).toContain("通用办公脱敏");
+    expect(win()).toContain("办公外发");
     expect(win()).toContain("内建");
+    expect(win()).not.toContain("公司名");
+    for (const label of ["账号", "IP 地址", "网址", "凭证"]) expect(win()).toContain(label);
     expect(button("仅规则").hasAttribute("disabled")).toBe(true);
     expect(button("新建")).toBeTruthy();
     expect(button("导入")).toBeTruthy();
@@ -25,16 +27,41 @@ describe("方案", () => {
   it("复制后可编辑：检测方式、类别处理、最低置信度提示、版本递增", () => {
     go("presets");
     press("复制");
-    expect(win()).toContain("通用办公脱敏 副本");
+    expect(win()).toContain("办公外发 副本");
     press("仅规则");
-    expect(win()).toContain("范围外");
+    expect(win()).not.toContain("范围外");
+    expect($$(".row").some((r) => r.querySelector(".rl")?.textContent === "人名")).toBe(false);
+    expect(win()).not.toContain("IP 地址");
     press("模型 + 规则");
+    expect(win()).toContain("IP 地址");
     click($$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button")[1]!);
     expect(preset().cats.phone).toBe("ph");
     expect(preset().ver).toMatch(/^v\d+$/);
     click(rowControl("最低置信度"));
     pick("0.90");
     expect(win()).toContain("可能漏检");
+  });
+
+  it("切换模型同步更新类别，新增类别的处理方式可以编辑", () => {
+    go("presets");
+    press("复制");
+    act(() => store.update((d) => {
+      d.models.push({ ...d.models[0]!, id: "privacy", name: "Privacy Filter", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
+    }));
+    click(rowControl("账号"));
+    expect(preset().cats.account).toBe("mask");
+    const accountButtons = $$(".row").find((r) => r.querySelector(".rl")?.textContent === "账号")!.querySelectorAll("button");
+    click(accountButtons[2]!);
+    expect(preset().cats.account).toBe("off");
+    click(rowControl("模型"));
+    pick("Privacy Filter");
+    expect(win()).not.toContain("IP 地址");
+    expect(win()).toContain("账号");
+    expect(win()).toContain("凭证");
+    click(rowControl("模型"));
+    pick("AstrLink Guard");
+    expect(win()).toContain("IP 地址");
+    expect(preset().cats.account).toBe("off");
   });
 
   it("选择同一模型保持已设置的置信度", () => {
@@ -77,8 +104,8 @@ describe("方案", () => {
   it("版本记录最多保留 5 个，回滚另存为新版本", () => {
     go("presets");
     press("复制");
-    const orgButtons = () => $$(".row").find((r) => r.querySelector(".rl")?.textContent === "公司名")!.querySelectorAll("button");
-    for (let i = 0; i < 8; i++) click(orgButtons()[i % 2 ? 1 : 2]!);
+    const phoneButtons = () => $$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button");
+    for (let i = 0; i < 8; i++) click(phoneButtons()[i % 2 ? 1 : 2]!);
     expect(preset().ver).toBe("v9");
     // current + the latest four earlier ones = five versions
     expect(preset().hist).toHaveLength(4);
@@ -107,6 +134,7 @@ describe("方案", () => {
     go("presets");
     press("新建");
     expect(win()).toContain("新方案");
+    expect(win()).not.toContain("公司名");
   });
 });
 

@@ -149,7 +149,7 @@ describe("单份文档", () => {
     go("s2");
     click("#h0");
     press("保留", "#layer .hp");
-    press("通用办公脱敏", ".sum");
+    press("办公外发", ".sum");
     pick("简历脱敏");
     expect($("#layer .modal")!.textContent).toContain("将按新方案重新检测");
     press("切换并重新检测");
@@ -164,7 +164,7 @@ describe("单份文档", () => {
 
   it("没有修改时切换方案直接重新检测", () => {
     go("s2");
-    press("通用办公脱敏", ".sum");
+    press("办公外发", ".sum");
     pick("日志清理");
     expect($("#layer .modal")).toBeNull();
     expect(win()).toContain("读取");

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import { copyPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, rollback } from "../actions/presets";
+import { copyPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -23,8 +23,7 @@ const RULES = item("ruleset", "builtin-cn-office", "办公文档规则", { rules
 const SCHEME = item("scheme", "builtin-scheme-model", "占位符方案（含模型类别）", { category_actions: { phone: "placeholder", email: "placeholder", id_number: "placeholder", person: "placeholder", address: "placeholder" }, image_default: "remove" });
 const SCHEME_RO = item("scheme", "builtin-scheme-placeholder", "占位符方案", { category_actions: { phone: "placeholder", email: "placeholder", id_number: "placeholder" }, image_default: "remove" });
 const MODEL = item("model_profile", "builtin-model-astrlink", "AstrLink Guard", { model_id: "astrlink-guard-int8", manifest_digest: "sha256:aa", backend: "cpu", adapter_floor: 0.5, calibrated: 0.8, label_map: { private_person: "person", private_address: "address", phone: "phone", email: "email" }, memory_bytes: 1 });
-const P_MODEL = item("preset", "builtin-preset-model", "办公外发（规则 + 模型）", { ruleset_id: "builtin-cn-office", scheme_id: "builtin-scheme-model", model_profile_id: "builtin-model-astrlink", mode: "guided", rules_only: false, min_confidence: 0.8, memory_bytes: 1073741824, dpi: 200, style: "solid", retention_days: 0 });
-const P_RULES = item("preset", "builtin-preset-office", "办公外发（仅规则）", { ruleset_id: "builtin-cn-office", scheme_id: "builtin-scheme-placeholder", mode: "guided", rules_only: true, memory_bytes: 1073741824, dpi: 200, style: "solid", retention_days: 0 });
+const P_MODEL = item("preset", "builtin-preset-model", "办公外发", { ruleset_id: "builtin-cn-office", scheme_id: "builtin-scheme-model", model_profile_id: "builtin-model-astrlink", mode: "guided", rules_only: false, min_confidence: 0.8, memory_bytes: 1073741824, dpi: 200, style: "solid", retention_days: 0 });
 
 let fake: FakeEngine;
 const writes = () => fake.calls.filter((c) => /^config(Create|Save|Delete|Rollback)/.test(c));
@@ -33,7 +32,7 @@ const sleep = (ms: number) => act(async () => { await new Promise((r) => setTime
 
 beforeEach(async () => {
   fake = new FakeEngine();
-  fake.items = [RULES, SCHEME, SCHEME_RO, MODEL, P_MODEL, P_RULES].map((i) => ({ ...i }));
+  fake.items = [RULES, SCHEME, SCHEME_RO, MODEL, P_MODEL].map((i) => ({ ...i }));
   setService({ ...mockService, engine: fake });
   await loadConfig();
 });
@@ -45,8 +44,8 @@ afterEach(() => {
 describe("方案与规则集的存储同步", () => {
   it("启动时读出存储的内容；读出之后没有任何写入", async () => {
     const s = getState();
-    expect(s.presets.map((p) => [p.name, p.det, p.builtin])).toEqual([["办公外发（规则 + 模型）", "model", true], ["办公外发（仅规则）", "rules", true]]);
-    expect(s.homePreset).toBe("办公外发（规则 + 模型）");
+    expect(s.presets.map((p) => [p.name, p.det, p.builtin])).toEqual([["办公外发", "model", true]]);
+    expect(s.homePreset).toBe("办公外发");
     expect(s.models).toHaveLength(1);
     expect(s.rulesets[0]).toMatchObject({ name: "办公文档规则", builtin: true, ver: "内建" });
     await sleep(700);
@@ -60,7 +59,7 @@ describe("方案与规则集的存储同步", () => {
     const copy = getState().presets.find((p) => !p.builtin)!;
     expect(copy.stored?.id).toMatch(/^cfg_/);
     expect(copy.id).toBe(copy.stored!.id);
-    expect(copy.name).toBe("办公外发（规则 + 模型） 副本");
+    expect(copy.name).toBe("办公外发 副本");
     expect(getState().presetSel).toBe(copy.id);
     const stored = fake.items.find((i) => i.id === copy.id)!;
     expect(JSON.parse(stored.content)).toMatchObject({ ruleset_id: "builtin-cn-office", model_profile_id: "builtin-model-astrlink", rules_only: false, min_confidence: 0.8 });
@@ -120,11 +119,13 @@ describe("方案与规则集的存储同步", () => {
     await waitFor(() => expect(fake.calls).toContain("configCreate:ruleset"));
     await sleep(500);
     expect(writes()).toEqual(["configCreate:ruleset"]);
-    // the person changes it: now the categories the rule sets detect are brought along
+    // Editing another category keeps an unselected category disabled.
     selectPreset("cfg_p");
     act(() => setCategoryTreatment("email", "mask"));
     await waitFor(() => expect(fake.calls).toContain("configSave:cfg_s"));
-    expect(JSON.parse(fake.items.find((i) => i.id === "cfg_s")!.content).category_actions).toMatchObject({ email: "mask", other: "placeholder" });
+    const actions = JSON.parse(fake.items.find((i) => i.id === "cfg_s")!.content).category_actions;
+    expect(actions).toMatchObject({ email: "mask" });
+    expect(actions).not.toHaveProperty("other");
   });
 
   it("停用一条规则保存为停用，不删除", async () => {
@@ -171,9 +172,11 @@ describe("方案与规则集的存储同步", () => {
   });
 
   it("没有任何规则或模型检测的类别提示后不写入", async () => {
-    selectPreset("builtin-preset-office");
+    selectPreset("builtin-preset-model");
     act(() => copyPreset());
     await waitFor(() => expect(getState().presets.find((p) => !p.builtin)?.stored).toBeTruthy());
+    act(() => setDetection("rules"));
+    await flushConfig();
     act(() => setCategoryTreatment("addr", "mask"));
     await waitFor(() => expect(toastText()).toContain("地址"));
     const id = getState().presets.find((p) => !p.builtin)!.id;
@@ -203,14 +206,14 @@ describe("方案与规则集的存储同步", () => {
 
   it("导出写文件（不含模型）；导入读文件，名称相同时先让人改名，不覆盖", async () => {
     await exportLive("preset", "builtin-preset-model");
-    expect(fake.saved!.name).toBe("办公外发（规则 + 模型）.json");
+    expect(fake.saved!.name).toBe("办公外发.json");
     expect(fake.saved!.text).not.toContain("builtin-model-astrlink");
     expect(JSON.parse(fake.saved!.text)).toMatchObject({ kind: "scheme", rulesets: ["办公文档规则"], detection: "model" });
     // the same file comes back: the name is taken
     fake.openText = fake.saved!.text;
     await importLive("preset");
     expect(overlayStore.get().modal).toMatchObject({ type: "importConflict", kind: "preset" });
-    expect(getState().presets).toHaveLength(2);
+    expect(getState().presets).toHaveLength(1);
     const { finishImport } = await import("../actions/presets");
     act(() => finishImport("preset", "我的版本"));
     await waitFor(() => expect(getState().presets.find((p) => p.name === "我的版本")?.stored).toBeTruthy());
@@ -219,7 +222,7 @@ describe("方案与规则集的存储同步", () => {
     fake.openText = "{";
     await importLive("preset");
     expect(toastText()).toContain("不是 Tacet 的配置文件");
-    expect(getState().presets).toHaveLength(3);
+    expect(getState().presets).toHaveLength(2);
     fake.openText = "";
     await importLive("ruleset"); // cancelled
     expect(getState().rulesets).toHaveLength(1);
@@ -252,7 +255,7 @@ describe("方案与规则集的存储同步", () => {
     fake.stored = { closeBehavior: "quit", theme: "dark", redactStyle: "plaid", resourceTier: "std", retentionDays: 0, autoUpdate: true };
     await loadConfig();
     const s = getState();
-    expect(s.settings).toEqual({ redact: "plaid", tier: "std", autoUpd: true, keep: "0", closeAct: "quit", gpu: false });
+    expect(s.settings).toEqual({ redact: "plaid", tier: "std", autoUpd: true, keep: "0", closeAct: "quit", gpu: true });
     expect(s.themePref).toBe("dark");
     expect(s.theme).toBe("dark");
     await sleep(500);
@@ -260,7 +263,7 @@ describe("方案与规则集的存储同步", () => {
     act(() => { setSetting("keep", "30"); setSetting("tier", "comfort"); setThemePref("light"); });
     await waitFor(() => expect(fake.calls).toContain("saveSettings"));
     expect(fake.calls.filter((c) => c === "saveSettings")).toHaveLength(1);
-    expect(fake.stored).toEqual({ closeBehavior: "quit", theme: "light", redactStyle: "plaid", resourceTier: "comfort", retentionDays: 30, autoUpdate: true, gpuAcceleration: false });
+    expect(fake.stored).toEqual({ closeBehavior: "quit", theme: "light", redactStyle: "plaid", resourceTier: "comfort", retentionDays: 30, autoUpdate: true, gpuAcceleration: true });
   });
 
   it("插件页显示真实登记的内建插件；第三方安装、停用内建、检查更新都如实说明不可用，不做模拟", async () => {
@@ -309,11 +312,11 @@ describe("方案与规则集的存储同步", () => {
     expect(fake.calls).not.toContain("models");
   });
 
-  it("默认模型尚未下载时首页用仅规则方案", async () => {
+  it("默认模型尚未下载时仍保留办公外发方案的模型绑定", async () => {
     fake.modelList = [RT({ state: "pending", downloaded: 0, dir: "" })];
     await loadConfig();
     expect(getState().models[0]!.status).toBe("missing");
-    expect(getState().homePreset).toBe("办公外发（仅规则）");
+    expect(getState().homePreset).toBe("办公外发");
   });
 
   it("下载交给内核；轮询进度直到就绪并提示", async () => {
@@ -373,7 +376,7 @@ describe("方案与规则集的存储同步", () => {
   it("GPU 加速只是一项设置：随设置写回，不下载也不试运行；GPU 版本在模型卡里单独下载", async () => {
     fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL } })];
     await loadConfig();
-    expect(getState().settings.gpu).toBe(false);
+    expect(getState().settings.gpu).toBe(true);
     expect(getState().models[0]!.runtime!.accel).toMatchObject({ id: "astrlink-guard-fp16", variant: "FP16", status: "missing", weightMiB: 72 });
     act(() => setSetting("gpu", true));
     await waitFor(() => expect(fake.stored.gpuAcceleration).toBe(true));

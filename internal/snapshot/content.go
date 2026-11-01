@@ -33,9 +33,8 @@ type DetectContent struct {
 	Categories      []string          `json:"categories"` // enabled
 	RulesOnly       bool              `json:"rules_only"`
 	FieldRuleDigest string            `json:"field_rule_digest"`
-	// Execution is the build of the model that runs when it is not the profile's own (the optional
-	// accelerated variant). It is frozen with the batch, so a resumed run uses the same weights and
-	// execution provider, never a silent replacement.
+	// Execution freezes the exact model build and device policy for this batch.
+	// Backend auto permits GPU-to-CPU fallback on the same graph; it never substitutes weights.
 	Execution *ModelExecution `json:"execution,omitempty"`
 }
 

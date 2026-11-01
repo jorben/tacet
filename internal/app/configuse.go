@@ -60,6 +60,11 @@ func (e *Engine) ConfigList(ctx context.Context, kind string) ([]ConfigItem, err
 				return nil
 			}
 			for _, s := range page {
+				after = s.ID
+				// Historical built-ins stay resolvable by old tasks but are not separate choices.
+				if k == config.Preset && s.ReadOnly && e.legacyPreset(s.ID) {
+					continue
+				}
 				o, err := e.cfg.Get(tx, s.ID)
 				if err != nil {
 					return err

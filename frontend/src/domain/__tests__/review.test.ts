@@ -6,7 +6,7 @@ import { demoNames } from "../../dev/scenes";
 import type { Batch } from "../types";
 
 function reviewing(): Batch {
-  const b = createBatch(demoNames(214), { preset: "通用办公脱敏", modelId: "astr" });
+  const b = createBatch(demoNames(214), { preset: "办公外发", modelId: "astr" });
   beginRun(b);
   for (let i = 0; i < 400; i++) advanceFiles(b);
   return produce(b, (d) => { enterReview(d as Batch, null); });

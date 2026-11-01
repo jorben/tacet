@@ -1,9 +1,9 @@
 // Schemes (presets) and rule sets: editing, versions, import and the menus of the configuration pages.
-import { MODEL_LABELS, OFFICE_CATEGORIES } from "../domain/catalog";
+import { MODEL_LABELS, PRESET_CATEGORIES } from "../domain/catalog";
 import {
-  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, modelById, presetConfidence, type Versioned,
+  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, modelById, presetConfidence, presetCategories, type Versioned,
 } from "../domain/presets";
-import type { Boundary, CategoryId, OfficeCategoryId, Preset, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
+import type { Boundary, CategoryId, PresetCategoryId, Preset, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
 import { getState, store, type AppState } from "../store";
 import { closeModal, openMenu, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
@@ -12,7 +12,7 @@ import { isLive } from "./live";
 import { exportLive, finishImportLive, importLive, openVersions, rollbackLive } from "./liveConfig";
 import type { Draft } from "immer";
 
-const allCategories = <T,>(v: T): Record<OfficeCategoryId, T> => Object.fromEntries(OFFICE_CATEGORIES.map((t) => [t, v])) as Record<OfficeCategoryId, T>;
+const allCategories = <T,>(v: T): Record<PresetCategoryId, T> => Object.fromEntries(PRESET_CATEGORIES.map((t) => [t, v])) as Record<PresetCategoryId, T>;
 
 export const selectedPreset = (s: AppState): Preset => s.presets.find((x) => x.id === s.presetSel) || s.presets[0]!;
 export function selectedRuleset(s: AppState): Ruleset {
@@ -60,12 +60,12 @@ export function setDetection(det: "model" | "rules"): void {
     if (p.det === det) return;
     bumpVersion(p);
     p.det = det;
-    (["org", "name", "addr"] as const).forEach((t) => { p.cats[t] = det === "rules" ? "na" : p.cats[t] === "na" ? "mask" : p.cats[t]; });
+    presetCategories(p as Preset, d.models, d.rulesets as Ruleset[]).forEach((t) => { if (p.cats[t] == null || p.cats[t] === "na") p.cats[t] = "mask"; });
     if (det === "model" && p.conf == null) p.conf = confidenceOf(modelById(d.models, p.model)).rec;
   });
 }
 
-export function setCategoryTreatment(t: OfficeCategoryId, k: PresetTreatment): void {
+export function setCategoryTreatment(t: string, k: PresetTreatment): void {
   store.update((d) => {
     const p = presetOf(d);
     if (p.cats[t] === k) return;

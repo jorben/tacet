@@ -4,6 +4,7 @@
 
 export type CategoryId = "org" | "name" | "phone" | "email" | "id" | "addr" | "card" | "date" | "other";
 export type OfficeCategoryId = Exclude<CategoryId, "other">;
+export type PresetCategoryId = Exclude<OfficeCategoryId, "org">;
 /** How a category is written to the output: block it out, replace by a placeholder, or leave it alone. */
 export type Treatment = "mask" | "ph";
 /** Preset-level handling: a treatment, switched off, or outside the scope of rules-only detection. */
@@ -137,6 +138,8 @@ export type ModelErrorKind = "offline" | "disk" | "integrity" | "load";
 
 export interface ModelPlugin {
   id: string;
+  /** Engine categories produced by this model's label map. */
+  categories?: string[];
   name: string;
   version: string;
   variant: string;
@@ -161,7 +164,7 @@ export interface ModelPlugin {
 export interface ModelRuntime {
   dir: string;
   backend: string;
-  device: "cpu" | "gpu";
+  device: "cpu" | "gpu" | "auto";
   /** Hugging Face id ("owner/name"); empty when unknown. */
   repository: string;
   accelerable: boolean;
@@ -222,7 +225,7 @@ export interface Preset {
   model: string;
   conf: number | null;
   rules: string[];
-  cats: Record<OfficeCategoryId, PresetTreatment>;
+  cats: Record<string, PresetTreatment>;
   img: ImageAction;
   edited: string;
   hist?: VersionRecord<PresetContent>[];

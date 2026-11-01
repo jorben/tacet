@@ -8,66 +8,100 @@ import (
 	"time"
 
 	"github.com/jorben/tacet/internal/config"
+	"github.com/jorben/tacet/internal/host"
 	"github.com/jorben/tacet/internal/snapshot"
 )
 
-// Optional GPU acceleration: the FP16 build of AstrLink run by Core ML on Apple Silicon. The INT8 build on
-// the CPU stays the baseline. Two separate things: the GPU build is a catalog entry downloaded, verified and
-// tried like any model (plugins page); "GPU acceleration" is only a setting that means "use the GPU build
-// when it is there". A batch freezes the build it runs (DetectContent.Execution).
-
 var (
-	ErrAccelUnavailable = errors.New("ACCEL_UNAVAILABLE")        // a frozen accelerated build is not there
-	ErrModelBusy        = errors.New("MODEL_BUSY")               // a model worker runs (documents are being processed)
-	ErrTrialStart       = errors.New("MODEL_TRIAL_START_FAILED") // the build did not load (Core ML missing, compile failed, timeout)
-	ErrTrial            = errors.New("MODEL_TRIAL_FAILED")       // the build loaded but its trial run found the wrong things
+	ErrAccelUnavailable = errors.New("ACCEL_UNAVAILABLE")
+	ErrModelBusy        = errors.New("MODEL_BUSY")
+	ErrTrialStart       = errors.New("MODEL_TRIAL_START_FAILED")
+	ErrTrial            = errors.New("MODEL_TRIAL_FAILED")
 )
 
-// accelStartTimeout bounds the start of an accelerated worker: the first start compiles the model for
-// Core ML (about 16 s on an M4, docs/v1/backend/m0-decisions.md), slower machines need more.
+// The first GPU start may compile the model. The provider can fall back to CPU, but the build cannot change.
 var accelStartTimeout = 5 * time.Minute
 
-// execution is the build a batch of model m started now freezes: the accelerated one when acceleration is
-// on and its build is downloaded, otherwise nil (the profile's own build, on the CPU).
 func (e *Engine) execution(s config.Settings, m *modelInfo, avail map[string]bool) *snapshot.ModelExecution {
-	if !s.GPUAcceleration || m == nil || m.accel == nil || !avail[m.accel.id] {
+	if m == nil || !avail[m.id] {
 		return nil
 	}
-	v := m.accel
-	return &snapshot.ModelExecution{ModelID: v.id, Digest: v.digest, Backend: v.backend}
+	backend := "CPUExecutionProvider"
+	if s.GPUAcceleration && deviceOf(m.backend) == "gpu" {
+		backend = "auto"
+	}
+	return &snapshot.ModelExecution{ModelID: m.id, Digest: m.digest, Backend: backend}
 }
 
-// accelCache is the folder of the compiled Core ML model, inside the private workspace and keyed by
-// the manifest digest so a changed build never meets a stale compiled one.
-func (e *Engine) accelCache(v *variantInfo) string {
-	return filepath.Join(e.opt.Dir, "cache", "coreml", strings.TrimPrefix(v.digest, "sha256:")[:16])
+func (e *Engine) accelCache(v *variantInfo) string { return e.modelCache(v.digest) }
+
+func (e *Engine) modelCache(digest string) string {
+	return filepath.Join(e.opt.Dir, "cache", "onnx", strings.TrimPrefix(digest, "sha256:")[:16])
 }
 
-// modelArgs are the launch arguments of m's detection plugin for the build a snapshot froze.
+// A snapshot pins graph, revision and digest. Only an auto provider may fall back, always on that graph.
+// Legacy snapshots can still identify an explicitly frozen accelerated build.
 func (e *Engine) modelArgs(ctx context.Context, m *modelInfo, exec *snapshot.ModelExecution) ([]string, time.Duration, error) {
-	if exec == nil {
-		dir, err := e.buildDir(ctx, m.opt.Dir, m.entry)
-		if err != nil {
-			return nil, 0, err
+	dir, manifest, digest, backend := m.opt.Dir, m.opt.ManifestPath, m.digest, "CPUExecutionProvider"
+	entry := m.entry
+	if exec != nil {
+		backend = exec.Backend
+		if exec.ModelID != m.id || exec.Digest != m.digest {
+			v := m.accel
+			if v == nil || v.id != exec.ModelID || v.digest != exec.Digest || v.backend != exec.Backend {
+				return nil, 0, ErrAccelUnavailable
+			}
+			dir, manifest, digest, entry = v.dir, v.manifest, v.digest, v.entry
 		}
-		return []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath}, handshakeTimeout, nil
 	}
-	v := m.accel
-	if v == nil || v.id != exec.ModelID || v.digest != exec.Digest || v.backend != exec.Backend {
+	var err error
+	if dir, err = e.buildDir(ctx, dir, entry); err != nil {
+		return nil, 0, err
+	}
+	if backend != "auto" && backend != "CPUExecutionProvider" && backend != "CoreMLExecutionProvider" && backend != "DmlExecutionProvider" && backend != "CUDAExecutionProvider" && backend != "ROCMExecutionProvider" {
 		return nil, 0, ErrAccelUnavailable
 	}
-	dir, err := e.buildDir(ctx, v.dir, v.entry)
-	if err != nil {
-		return nil, 0, ErrAccelUnavailable
+	timeout := handshakeTimeout
+	if backend != "CPUExecutionProvider" {
+		timeout = accelStartTimeout
 	}
-	return []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout, nil
+	return []string{"--model-dir", dir, "--manifest", manifest, "--backend", backend, "--cache-dir", e.modelCache(digest)}, timeout, nil
 }
 
-// deviceOf tells whether an ONNX Runtime execution provider computes on the CPU or on a GPU.
+// recordBackend uses the worker's handshake, never just the requested provider, for device display.
+func (e *Engine) recordBackend(m *modelInfo, requested string, session *host.Session) {
+	for _, backend := range []string{"CoreMLExecutionProvider", "DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"} {
+		if session.Capability("backend." + backend) {
+			e.mu.Lock()
+			if e.modelBackends == nil {
+				e.modelBackends = map[string]string{}
+			}
+			e.modelBackends[m.digest+"/"+requested] = backend
+			e.mu.Unlock()
+			return
+		}
+	}
+}
+
+func (e *Engine) reportedBackend(m *modelInfo, gpu bool) string {
+	if !gpu || deviceOf(m.backend) != "gpu" {
+		return "CPUExecutionProvider"
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if backend := e.modelBackends[m.digest+"/auto"]; backend != "" {
+		return backend
+	}
+	return "auto"
+}
+
 func deviceOf(backend string) string {
 	switch backend {
 	case "CPUExecutionProvider", "":
 		return "cpu"
+	case "auto":
+		return "auto"
+	default:
+		return "gpu"
 	}
-	return "gpu"
 }

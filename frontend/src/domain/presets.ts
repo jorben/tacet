@@ -1,5 +1,32 @@
 // Schemes (presets), rule sets and their version history.
-import type { ModelPlugin, PluginInfo, Preset, PresetContent, Ruleset } from "./types";
+import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Ruleset } from "./types";
+import { CATEGORIES, PRESET_CATEGORIES } from "./catalog";
+import { engineCategory, uiCategory } from "./live";
+
+/** Preserve engine ids for categories without a review-specific UI id. */
+export const presetCategoryId = (engine: string): string => {
+  const ui = uiCategory(engine);
+  return ui === "other" ? engine : ui;
+};
+export const presetEngineCategory = (id: string): string => id in CATEGORIES ? engineCategory(id as keyof typeof CATEGORIES) : id;
+const EXTRA_LABELS: Record<string, string> = { account: "账号", ip_address: "IP 地址", url: "网址", secret: "凭证", employee: "工号" };
+export const presetCategoryLabel = (id: string): string => CATEGORIES[id as keyof typeof CATEGORIES]?.l ?? EXTRA_LABELS[id] ?? id;
+export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
+
+/** Only categories detected by the selected model or active rules are offered. */
+export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): string[] {
+  const covered = new Set<string>();
+  if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => covered.add(presetCategoryId(c)));
+  rulesets.filter((r) => p.rules.includes(r.id)).forEach((s) => s.rules.forEach((r) => {
+    if (r.on) covered.add(presetCategoryId(r.ecat ?? engineCategory(r.cat)));
+  }));
+  covered.delete("org");
+  const order: string[] = [...PRESET_CATEGORIES, "account", "ip_address", "url", "secret"];
+  return [...covered].sort((a, b) => {
+    const rank = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+}
 
 /** Model scores are not comparable across models: the default (calibrated) value and the floor come from the bound model. */
 export const confidenceOf = (m: ModelPlugin | undefined): { rec: number; min: number } => ({ rec: m?.confRec ?? 0.5, min: m?.confMin ?? 0.3 });

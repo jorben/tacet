@@ -5,8 +5,8 @@ import {
   BUILTIN_MODEL_PRESET, BUILTIN_RULES_PRESET, modelFromItem, modelStateFromEngine, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
   schemeIdOf, versionLabel, type Model,
 } from "../domain/liveConfig";
-import type { OfficeCategoryId, Preset, Ruleset } from "../domain/types";
-import { CATEGORIES } from "../domain/catalog";
+import type { Preset, Ruleset } from "../domain/types";
+import { presetCategoryLabel } from "../domain/presets";
 import { pluginFromEngine, settingsFromEngine, settingsToEngine, exportRuleset, exportScheme, importPackage, type Imported } from "../domain/liveConfig";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { importNameClashes } from "./presets";
@@ -73,8 +73,8 @@ export async function loadConfig(): Promise<void> {
   await loadSettings().catch(() => {});
   await loadPlugins().catch(() => {});
   if (!presets.length) return; // nothing stored to show: the screens keep what they have
-  // the default model's scheme is the home scheme once that model is downloaded; until then rules only
-  const homeId = mi[0]?.plugin.status === "ready" ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET;
+  // One office preset stays bound to its model while resources are being prepared.
+  const homeId = mi.length ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET;
   const home = presets.find((p) => p.stored?.id === homeId) ?? presets[0];
   store.update((d) => {
     d.rulesets = rulesets;
@@ -216,7 +216,7 @@ async function writeChanges(): Promise<void> {
   }
 
   // 3. schemes (each is a scheme object and a preset object)
-  const dropped = new Set<OfficeCategoryId>();
+  const dropped = new Set<string>();
   for (const p of getState().presets) {
     if (p.builtin || known.has(p)) continue;
     const s = getState();
@@ -261,12 +261,9 @@ async function writeChanges(): Promise<void> {
     }
     markKnown(getState().presets.find((q) => q.id === preset!.id));
   }
-  if (dropped.size) toast("以下类别没有规则或模型检测，未写入方案：" + [...dropped].map((c) => officeLabel(c)).join("、"));
+  if (dropped.size) toast("以下类别没有规则或模型检测，未写入方案：" + [...dropped].map(presetCategoryLabel).join("、"));
   last = { presets: getState().presets, rulesets: getState().rulesets };
 }
-
-const OFFICE_LABEL: Record<OfficeCategoryId, string> = { org: CATEGORIES.org.l, name: CATEGORIES.name.l, phone: CATEGORIES.phone.l, email: CATEGORIES.email.l, id: CATEGORIES.id.l, addr: CATEGORIES.addr.l, card: CATEGORIES.card.l, date: CATEGORIES.date.l };
-const officeLabel = (c: OfficeCategoryId): string => OFFICE_LABEL[c];
 
 /* ── versions ──────────────────────────────────────────────────────────────── */
 
@@ -338,7 +335,7 @@ export async function exportLive(kind: "preset" | "ruleset", id: string): Promis
       const p = s.presets.find((x) => x.id === id);
       if (!p) return;
       name = p.name;
-      text = exportScheme(p, s.rulesets);
+      text = exportScheme(p, s.rulesets, models);
     }
     if (await e.saveConfigFile(fileName(name), text)) toast("已导出「" + name + "」（不含模型）");
   } catch (err) { toast(configErrorText(err)); }

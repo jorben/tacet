@@ -1,9 +1,10 @@
 import { useAppState } from "../../store";
 import { openConfidenceMenu, openPresetModelMenu, openPresetMoreMenu, openPresetRulesMenu, copyPreset, newPreset, selectPreset, setCategoryTreatment, setDetection, startImport } from "../../actions/presets";
-import { MODEL_LABELS, CATEGORIES, OFFICE_CATEGORIES } from "../../domain/catalog";
-import { availableRulesets, confidenceOf, formatConfidence, modelById, presetConfidence } from "../../domain/presets";
-import type { OfficeCategoryId, Preset, PresetTreatment } from "../../domain/types";
-import { Icon, List, Pill, Row, SelectButton, Segmented, Swatch, categoryColor, tip } from "../../ui";
+import { CATEGORIES, MODEL_LABELS } from "../../domain/catalog";
+import { availableRulesets, confidenceOf, formatConfidence, modelById, presetConfidence, presetCategories, presetCategoryLabel, presetTreatment } from "../../domain/presets";
+import { uiCategory } from "../../domain/live";
+import type { CategoryId, Preset, PresetTreatment } from "../../domain/types";
+import { Icon, List, Pill, Row, SelectButton, Segmented, Swatch, tip } from "../../ui";
 import { ConfigHeader } from "./ConfigHeader";
 import { ItemList } from "./ItemList";
 
@@ -42,20 +43,13 @@ function ConfidenceRow({ preset: p, locked }: { preset: Preset; locked: boolean 
   );
 }
 
-function CategoryRow({ category, value, locked }: { category: OfficeCategoryId; value: PresetTreatment; locked: boolean }) {
+function CategoryRow({ category, value, locked }: { category: string; value: PresetTreatment; locked: boolean }) {
   return (
-    <div className="row" style={categoryColor(category)}>
-      <Swatch category={category} />
-      <span className="rl">{CATEGORIES[category].l}</span>
+    <div className="row">
+      <Swatch category={category in CATEGORIES ? category as CategoryId : uiCategory(category)} />
+      <span className="rl">{presetCategoryLabel(category)}</span>
       <span className="rv">
-        {value === "na" ? (
-          <Pill tone="ghost" {...tip("仅规则模式无法检查此类", { align: "end" })}>
-            <Icon name="alert" size={12} />
-            范围外
-          </Pill>
-        ) : (
-          <Segmented value={value} disabled={locked} onChange={(k) => setCategoryTreatment(category, k)} options={[...TREATMENT_OPTIONS]} />
-        )}
+        <Segmented value={value === "na" ? "off" : value} disabled={locked} onChange={(k) => setCategoryTreatment(category, k)} options={[...TREATMENT_OPTIONS]} />
       </span>
     </div>
   );
@@ -115,8 +109,8 @@ export function SchemeEditor() {
           </Row>
         </List>
         <List>
-          {OFFICE_CATEGORIES.map((t) => (
-            <CategoryRow key={t} category={t} value={p.cats[t]} locked={locked} />
+          {presetCategories(p, models, availableRulesets(rulesets, plugins)).map((t) => (
+            <CategoryRow key={t} category={t} value={presetTreatment(p, t)} locked={locked} />
           ))}
         </List>
       </div>

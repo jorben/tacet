@@ -46,6 +46,7 @@ func TestModelsReportDirectoryDeviceAndSource(t *testing.T) {
 	o := modelOption(t)
 	e = openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, withModel(o))
 	defer e.Close()
+	setGPU(t, e, false)
 	list, err = e.Models(context.Background())
 	if err != nil || len(list) != 1 {
 		t.Fatal(list, err)

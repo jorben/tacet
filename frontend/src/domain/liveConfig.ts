@@ -3,20 +3,13 @@
 // A screen "scheme" is two stored objects: a preset (which rule sets, which model, how confident) and a
 // scheme (what is done to each category). The screen shows them as one. A rule set maps one to one.
 import type { ConfigItem, EngineModelRuntime, EnginePlugin, EngineSettings } from "../services/types";
-import { OFFICE_CATEGORIES } from "./catalog";
+import { PRESET_CATEGORIES } from "./catalog";
+import { presetCategories, presetCategoryId, presetEngineCategory, presetTreatment } from "./presets";
 import { engineCategory, uiCategory } from "./live";
 import type {
   KeepDays, PluginInfo, RedactStyle, Settings, ThemePref,
-  Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, OfficeCategoryId, Preset, PresetTreatment, Rule, Ruleset,
+  Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, Preset, PresetTreatment, Rule, Ruleset,
 } from "./types";
-
-/** Engine category of each category the screens know. */
-const OFFICE_ENGINE: Record<OfficeCategoryId, string> = {
-  org: "organization", name: "person", phone: "phone", email: "email", id: "id_number", addr: "address", card: "payment_card", date: "date",
-};
-const ENGINE_MODEL_CATEGORIES = ["person", "address", "date", "phone", "email", "account", "payment_card", "ip_address", "url", "secret"];
-/** Categories only a model finds: a rules-only scheme cannot offer them. */
-const MODEL_ONLY: OfficeCategoryId[] = ["name", "addr", "org"];
 
 interface RuleJSON {
   id: string;
@@ -154,7 +147,7 @@ export function modelStateFromEngine(rt: EngineModelRuntime): Pick<ModelPlugin, 
     eligible: rt.eligible !== false,
     minMemoryGiB: rt.minMemory ? Math.round(rt.minMemory / 2 ** 30) : 0,
     runtime: {
-      dir: rt.dir, backend: rt.backend, device: rt.device === "gpu" ? "gpu" : "cpu", repository: rt.repository ?? "",
+      dir: rt.dir, backend: rt.backend, device: rt.device === "auto" ? "auto" : rt.device === "gpu" ? "gpu" : "cpu", repository: rt.repository ?? "",
       accelerable: !!rt.accelerable, accelerated: !!rt.accelerated,
       ...(rt.accel ? { accel: { id: rt.accel.id, variant: rt.accel.variant, weightMiB: Math.round(rt.accel.bytes / 2 ** 20), ...downloadState(rt.accel) } } : {}),
     },
@@ -172,6 +165,7 @@ export function modelFromItem(it: ConfigItem, rt?: EngineModelRuntime): { plugin
   const base: ModelPlugin = {
     id: c.model_id, name: rt?.name || it.name, version: rt?.version ?? "", variant: rt?.variant ?? "", languages: rt?.languages ?? "",
     weightMiB: rt ? Math.round(rt.bytes / 2 ** 20) : 0, recommended: it.id === BUILTIN_MODEL_PROFILE,
+    categories: model.categories,
     confRec: c.calibrated, confMin: c.adapter_floor, status: "ready", progress: 100, error: null,
   };
   return { model, plugin: rt ? { ...base, ...modelStateFromEngine(rt) } : base };
@@ -201,12 +195,16 @@ export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefin
   const model = models.find((m) => m.profile === p.model_profile_id) ?? null;
   const s = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}) } as SchemeJSON;
   const det = p.rules_only || !model ? "rules" : "model";
-  const cats = {} as Record<OfficeCategoryId, PresetTreatment>;
-  for (const c of OFFICE_CATEGORIES) {
-    const t = toTreatment(s.category_actions[OFFICE_ENGINE[c]]);
-    cats[c] = t ?? (MODEL_ONLY.includes(c) && det === "rules" ? "na" : MODEL_ONLY.includes(c) && c === "org" ? "na" : "off");
-  }
+  const cats: Preset["cats"] = Object.fromEntries(PRESET_CATEGORIES.map((id) => [id, "off"]));
   const ids = [p.ruleset_id, ...(p.extra_ruleset_ids ?? [])].filter((id) => rulesets.some((r) => r.id === id));
+  for (const [engine, action] of Object.entries(s.category_actions)) {
+    const id = presetCategoryId(engine);
+    if (id !== "org") cats[id] = toTreatment(action) ?? "off";
+  }
+  for (const id of presetCategories({ det, model: model?.id ?? "", rules: ids }, models, rulesets)) {
+    // An absent action is disabled, including a category explicitly switched off before saving.
+    cats[id] ??= "off";
+  }
   return {
     id: preset.id, name: preset.name, ver: versionLabel(preset), builtin: preset.readOnly, det, model: model?.id ?? models[0]?.id ?? "",
     conf: det === "model" ? (p.min_confidence ?? model?.calibrated ?? null) : null,
@@ -220,7 +218,7 @@ export interface Written {
   /** `schemeRev` is the stored version of the scheme object this version of the preset goes with. */
   preset: (schemeId: string, schemeRev?: number) => string;
   /** Screen categories the scheme could not keep because nothing detects them. */
-  dropped: OfficeCategoryId[];
+  dropped: string[];
 }
 
 /**
@@ -237,20 +235,15 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
   if (useModel) model!.categories.forEach((c) => covered.add(c));
 
   const actions: Record<string, string> = {};
-  const dropped: OfficeCategoryId[] = [];
-  const officeEngine = new Set<string>(Object.values(OFFICE_ENGINE));
-  for (const c of OFFICE_CATEGORIES) {
-    const t = p.cats[c];
+  const dropped: string[] = [];
+  const offered = presetCategories(p, models, chosen);
+  for (const c of new Set([...Object.keys(p.cats), ...offered])) {
+    if (c === "org") continue;
+    const t = presetTreatment(p, c);
     if (t !== "mask" && t !== "ph") continue;
-    const e = OFFICE_ENGINE[c];
+    const e = presetEngineCategory(c);
     if (!covered.has(e)) { dropped.push(c); continue; }
-    actions[e] = t === "ph" ? "placeholder" : "mask";
-  }
-  // categories the screen has no switch for: every one a chosen rule set detects is handled, as it was before
-  for (const e of covered) {
-    if (officeEngine.has(e)) continue;
-    const before = prevScheme.category_actions[e];
-    actions[e] = before === "delete" || before === "mask" || before === "keep" ? before : "placeholder";
+    actions[e] = t === "ph" ? "placeholder" : prevScheme.category_actions[e] === "delete" ? "delete" : "mask";
   }
   const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };
   if (prevScheme.human_review?.length) scheme.human_review = prevScheme.human_review.filter((c) => c in actions);
@@ -283,8 +276,8 @@ export function exportRuleset(rs: Pick<Ruleset, "id" | "name" | "rules">): strin
 }
 
 /** A scheme as an exchange file: rule sets are named, not referenced by id; the model is not included. */
-export function exportScheme(p: Preset, rulesets: Ruleset[]): string {
-  const w = presetContents(p, rulesets, [{ id: p.model, profile: "", memory: 0, floor: 0, calibrated: p.conf ?? 0.5, categories: [...ENGINE_MODEL_CATEGORIES] }]);
+export function exportScheme(p: Preset, rulesets: Ruleset[], models: Model[] = [{ id: p.model, profile: "", memory: 0, floor: 0, calibrated: p.conf ?? 0.5, categories: Object.keys(p.cats).map(presetEngineCategory) }]): string {
+  const w = presetContents(p, rulesets, models);
   const preset = JSON.parse(w.preset("")) as PresetJSON;
   const names = p.rules.map((id) => rulesets.find((r) => r.id === id)?.name).filter((n): n is string => !!n);
   return JSON.stringify({
@@ -338,7 +331,7 @@ export function settingsFromEngine(e: EngineSettings): { settings: Settings; the
   return {
     settings: {
       redact: e.redactStyle as RedactStyle, tier: e.resourceTier === "std" ? "std" : "comfort", autoUpd: e.autoUpdate,
-      keep: keep === "0" || keep === "30" ? keep : "7", closeAct: e.closeBehavior === "quit" ? "quit" : "tray", gpu: !!e.gpuAcceleration,
+      keep: keep === "0" || keep === "30" ? keep : "7", closeAct: e.closeBehavior === "quit" ? "quit" : "tray", gpu: e.gpuAcceleration !== false,
     },
     theme: e.theme === "light" || e.theme === "dark" ? e.theme : "system",
   };

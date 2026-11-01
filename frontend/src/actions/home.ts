@@ -89,7 +89,7 @@ export function openHistoryResult(entry: HistoryEntry): void {
   let data: Single | BatchSummary | null = live ? null : (entry.saved as Single | BatchSummary | undefined) ?? null;
   if (!live && !data) {
     if (entry.k === "file") {
-      data = createSingle(entry.name, entry.ext || extOf(entry.name), undefined, { mode: "orig", preset: "通用办公脱敏", modelId: null }, { phase: "done" });
+      data = createSingle(entry.name, entry.ext || extOf(entry.name), undefined, { mode: "orig", preset: "办公外发", modelId: null }, { phase: "done" });
     } else {
       const n = parseCount(entry.meta);
       data = {

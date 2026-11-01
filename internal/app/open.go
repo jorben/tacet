@@ -125,17 +125,17 @@ func Locate(root string) (Options, error) {
 }
 
 // catalogModels are the models of the catalog in the order the interface lists them (the first is the
-// default model), with the built-in detection plugin that runs each and the accelerated build it may have.
+// default model), with GPU-compatible weights shared by GPU and CPU execution.
 var catalogModels = []struct {
-	manifest, plugin, module, accel string
+	manifest, plugin, module string
 }{
-	{"astrlink-guard-int8.json", "detect-astrlink", "tacet_detect_astrlink", "astrlink-guard-fp16.json"},
-	{"privacy-filter-int8.json", "detect-privacy-filter", "tacet_detect_privacy_filter", ""},
+	{"astrlink-guard-fp16.json", "detect-astrlink", "tacet_detect_astrlink"},
+	{"privacy-filter-fp16.json", "detect-privacy-filter", "tacet_detect_privacy_filter"},
 }
 
 // locateModels reads the model catalog below root. The files are downloaded by the user; preinstalled, when
 // set, is a folder whose "<id>-<variant>" subfolders hold files already present (development and tests). The
-// accelerated build is offered on Apple Silicon only.
+// same build is offered on every platform; the worker detects GPU support.
 func locateModels(root, preinstalled string, o *Options) {
 	dirOf := func(manifest string) string {
 		if preinstalled == "" || !filepath.IsAbs(preinstalled) {
@@ -157,11 +157,6 @@ func locateModels(root, preinstalled string, o *Options) {
 			continue
 		}
 		m := &ModelOption{Dir: dirOf(c.manifest), ManifestPath: manifest, Plugin: Builtin{Module: c.module, Manifest: plug}}
-		if accel := filepath.Join(root, "resources", "models", c.accel); c.accel != "" && o.Platform == "darwin-arm64" {
-			if _, err := os.Stat(accel); err == nil {
-				m.Accel = &ModelVariant{Dir: dirOf(c.accel), ManifestPath: accel}
-			}
-		}
 		o.Models = append(o.Models, m)
 	}
 }

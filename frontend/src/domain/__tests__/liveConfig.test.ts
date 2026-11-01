@@ -59,7 +59,8 @@ describe("方案 ↔ 存储对象", () => {
   it("两个存储对象显示为一个方案：处理方式、规则集、置信度、图像默认值", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     expect(p).toMatchObject({ det: "model", conf: 0.7, rules: ["cn", "co"], img: "keep", ver: "v1", stored: { id: "pr", schemeId: "sc" } });
-    expect(p.cats).toMatchObject({ phone: "ph", card: "mask", name: "ph", email: "off", org: "na" });
+    expect(p.cats).toMatchObject({ phone: "ph", card: "mask", name: "ph", email: "off" });
+    expect(p.cats).not.toHaveProperty("org");
   });
 
   it("没有模型时按仅规则显示，模型才能找的类别为“不适用”", () => {
@@ -79,13 +80,32 @@ describe("方案 ↔ 存储对象", () => {
   it("没有任何规则或模型检测的类别不写入，并报告", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.cats.addr = "mask";
-    p.cats.org = "mask";
     const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
-    expect(w.dropped.sort()).toEqual(["addr", "name", "org"]);
+    expect(w.dropped.sort()).toEqual(["addr", "name"]);
     const s = JSON.parse(w.scheme);
     expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "phone"]);
     expect(JSON.parse(w.preset("sc"))).toMatchObject({ rules_only: true, ruleset_id: "cn" });
     expect(JSON.parse(w.preset("sc")).model_profile_id).toBeUndefined();
+  });
+
+  it("模型新增类别可调整、关闭并在重载及导入导出后保留", () => {
+    const extended = [{ ...model, categories: [...model.categories, "account", "ip_address", "url", "secret"] }];
+    const p = presetFromItems(preset, scheme, rs, extended);
+    expect(p.cats).toMatchObject({ account: "off", ip_address: "off", url: "off", secret: "off" });
+    p.cats.url = "ph";
+    p.cats.secret = "ph";
+    p.cats.account = "mask";
+    p.cats.ip_address = "off";
+    const w = presetContents(p, rs, extended, { scheme, preset });
+    expect(JSON.parse(w.scheme).category_actions).toMatchObject({ account: "mask", url: "placeholder", secret: "placeholder" });
+    expect(JSON.parse(w.scheme).category_actions).not.toHaveProperty("ip_address");
+    const reloaded = presetFromItems(preset, { ...scheme, content: w.scheme }, rs, extended);
+    expect(reloaded.cats).toMatchObject({ account: "mask", ip_address: "off", url: "ph", secret: "ph" });
+    const imported = importPackage(exportScheme(p, rs, extended), "preset", rs, extended);
+    if (!("preset" in imported)) throw new Error(JSON.stringify(imported));
+    expect(imported.preset.cats).toMatchObject({ account: "mask", ip_address: "off", url: "ph", secret: "ph" });
+    const plugin = modelFromItem({ ...MODEL, content: JSON.stringify({ ...JSON.parse(MODEL.content), label_map: { a: "account", b: "account", s: "secret" } }) })!.plugin;
+    expect(plugin.categories).toEqual(["account", "secret"]);
   });
 
   it("置信度不低于模型的适配器下限；新方案的资源档位取默认", () => {

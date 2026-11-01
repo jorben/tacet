@@ -188,6 +188,41 @@ func (r *Repository) SeedBuiltin(tx store.Tx, id string, kind Kind, name string,
 	return r.create(tx, id, kind, name, "", input, true)
 }
 
+// RefreshBuiltin updates application-owned content when the signed catalog changes.
+// Existing task snapshots retain their own immutable copy.
+func (r *Repository) RefreshBuiltin(tx store.Tx, id string, input []byte, name ...string) error {
+	o, err := r.Get(tx, id)
+	if err != nil {
+		return err
+	}
+	if !o.ReadOnly {
+		return ErrReadOnly
+	}
+	canonical, err := r.validateContent(tx, o.Kind, input)
+	if err != nil {
+		return err
+	}
+	digest := contentDigest(canonical)
+	if len(name) > 0 && metadata(id, name[0], o.Note) {
+		o.Name = name[0]
+	}
+	_, sc, err := transaction(tx)
+	if err != nil {
+		return err
+	}
+	if digest == o.Digest {
+		_, err = sc.Exec("UPDATE config_object SET name=? WHERE id=? AND readonly=1", o.Name, id)
+		return err
+	}
+	if _, err = sc.Exec("UPDATE config_object SET version=version+1,digest=?,content=?,name=? WHERE id=? AND readonly=1", digest, canonical, o.Name, id); err != nil {
+		return err
+	}
+	o.Version++
+	o.Digest, o.Content = digest, canonical
+	emit(tx, o)
+	return nil
+}
+
 // Save compares expectedVersion before updating metadata. Canonical content
 // unchanged means no new version and no new history timestamp. Names and notes
 // never participate in the digest. Caller wraps all work in one transaction.
@@ -408,8 +443,8 @@ type Settings struct {
 	ResourceTier  string `json:"resource_tier,omitempty"`  // comfort or std
 	RetentionDays int    `json:"retention_days,omitempty"` // how long unfinished work is kept: 0, 7 or 30
 	RetentionSet  bool   `json:"retention_set,omitempty"`  // distinguishes "do not keep" (0) from "never chosen"
-	// GPUAcceleration: batches started from now on run a model's accelerated build when it is downloaded.
-	GPUAcceleration bool `json:"gpu_acceleration,omitempty"`
+	// GPUAcceleration prefers a supported GPU provider; CPU fallback uses the same model files.
+	GPUAcceleration bool `json:"gpu_acceleration"`
 }
 
 var redactStyles = map[string]bool{"black": true, "gray": true, "mosaic": true, "stripe": true, "heart": true, "paw": true, "snow": true, "seal": true, "star": true, "dot": true, "rainbow": true, "plaid": true}
@@ -429,7 +464,7 @@ func (s Settings) withDefaults() Settings {
 }
 
 func DefaultSettings() Settings {
-	return Settings{CloseBehavior: "tray", Theme: "system", DefaultStyle: "solid"}.withDefaults()
+	return Settings{CloseBehavior: "tray", Theme: "system", DefaultStyle: "solid", GPUAcceleration: true}.withDefaults()
 }
 func (r *Repository) Settings(tx store.Tx) (Settings, error) {
 	t, _, err := transaction(tx)
@@ -442,7 +477,7 @@ func (r *Repository) Settings(tx store.Tx) (Settings, error) {
 	} else if err != nil {
 		return Settings{}, err
 	}
-	var settings Settings
+	settings := Settings{GPUAcceleration: true} // missing GPU preference means enabled; an explicit false is preserved
 	if json.Unmarshal(data, &settings) != nil {
 		return Settings{}, ErrContent
 	}

@@ -4,7 +4,7 @@ import { extOf, fmt, locStr, outputKind, outputName, parseCount, sizeStr } from 
 import { addManualHit, categoryStats, createSingle, imageSummary, isPartialResult, orderedHitIds, sameValueHits, singleManifest, treatmentOf } from "../single";
 import { createRng, pick, randInt, reseed } from "../random";
 
-const doc = () => createSingle("劳动合同.pdf", "pdf", 1887436, { mode: "orig", preset: "通用办公脱敏", modelId: "astr" });
+const doc = () => createSingle("劳动合同.pdf", "pdf", 1887436, { mode: "orig", preset: "办公外发", modelId: "astr" });
 
 describe("示例文档", () => {
   it("三页，命中带类别、位置与来源，页内含证件照与公章", () => {

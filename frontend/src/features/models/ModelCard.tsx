@@ -110,9 +110,8 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
           <div className="model-meta">
             {manage ? "" : (p?.preset || "本次任务") + " · " + m.name + " · "}
             {m.version} · {m.variant} · {m.languages}
-            {st === "missing" && m.weightMiB ? " · 权重约 " + sizeLabel(m.weightMiB) : ""}
+            {(manage || st === "missing") && m.weightMiB ? " · 权重约 " + sizeLabel(m.weightMiB) : ""}
           </div>
-          {manage && m.languages.includes("英文") && <p className="model-note">以英文为主，阈值未经校准；中文文档的结果需人工复核。</p>}
           {manage && st === "missing" && m.eligible === false && (
             <p className="model-note warn" role="note">需要至少 {m.minMemoryGiB || 16} GiB 内存，本机不满足，无法下载。</p>
           )}
@@ -164,7 +163,7 @@ function ModelRuntime({ id, runtime: r }: { id: string; runtime: NonNullable<Mod
     <dl className="model-runtime">
       <div>
         <dt>推理设备</dt>
-        <dd title={r.backend}>{r.device === "gpu" ? "GPU · Core ML" : "CPU · ONNX Runtime"}</dd>
+        <dd title={r.backend}>{r.device === "auto" ? "GPU 优先 · 启动时检测" : r.device === "gpu" ? "GPU · " + ({ CoreMLExecutionProvider: "Core ML", DmlExecutionProvider: "DirectML", CUDAExecutionProvider: "CUDA", ROCMExecutionProvider: "ROCm" }[r.backend] || "ONNX Runtime") : "CPU · ONNX Runtime"}</dd>
       </div>
       {r.dir && <div>
         <dt>存储位置</dt>

@@ -5,7 +5,7 @@ import {
 } from "../batch";
 import { demoNames } from "../../dev/scenes";
 
-const make = (n = 214) => createBatch(demoNames(n), { title: "测试", preset: "通用办公脱敏", modelId: "astr" });
+const make = (n = 214) => createBatch(demoNames(n), { title: "测试", preset: "办公外发", modelId: "astr" });
 /** Runs the simulated clock until nothing is queued or processing. */
 function drain(b: ReturnType<typeof make>, max = 3000) {
   for (let i = 0; i < max && b.files.some((f) => f.st === "queue" || f.st === "proc"); i++) advanceFiles(b);

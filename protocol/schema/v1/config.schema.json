@@ -196,7 +196,13 @@
           "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "backend": {
-          "const": "CPUExecutionProvider"
+          "enum": [
+            "CPUExecutionProvider",
+            "CoreMLExecutionProvider",
+            "DmlExecutionProvider",
+            "CUDAExecutionProvider",
+            "ROCMExecutionProvider"
+          ]
         },
         "adapter_floor": {
           "$ref": "#/$defs/Score"

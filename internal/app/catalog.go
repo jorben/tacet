@@ -424,21 +424,11 @@ func (e *Engine) Models(ctx context.Context) ([]ModelRuntime, error) {
 				rt.Dir = e.catalog.Dir(m.entry.Key())
 			}
 		}
-		if v := m.accel; v != nil {
-			b := &BuildStatus{ID: v.id, Variant: strings.ToUpper(strings.TrimPrefix(v.id, m.entry.ID+"-")), Backend: v.backend, Bytes: v.entry.Total()}
-			if v.dir != "" {
-				b.State, b.Downloaded, b.Dir = string(models.StateReady), b.Bytes, v.dir
-			} else if st, ok := states[v.entry.Key()]; ok {
-				b.State, b.Code, b.Downloaded = string(st.State), st.Code, st.Downloaded
-				if installedState(st.State) {
-					b.Dir = e.catalog.Dir(v.entry.Key())
-				}
-			}
-			rt.Accel = b
-			if dir, ok := e.accelDir(states, v); ok && accelOn {
-				rt.Build, rt.Dir, rt.Backend, rt.Device, rt.Accelerated = v.id, dir, v.backend, deviceOf(v.backend), true
-			}
-		}
+		// Device selection never changes the build or its download state.
+		rt.Build, rt.Backend = m.id, e.reportedBackend(m, accelOn)
+		rt.Device = deviceOf(rt.Backend)
+		rt.Accelerable, rt.Accelerated = deviceOf(m.backend) == "gpu", rt.Device == "gpu"
+		rt.Accel = nil
 		out = append(out, rt)
 	}
 	return out, nil
@@ -446,17 +436,6 @@ func (e *Engine) Models(ctx context.Context) ([]ModelRuntime, error) {
 
 func installedState(s models.State) bool {
 	return s == models.StateInstalled || s == models.StateReady || s == models.StatePreparing
-}
-
-// accelDir: the accelerated build's directory when it is there (by the recorded state; a run checks files).
-func (e *Engine) accelDir(states map[string]models.Status, v *variantInfo) (string, bool) {
-	if v.dir != "" {
-		return v.dir, true
-	}
-	if st, ok := states[v.entry.Key()]; ok && installedState(st.State) {
-		return e.catalog.Dir(v.entry.Key()), true
-	}
-	return "", false
 }
 
 // buildByID finds a downloadable build by id: a model of the catalog or a model's accelerated build. preinstalled:
@@ -553,7 +532,15 @@ func (e *Engine) ModelDirectory(ctx context.Context, id string) (string, error) 
 func (e *Engine) prepareInstalled(ctx context.Context, dir string, entry models.Entry) error {
 	for _, m := range e.models {
 		if m.entry.Key() == entry.Key() {
-			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath}, handshakeTimeout, true)
+			s, err := e.SettingsGet(ctx)
+			if err != nil {
+				return err
+			}
+			backend := "CPUExecutionProvider"
+			if s.GPUAcceleration && deviceOf(m.backend) == "gpu" {
+				backend = "auto"
+			}
+			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath, "--backend", backend, "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout, true)
 		}
 		if v := m.accel; v != nil && v.entry.Key() == entry.Key() {
 			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout, true)
@@ -587,6 +574,13 @@ func (e *Engine) trial(ctx context.Context, m *modelInfo, args []string, timeout
 		return fmt.Errorf("%w: %v", ErrTrialStart, err)
 	}
 	defer w.Terminate(time.Second)
+	requested := "CPUExecutionProvider"
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--backend" {
+			requested = args[i+1]
+		}
+	}
+	e.recordBackend(m, requested, w.Session)
 	n := trialSeq.Add(1)
 	pm, err := detect.NewPluginModel(w.Session, func() kernel.AttemptRef {
 		return kernel.AttemptRef{JobID: "model_trial", AttemptID: fmt.Sprintf("model_trial_%d", n), OwnerGeneration: e.ws.Generation(), JobVersion: 1}

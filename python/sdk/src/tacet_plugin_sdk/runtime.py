@@ -121,10 +121,11 @@ class Task:
 
 class Worker:
     def __init__(self, source: BinaryIO, destination: BinaryIO, plugin_id: str,
-                 version: str, roles: list[str], handlers: dict[str, Callable]):
+                 version: str, roles: list[str], handlers: dict[str, Callable], capabilities: dict[str, bool] | None = None):
         self.source, self.destination = source, destination
         self.plugin_id, self.version, self.roles = plugin_id, version, roles
         self.handlers = handlers
+        self.capabilities = capabilities or {}
         self.schemas = Schemas()
         for name, definition in [('rpc.schema.json', 'Message'), ('initialize.schema.json', 'Params'),
                                  ('initialize.schema.json', 'Result'), ('stream.schema.json', 'Credit'),
@@ -187,7 +188,7 @@ class Worker:
                 return
             self._generation = params['owner_generation']
             result = {'protocol': '1.0', 'plugin': {'id': self.plugin_id, 'version': self.version},
-                      'roles': self.roles, 'capabilities': {}}
+                      'roles': self.roles, 'capabilities': self.capabilities}
             self.schemas.validate('initialize.schema.json', 'Result', result)
             self._send({'jsonrpc': '2.0', 'id': identifier, 'result': result})
             self._initialized = True

@@ -16,7 +16,7 @@ import type { ManualSelection } from "../domain/single";
 import { getState, store } from "../store";
 import { slotBusy } from "../store/selectors";
 import { nextId, nextRunId } from "./timers";
-import { flushConfig, loadConfig, presetEngineId } from "./liveConfig";
+import { flushConfig, loadConfig, presetEngineId, refreshModels } from "./liveConfig";
 
 const plain = <T,>(v: T): T => (isDraft(v) ? (current(v as never) as T) : v);
 
@@ -87,6 +87,7 @@ export function takePaths(paths: string[]): void {
 }
 
 async function onBatchChanged(st: EngineBatch): Promise<void> {
+  if (getState().models.some((m) => m.runtime)) void refreshModels();
   const s = getState();
   if (s.single?.live?.batch === st.id) await syncSingle(st);
   else if (s.behind?.single.live?.batch === st.id) { /* a parked single task is read when it comes back */ }

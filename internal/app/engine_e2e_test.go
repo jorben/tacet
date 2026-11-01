@@ -101,13 +101,11 @@ func m0Models(t *testing.T) []*ModelOption {
 // modelOption is AstrLink with its files present (the M0 resource folder); the test is skipped otherwise.
 func modelOption(t *testing.T) *ModelOption {
 	t.Helper()
-	for _, m := range m0Models(t) {
-		if strings.HasSuffix(m.ManifestPath, "astrlink-guard-int8.json") && m.Dir != "" {
-			if m.Accel != nil && m.Accel.Dir == "" {
-				m.Accel = nil // the accelerated build's files are not there
-			}
-			return m
-		}
+	r, _ := root(t)
+	dir := filepath.Join(r, ".pi", "m0-resources", "astrlink-guard-int8")
+	if _, err := os.Stat(filepath.Join(dir, "model_int8.onnx")); err == nil {
+		// Keep historical INT8 regression fixtures independent of the production FP16 catalog.
+		return &ModelOption{Dir: dir, ManifestPath: filepath.Join(r, "resources", "models", "astrlink-guard-int8.json"), Plugin: builtin(t, r, "detect-astrlink", "tacet_detect_astrlink")}
 	}
 	t.Skip("needs the fixed M0 model resource")
 	return nil
@@ -116,10 +114,10 @@ func modelOption(t *testing.T) *ModelOption {
 // pfOption is OpenAI Privacy Filter with its files present; the test is skipped otherwise.
 func pfOption(t *testing.T) *ModelOption {
 	t.Helper()
-	for _, m := range m0Models(t) {
-		if strings.HasSuffix(m.ManifestPath, "privacy-filter-int8.json") && m.Dir != "" {
-			return m
-		}
+	r, _ := root(t)
+	dir := filepath.Join(r, ".pi", "m0-resources", "privacy-filter-int8")
+	if _, err := os.Stat(filepath.Join(dir, "model_quantized.onnx")); err == nil {
+		return &ModelOption{Dir: dir, ManifestPath: filepath.Join(r, "resources", "models", "privacy-filter-int8.json"), Plugin: builtin(t, r, "detect-privacy-filter", "tacet_detect_privacy_filter")}
 	}
 	t.Skip("needs the privacy-filter model resource")
 	return nil

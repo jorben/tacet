@@ -12,7 +12,7 @@ describe("首页与最近任务（场景夹具：原型预置的最近任务）"
   it("展示拖入区、方案选择与最近的 3 条任务", () => {
     expect(win()).toContain("拖入文档");
     expect(win()).toContain("DOCX");
-    expect($(".drop-preset")!.textContent).toContain("通用办公脱敏");
+    expect($(".drop-preset")!.textContent).toContain("办公外发");
     expect($$(".home-history .hrow")).toHaveLength(3);
     expect(win()).toContain("已保存 · 6 天后清理");
   });

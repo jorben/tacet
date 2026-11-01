@@ -3,6 +3,8 @@
   "id": "astrlink-guard",
   "version": "0.1.3",
   "variant": "fp16",
+  "name": "AstrLink Guard",
+  "languages": "中文 / 中英混排",
   "repository": "QuantumNous/astrlink-guard",
   "revision": "7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4",
   "license": "Apache-2.0",
@@ -14,7 +16,7 @@
   "upstream_recommended_score": 0.8,
   "tacet_calibrated_score": null,
   "unattended_qualified": false,
-  "status": "optional_accelerated_backend_not_release_signed",
+  "status": "default_download_not_release_signed",
   "source_checksums": "https://huggingface.co/QuantumNous/astrlink-guard/raw/7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4/fp16/CHECKSUMS.json",
   "files": {
     "config.json": {"sha256": "2c20003590d642e273c03c4c7c82d9849fa75f64bf29a71ec0a0c9a20ba4a150", "size": 1804},

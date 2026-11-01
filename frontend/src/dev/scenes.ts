@@ -95,7 +95,7 @@ export function scene(key: string): void {
   }
   if (key.startsWith("model-")) {
     const what = key.slice(6);
-    store.update((d) => { d.history = []; d.single = null; d.batch = null; d.homePreset = "通用办公脱敏"; d.view = "home"; });
+    store.update((d) => { d.history = []; d.single = null; d.batch = null; d.homePreset = "办公外发"; d.view = "home"; });
     resetModels("missing");
     if (what === "plugins") { store.update((d) => { d.view = "plugins"; }); return; }
     if (what === "catalog") {
@@ -107,14 +107,13 @@ export function scene(key: string): void {
           status: "ready", progress: 100,
           runtime: {
             dir: "/Users/jorben/Library/Application Support/Tacet/models/installed/astrlink-guard_0.1.3_0a070d3113615e33",
-            backend: "CPUExecutionProvider", device: "cpu", repository: "QuantumNous/astrlink-guard", accelerable: true, accelerated: false,
-            accel: { id: "astrlink-guard-fp16", variant: "FP16", status: "missing", progress: 0, error: null, weightMiB: 72 },
+            backend: "auto", device: "auto", repository: "QuantumNous/astrlink-guard", accelerable: true, accelerated: false,
           },
         });
         d.models.push({
-          id: "pf", name: "OpenAI Privacy Filter", version: "7ffa9a0", variant: "INT8", languages: "英文为主", weightMiB: 1569, recommended: false,
+          id: "pf", name: "OpenAI Privacy Filter", version: "7ffa9a0", variant: "FP16", languages: "英文为主", weightMiB: 2713, recommended: false,
           confRec: 0.5, confMin: 0.2, status: "missing", progress: 0, error: null, eligible: true, minMemoryGiB: 16,
-          runtime: { dir: "", backend: "CPUExecutionProvider", device: "cpu", repository: "openai/privacy-filter", accelerable: false, accelerated: false },
+          runtime: { dir: "", backend: "auto", device: "auto", repository: "openai/privacy-filter", accelerable: true, accelerated: false },
         });
       });
       return;
@@ -131,7 +130,7 @@ export function scene(key: string): void {
   }
   if (key === "fresh") {
     resetModels("missing");
-    store.update((d) => { d.homePreset = "通用办公脱敏"; d.history = []; d.single = null; d.batch = null; d.view = "home"; });
+    store.update((d) => { d.homePreset = "办公外发"; d.history = []; d.single = null; d.batch = null; d.view = "home"; });
     return;
   }
   if (key === "close") { requestClose(); return; }

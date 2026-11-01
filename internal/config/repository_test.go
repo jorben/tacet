@@ -335,16 +335,17 @@ func TestSettingsKeepTheNewPreferencesAndFillDefaultsForOlderData(t *testing.T) 
 		if err != nil {
 			return err
 		}
-		if s.RedactStyle != "black" || s.ResourceTier != "comfort" || s.RetentionDays != 7 || s.CloseBehavior != "quit" || !s.AutomaticUpdateChecks {
+		if s.RedactStyle != "black" || s.ResourceTier != "comfort" || s.RetentionDays != 7 || s.CloseBehavior != "quit" || !s.AutomaticUpdateChecks || !s.GPUAcceleration {
 			t.Fatalf("%+v", s)
 		}
 		// "do not keep" (0) is a choice, not a missing value
 		s.RetentionDays = 0
+		s.GPUAcceleration = false
 		if err = r.SaveSettings(tx, s); err != nil {
 			return err
 		}
 		got, err := r.Settings(tx)
-		if err != nil || got.RetentionDays != 0 || got.RedactStyle != "black" {
+		if err != nil || got.RetentionDays != 0 || got.RedactStyle != "black" || got.GPUAcceleration {
 			t.Fatalf("%+v %v", got, err)
 		}
 		for name, bad := range map[string]func(*Settings){

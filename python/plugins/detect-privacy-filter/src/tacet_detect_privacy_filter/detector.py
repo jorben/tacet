@@ -1,4 +1,4 @@
-"""ONNX Runtime detector for OpenAI Privacy Filter (CPU, as its manifest names).
+"""ONNX Runtime detector for OpenAI Privacy Filter with GPU-first, same-weight CPU fallback.
 
 Text is cut into windows of 512 tokens overlapping by 128, the width of the model's attention band, so every
 token sees its context; a token's log-probabilities are averaged over the windows that hold it, as the
@@ -12,16 +12,13 @@ import json
 from pathlib import Path
 
 from tacet_plugin_sdk.modelfiles import IntegrityError, verify
+from tacet_plugin_sdk.inference import BackendError, load_session
 
 from .decode import DecodeError, LabelSpace, Span, char_ranges, log_softmax, spans_in_text, tables, viterbi
 
 WINDOW = 512
 OVERLAP = 128
 FLOOR = 0.2  # adapter floor: spans whose weakest token is below it are not reported
-
-
-class BackendError(RuntimeError):
-    pass
 
 
 def graph_of(manifest: dict) -> str:
@@ -55,17 +52,15 @@ def calibration(directory: Path) -> dict[str, float]:
 
 
 class Detector:
-    def __init__(self, directory: Path, manifest: dict, threads: int = 2, window: int = WINDOW, overlap: int = OVERLAP):
+    def __init__(self, directory: Path, manifest: dict, threads: int = 2, window: int = WINDOW, overlap: int = OVERLAP,
+                 cache_dir: Path | None = None, backend: str | None = None):
         if not 0 <= overlap < window:
             raise ValueError('window')
         verify(directory, manifest)  # full verification before importing inference code
         directory = Path(directory)
         graph = graph_of(manifest)
-        backend = manifest['backend']
-        import onnxruntime as ort
+        backend = backend or manifest['backend']
         import tokenizers
-        if backend not in ort.get_available_providers():
-            raise BackendError('MODEL_BACKEND_UNAVAILABLE')
         config = json.loads((directory / 'config.json').read_text(encoding='utf-8'))
         id2label = config['id2label']
         self._space = LabelSpace([id2label[str(i)] for i in range(len(id2label))])
@@ -74,14 +69,7 @@ class Detector:
         self._tokenizer.encode_special_tokens = True  # "<|endoftext|>" in a document is text, not a control token
         self._bytes = byte_decoder()
         self._window, self._overlap = window, overlap
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = threads
-        options.inter_op_num_threads = 1
-        options.log_severity_level = 4
-        self._session = ort.InferenceSession(str(directory / graph), sess_options=options, providers=[backend])
-        if self._session.get_providers()[0] != backend:
-            raise BackendError('MODEL_BACKEND_UNAVAILABLE')
-        self.backend = backend
+        self._session, self.backend = load_session(directory / graph, threads, backend, cache_dir)
         self.revision = manifest['revision']
 
     def _token_bytes(self, ids: list[int]) -> list[bytes]:

@@ -18,7 +18,7 @@ describe("模型准备状态", () => {
     press("前往下载");
     expect($('#modelPlugins [data-model="astr"]')).toBeTruthy();
     expect(win()).toContain("下载模型");
-    expect(win()).toContain("权重约 36 MiB");
+    expect(win()).toContain("权重约 72 MiB");
   });
 
   it("插件页显示模型的推理设备与存储位置（内核报告时）", () => {
@@ -29,7 +29,7 @@ describe("模型准备状态", () => {
     expect(rt.textContent).toContain("推理设备CPU · ONNX Runtime");
     expect(rt.textContent).toContain("存储位置~/Tacet/models/astrlink-guard-int8");
     expect(rt.querySelector("dd")!.getAttribute("title")).toBe("CPUExecutionProvider");
-    act(() => store.update((d) => { d.models[0]!.runtime!.device = "gpu"; }));
+    act(() => store.update((d) => { d.models[0]!.runtime!.device = "gpu"; d.models[0]!.runtime!.backend = "CoreMLExecutionProvider"; }));
     expect($("#modelPlugins .model-runtime")!.textContent).toContain("GPU · Core ML");
     act(() => store.update((d) => { delete d.models[0]!.runtime; }));
   });
@@ -55,14 +55,13 @@ describe("模型准备状态", () => {
     setService(null);
   });
 
-  it("插件页：以英文为主的模型标明需人工复核；内存不足时下载按钮不可用并说明原因", () => {
+  it("插件页：内存不足时下载按钮不可用并说明原因", () => {
     go("model-plugins");
     act(() => store.update((d) => {
       d.models.push({ ...d.models[0]!, id: "pf", name: "OpenAI Privacy Filter", languages: "英文为主", weightMiB: 1569, status: "missing", progress: 0, eligible: false, minMemoryGiB: 16 });
     }));
     const card = $('#modelPlugins [data-model="pf"]')!;
     expect(card.textContent).toContain("权重约 1.5 GiB");
-    expect(card.textContent).toContain("以英文为主，阈值未经校准；中文文档的结果需人工复核");
     expect(card.textContent).toContain("需要至少 16 GiB 内存，本机不满足，无法下载");
     expect(card.querySelector<HTMLButtonElement>(".model-actions .btn")!.disabled).toBe(true);
     expect($$("#modelPlugins .model-list > .model-card")).toHaveLength(2);
@@ -74,6 +73,15 @@ describe("模型准备状态", () => {
     expect($("#modelPlugins > .model-list > .model-card")).toBeTruthy();
     expect($$(".model-list .row")).toHaveLength(0);
     expect($(".model-list")!.closest("#modelPlugins")).toBeTruthy();
+  });
+
+  it.each(["missing", "downloading", "paused", "verifying", "loading", "ready", "error"] as const)("插件页：模型在 %s 状态仍显示权重体积", (status) => {
+    go("model-catalog");
+    act(() => store.update((d) => {
+      d.models.forEach((m) => { m.status = status; });
+    }));
+    expect($('#modelPlugins [data-model="astr"] .model-meta')!.textContent).toContain("权重约 72 MiB");
+    expect($('#modelPlugins [data-model="pf"] .model-meta')!.textContent).toContain("权重约 2.6 GiB");
   });
 
   it("存储位置：路径分成可省略的前段与始终显示的末段；末尾的图标打开内核报告的目录", async () => {
@@ -114,42 +122,30 @@ describe("模型准备状态", () => {
     setService(null);
   });
 
-  it("设置页：GPU 加速只在有 GPU 版本的设备上出现；它是一项设置，说明随 GPU 版本是否已下载而变", () => {
+  it("GPU 加速默认开启且始终可见；关闭只切换设备，不改变模型", () => {
     go("settings");
-    expect($("#settingsPage")!.textContent).not.toContain("GPU 加速");
-    const accel = { id: "astrlink-guard-fp16", variant: "FP16", status: "missing" as const, progress: 0, error: null, weightMiB: 72 };
-    const rt = { dir: "/m/astrlink-guard-int8", backend: "CPUExecutionProvider", device: "cpu" as const, repository: "", accelerable: true, accelerated: false, accel };
-    act(() => store.update((d) => { d.models[0]!.runtime = rt; d.settings.gpu = false; }));
+    act(() => store.update((d) => { d.settings.gpu = true; }));
     const sw = () => $('#settingsPage [role="switch"][aria-label="GPU 加速"]')!;
-    expect(sw().getAttribute("aria-checked")).toBe("false");
-    expect($("#settingsPage")!.textContent).toContain("默认使用 CPU");
+    const before = getState().models.map((m) => [m.id, m.version, m.variant]);
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    expect($("#settingsPage")!.textContent).toContain("设备支持时所有模型优先使用 GPU");
+    act(() => sw().click());
+    expect(getState().settings.gpu).toBe(false);
+    expect($("#settingsPage")!.textContent).toContain("所有模型使用 CPU 推理");
+    expect(getState().models.map((m) => [m.id, m.version, m.variant])).toEqual(before);
     act(() => sw().click());
     expect(getState().settings.gpu).toBe(true);
-    expect($("#settingsPage")!.textContent).toContain("已开启，下载 AstrLink Guard 的 GPU 版本后生效");
-    press("前往下载");
-    expect(getState().view).toBe("plugins");
-    act(() => store.update((d) => { d.view = "settings"; d.models[0]!.runtime = { ...rt, accelerated: true, device: "gpu", accel: { ...accel, status: "ready" } }; }));
-    expect(sw().getAttribute("aria-checked")).toBe("true");
-    expect($("#settingsPage")!.textContent).toContain("已生效：AstrLink Guard 使用 GPU 版本");
-    act(() => store.update((d) => { delete d.models[0]!.runtime; d.settings.gpu = false; }));
   });
 
-  it("插件页：AstrLink 卡片里单独显示 GPU 版本的下载状态与操作", () => {
+  it("插件页只有一份 FP16 模型；启动前显示 GPU 优先，降级后显示 CPU", () => {
     go("model-catalog");
-    const row = () => $('#modelPlugins [data-model="astr"] .model-accel')!;
-    expect(row().textContent).toContain("FP16 · 72 MiB");
-    expect(row().textContent).toContain("未下载");
-    expect(row().querySelector(".model-link")!.textContent).toBe("下载");
-    act(() => store.update((d) => { Object.assign(d.models[0]!.runtime!.accel!, { status: "downloading", progress: 40 }); }));
-    expect(row().textContent).toContain("下载中 40%");
-    expect(row().querySelector(".model-link")!.textContent).toBe("暂停");
-    act(() => store.update((d) => { Object.assign(d.models[0]!.runtime!.accel!, { status: "ready", progress: 100 }); }));
-    expect(row().textContent).toContain("已下载 · GPU 加速未开启");
-    expect(row().querySelector(".model-link")).toBeNull();
-    act(() => store.update((d) => { d.models[0]!.runtime!.accelerated = true; }));
-    expect(row().textContent).toContain("使用中");
+    expect($("#modelPlugins .model-accel")).toBeNull();
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("FP16");
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("GPU 优先 · 启动时检测");
+    act(() => store.update((d) => { d.models[0]!.runtime!.device = "cpu"; d.models[0]!.runtime!.backend = "CPUExecutionProvider"; }));
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("CPU · ONNX Runtime");
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("FP16");
   });
-
 
   it("下载中 → 校验中 → 准备中 → 已就绪，可暂停", () => {
     go("model-plugins");

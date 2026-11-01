@@ -112,7 +112,7 @@ func waitModel(t *testing.T, e *Engine, id string, done func(ModelRuntime) bool)
 	}
 }
 
-// A model starts out not downloaded: its preset is refused and the default run is rules only. Downloaded on
+// A model starts out not downloaded: the office preset waits for it. Downloaded on
 // request from the pinned source, it is verified, tried and installed into the shared folder; then it runs,
 // and another workspace of the same user finds it there without downloading it again.
 func TestAModelIsDownloadedVerifiedTriedAndThenUsed(t *testing.T) {
@@ -130,8 +130,8 @@ func TestAModelIsDownloadedVerifiedTriedAndThenUsed(t *testing.T) {
 	if st := waitModel(t, e, id, func(ModelRuntime) bool { return true }); st.State != "pending" || st.Dir != "" || st.Bytes <= 0 {
 		t.Fatalf("%+v", st)
 	}
-	if e.defaultPreset(ctx) != PresetID {
-		t.Fatal("a model that is not there is the default")
+	if e.defaultPreset(ctx) != ModelPresetID {
+		t.Fatal("the office preset must keep its model while waiting for download")
 	}
 	p := filepath.Join(in, "m.txt")
 	os.WriteFile(p, []byte("请联系张伟，电话 13812345678。\n"), 0o600)
@@ -211,7 +211,7 @@ func TestADownloadThatFailsVerificationInstallsNothing(t *testing.T) {
 func TestADownloadIsRefusedBelowTheModelsMemoryWhileProcessingAndWhenPreinstalled(t *testing.T) {
 	var pf *ModelOption
 	for _, m := range m0Models(t) {
-		if strings.HasSuffix(m.ManifestPath, "privacy-filter-int8.json") {
+		if strings.HasSuffix(m.ManifestPath, "privacy-filter-fp16.json") {
 			pf = managed(m)
 		}
 	}
@@ -225,7 +225,7 @@ func TestADownloadIsRefusedBelowTheModelsMemoryWhileProcessingAndWhenPreinstalle
 	})
 	defer e.Close()
 	ctx := context.Background()
-	id := "privacy-filter-int8"
+	id := "privacy-filter-fp16"
 	got := waitModel(t, e, id, func(ModelRuntime) bool { return true })
 	if got.Eligible || got.MinMemory != 16<<30 || got.Name != "OpenAI Privacy Filter" || got.Languages != "英文为主" || got.Preset != "builtin-preset-privacy-filter" {
 		t.Fatalf("%+v", got)
@@ -288,21 +288,14 @@ func TestPrivacyFilterPresetFindsAndRedactsEndToEnd(t *testing.T) {
 	}
 }
 
-// The GPU build is downloaded on its own, like any model (verified, tried), and is used only while the GPU
-// acceleration setting is on.
-func TestTheGPUBuildIsDownloadedOnItsOwnAndUsedOnlyWhenTheSettingIsOn(t *testing.T) {
-	m0 := modelOption(t)
-	r, _ := root(t)
-	fp16 := filepath.Join(r, ".pi", "m0-resources", "astrlink-guard-fp16")
-	if _, err := os.Stat(fp16); err != nil {
-		t.Skip("needs the FP16 model resource")
-	}
-	_, src, hits := hubServer(t, "/QuantumNous/astrlink-guard/resolve/7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4/fp16/", fp16)
-	m := *m0
-	m.Accel = &ModelVariant{ManifestPath: filepath.Join(r, "resources", "models", "astrlink-guard-fp16.json")}
+// Production FP16 is downloaded once, then the GPU preference only changes its provider.
+func TestFP16IsDownloadedOnceAndCPUUsesTheSameInstallation(t *testing.T) {
+	m0 := accelOption(t)
+	_, src, hits := hubServer(t, "/QuantumNous/astrlink-guard/resolve/7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4/fp16/", m0.Dir)
+	m := managed(m0)
 	shared := t.TempDir()
 	e := openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, func(o *Options) {
-		o.Models, o.ModelsRoot, o.ModelSource = []*ModelOption{&m}, shared, src
+		o.Models, o.ModelsRoot, o.ModelSource = []*ModelOption{m}, shared, src
 	})
 	defer e.Close()
 	ctx := context.Background()
@@ -312,19 +305,16 @@ func TestTheGPUBuildIsDownloadedOnItsOwnAndUsedOnlyWhenTheSettingIsOn(t *testing
 	if err := e.DownloadModel(ctx, "astrlink-guard-fp16"); err != nil {
 		t.Fatal(err)
 	}
-	got := waitModel(t, e, "astrlink-guard-int8", func(r ModelRuntime) bool {
-		return r.Accel != nil && (r.Accel.State == "ready" || r.Accel.State == "error")
-	})
-	if got.Accel.State != "ready" || !strings.HasPrefix(got.Accel.Dir, filepath.Join(shared, "installed")) || got.Accel.Downloaded != got.Accel.Bytes {
-		t.Fatalf("%+v", got.Accel)
+	got := waitModel(t, e, "astrlink-guard-fp16", func(r ModelRuntime) bool { return r.State == "ready" || r.State == "error" })
+	if got.State != "ready" || got.Accel != nil || got.Build != got.ID || got.Dir == "" {
+		t.Fatalf("%+v", got)
 	}
-	if got.Accelerated || got.Device != "cpu" {
-		t.Fatalf("used while the setting is off: %+v", got)
-	}
-	if rt := setGPU(t, e, true); !rt.Accelerated || rt.Device != "gpu" || rt.Dir != got.Accel.Dir || rt.Build != "astrlink-guard-fp16" {
+	before := hits.Load()
+	rt := setGPU(t, e, false)
+	if rt.Dir != got.Dir || rt.Build != got.Build || rt.Device != "cpu" || hits.Load() != before {
 		t.Fatalf("%+v", rt)
 	}
-	if dir, err := e.ModelDirectory(ctx, "astrlink-guard-int8"); err != nil || dir != got.Accel.Dir {
+	if dir, err := e.ModelDirectory(ctx, got.ID); err != nil || dir != got.Dir {
 		t.Fatal(dir, err)
 	}
 }

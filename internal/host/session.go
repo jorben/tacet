@@ -32,17 +32,18 @@ type Transport interface {
 var defaultDeadlineMS = int64(600000)
 
 type Session struct {
-	transport  Transport
-	schemas    *Schemas
-	writeMu    sync.Mutex
-	callMu     sync.Mutex
-	incoming   chan sessionMessage
-	done       chan struct{}
-	once       sync.Once
-	next       uint64
-	generation uint64
-	ready      bool
-	stalled    atomic.Bool
+	transport    Transport
+	schemas      *Schemas
+	writeMu      sync.Mutex
+	callMu       sync.Mutex
+	incoming     chan sessionMessage
+	done         chan struct{}
+	once         sync.Once
+	next         uint64
+	generation   uint64
+	ready        bool
+	capabilities map[string]bool
+	stalled      atomic.Bool
 }
 
 type sessionMessage struct {
@@ -180,8 +181,9 @@ func (s *Session) Initialize(ctx context.Context, pluginID, version string, gene
 		return ErrHandshakeMismatch
 	}
 	var result struct {
-		Protocol string `json:"protocol"`
-		Plugin   struct {
+		Protocol     string          `json:"protocol"`
+		Capabilities map[string]bool `json:"capabilities"`
+		Plugin       struct {
 			ID      string `json:"id"`
 			Version string `json:"version"`
 		} `json:"plugin"`
@@ -190,9 +192,17 @@ func (s *Session) Initialize(ctx context.Context, pluginID, version string, gene
 		s.Close()
 		return ErrHandshakeMismatch
 	}
+	s.capabilities = result.Capabilities
 	s.generation = generation
 	s.ready = true
 	return nil
+}
+
+// Capability reports a feature declared by the initialized worker.
+func (s *Session) Capability(name string) bool {
+	s.callMu.Lock()
+	defer s.callMu.Unlock()
+	return s.capabilities[name]
 }
 
 // StreamOutcome is still a stage result, never evidence of publish readiness.

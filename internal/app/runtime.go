@@ -89,6 +89,12 @@ func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef, id string
 		<-e.modelSem
 		return nil, nil, errors.New("MODEL_START_FAILED")
 	}
+	requested := "CPUExecutionProvider"
+	if exec != nil {
+		requested = exec.Backend
+	}
+	e.recordBackend(m, requested, w.Session)
+	e.changed(e.batchOf(ctx, a.JobID))
 	release := func() { w.Terminate(time.Second); <-e.modelSem }
 	var n atomic.Uint64
 	pm, err := detect.NewPluginModel(w.Session, func() kernel.AttemptRef {

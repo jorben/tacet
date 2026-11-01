@@ -56,8 +56,8 @@ type ModelOption struct {
 	Dir          string  // absolute directory of preinstalled files; "" = downloaded
 	ManifestPath string  // absolute path of the integrity manifest
 	Plugin       Builtin // the detection plugin (role detect); Formats is empty
-	// Accel, when set, is the optional accelerated build of the same model (FP16 through Core ML on
-	// Apple Silicon), downloaded when the user turns GPU acceleration on; it runs only after its trial.
+	// Accel is retained for resolving historical snapshots. The production catalog uses one
+	// GPU-compatible build per model and changes only the execution provider.
 	Accel *ModelVariant
 }
 
@@ -156,22 +156,23 @@ type Engine struct {
 	pipe   *extract.Pipeline
 	runner *validate.Runner
 
-	mu        sync.Mutex
-	secrets   map[string][]byte // job -> password waiting for its preflight; memory only
-	plugins   map[string]plugin // extension -> plugin
-	detect    map[string]*detectCache
-	cancel    context.CancelFunc
-	done      chan struct{}
-	closed    bool
-	listeners map[int]func(batch string)
-	listenSeq int
-	pv        *previewState
-	models    []*modelInfo    // the catalog, in manifest order
-	modelSem  chan struct{}   // one model worker at a time (detection, preparation): their memory is not shared
-	catalog   *models.Service // downloads and installed state; nil when every model is preinstalled
-	life      context.Context // the engine's lifetime: background downloads run under it
-	ret       *retention.Service
-	budget    sched.Budget
+	mu            sync.Mutex
+	secrets       map[string][]byte // job -> password waiting for its preflight; memory only
+	plugins       map[string]plugin // extension -> plugin
+	detect        map[string]*detectCache
+	modelBackends map[string]string // actual providers, keyed by model digest and requested policy
+	cancel        context.CancelFunc
+	done          chan struct{}
+	closed        bool
+	listeners     map[int]func(batch string)
+	listenSeq     int
+	pv            *previewState
+	models        []*modelInfo    // the catalog, in manifest order
+	modelSem      chan struct{}   // one model worker at a time (detection, preparation): their memory is not shared
+	catalog       *models.Service // downloads and installed state; nil when every model is preinstalled
+	life          context.Context // the engine's lifetime: background downloads run under it
+	ret           *retention.Service
+	budget        sched.Budget
 	// beforeConfirm, when set by a test, runs before a file that finished its inspection after
 	// the batch started joins the batch; it holds that window open.
 	beforeConfirm func()

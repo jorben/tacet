@@ -104,7 +104,7 @@ export interface EngineSettings {
   resourceTier: string;
   retentionDays: number;
   autoUpdate: boolean;
-  /** Use the GPU build of a model when it is downloaded (Apple Silicon); off by default. */
+  /** Enabled by default. Prefer GPU; fall back to CPU using the same model files. */
   gpuAcceleration?: boolean;
 }
 
@@ -131,9 +131,9 @@ export interface EngineBuildStatus {
 
 /** One model of the catalog: its download state, where its files are and what it computes on. */
 export interface EngineModelRuntime {
-  /** Model id and variant, as in the model profile (e.g. astrlink-guard-int8). */
+  /** Model id and variant, as in the model profile (e.g. astrlink-guard-fp16). */
   id: string;
-  /** The build that runs now: the accelerated one's id when acceleration is on. */
+  /** The installed build; GPU/CPU switching preserves this id. */
   build: string;
   name: string;
   version: string;
@@ -155,14 +155,14 @@ export interface EngineModelRuntime {
   dir: string;
   /** ONNX Runtime execution provider, e.g. CPUExecutionProvider. */
   backend: string;
-  device: "cpu" | "gpu";
+  device: "cpu" | "gpu" | "auto";
   /** The model's Hugging Face id ("owner/name") from its integrity manifest; empty when unknown. */
   repository: string;
-  /** The installation offers the optional accelerated build (Apple Silicon, FP16 via Core ML)… */
+  /** This model uses GPU-compatible weights. */
   accelerable: boolean;
-  /** …and this is that build's own download state. */
+  /** Reserved for older clients that expose a separate accelerated build. */
   accel?: EngineBuildStatus | null;
-  /** GPU acceleration is on: batches started now run the accelerated build, which the fields above describe. */
+  /** A worker confirmed GPU execution for the current preference. */
   accelerated: boolean;
 }
 

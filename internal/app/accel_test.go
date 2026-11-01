@@ -17,14 +17,16 @@ import (
 	"github.com/jorben/tacet/internal/snapshot"
 )
 
-// accelOption is the fixed model with its accelerated build (both M0 resource folders); skipped otherwise.
+// accelOption is the production FP16 model; CPU and GPU execute these same files.
 func accelOption(t *testing.T) *ModelOption {
 	t.Helper()
-	m := modelOption(t)
-	if m.Accel == nil || m.Accel.Dir == "" {
-		t.Skip("needs the FP16 model resource")
+	for _, m := range m0Models(t) {
+		if strings.HasSuffix(m.ManifestPath, "astrlink-guard-fp16.json") && m.Dir != "" {
+			return m
+		}
 	}
-	return m
+	t.Skip("needs the FP16 model resource")
+	return nil
 }
 
 func writeManifest(t *testing.T, base string, edit func(map[string]any)) string {
@@ -125,36 +127,27 @@ func setGPU(t *testing.T, e *Engine, on bool) ModelRuntime {
 	return list[0]
 }
 
-// GPU acceleration is off by default and is only a setting: turning it on downloads, compiles and tries nothing;
-// without the GPU build downloaded the model keeps running on the CPU.
-func TestGPUAccelerationIsOnlyASettingAndOffByDefault(t *testing.T) {
-	m := *modelOption(t)
-	r, _ := root(t)
-	m.Accel = &ModelVariant{ManifestPath: filepath.Join(r, "resources", "models", "astrlink-guard-fp16.json")} // to be downloaded
-	e := openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, func(o *Options) { o.Models, o.ModelsRoot = []*ModelOption{&m}, t.TempDir() })
+func TestGPUAccelerationDefaultsOnAndNeverChangesTheModelBuild(t *testing.T) {
+	m := accelOption(t)
+	e := openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, withModel(m))
 	defer e.Close()
 	ctx := context.Background()
-	if s, _ := e.SettingsGet(ctx); s.GPUAcceleration {
-		t.Fatal("on by default")
-	}
-	rt := setGPU(t, e, true)
 	if s, _ := e.SettingsGet(ctx); !s.GPUAcceleration {
-		t.Fatal("the setting was not kept")
+		t.Fatal("GPU preference is off by default")
 	}
-	if !rt.Accelerable || rt.Accelerated || rt.Device != "cpu" || rt.Build != "astrlink-guard-int8" || rt.Accel == nil ||
-		rt.Accel.ID != "astrlink-guard-fp16" || rt.Accel.State != "pending" || rt.Accel.Variant != "FP16" || rt.Accel.Bytes <= 0 || rt.Accel.Dir != "" {
-		t.Fatalf("%+v %+v", rt, rt.Accel)
-	}
-	if x := e.execution(config.Settings{GPUAcceleration: true}, e.models[0], e.available(ctx)); x != nil {
-		t.Fatalf("a batch would freeze a build that is not there: %+v", x)
-	}
-	// a model without an accelerated build reports none
-	m2 := *modelOption(t)
-	m2.Accel = nil
-	e2 := openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, withModel(&m2))
-	defer e2.Close()
-	if rt := setGPU(t, e2, true); rt.Accelerable || rt.Accel != nil || rt.Accelerated {
-		t.Fatalf("%+v", rt)
+	for _, on := range []bool{true, false, true} {
+		rt := setGPU(t, e, on)
+		if rt.ID != "astrlink-guard-fp16" || rt.Build != rt.ID || rt.Dir != m.Dir || rt.Accel != nil {
+			t.Fatalf("build changed: %+v", rt)
+		}
+		x := e.execution(config.Settings{GPUAcceleration: on}, e.models[0], e.available(ctx))
+		want := "CPUExecutionProvider"
+		if on {
+			want = "auto"
+		}
+		if x == nil || x.ModelID != rt.ID || x.Digest != e.models[0].digest || x.Backend != want {
+			t.Fatalf("%+v", x)
+		}
 	}
 }
 
@@ -162,30 +155,35 @@ func TestAFrozenBuildThatIsGoneIsNotReplaced(t *testing.T) {
 	m := accelOption(t)
 	e := openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, withModel(m))
 	defer e.Close()
-	v := e.models[0].accel
-	if _, _, err := e.modelArgs(context.Background(), e.models[0], &snapshot.ModelExecution{ModelID: v.id, Digest: "sha256:" + strings.Repeat("0", 64), Backend: v.backend}); !errors.Is(err, ErrAccelUnavailable) {
+	x := &snapshot.ModelExecution{ModelID: e.models[0].id, Digest: "sha256:" + strings.Repeat("0", 64), Backend: "auto"}
+	if _, _, err := e.modelArgs(context.Background(), e.models[0], x); !errors.Is(err, ErrAccelUnavailable) {
 		t.Fatal(err)
 	}
-	args, timeout, err := e.modelArgs(context.Background(), e.models[0], nil)
-	if err != nil || timeout != handshakeTimeout || strings.Join(args, " ") != "--model-dir "+m.Dir+" --manifest "+m.ManifestPath {
-		t.Fatal(args, err)
+	x.Digest = e.models[0].digest
+	for _, backend := range []string{"auto", "CPUExecutionProvider"} {
+		x.Backend = backend
+		args, _, err := e.modelArgs(context.Background(), e.models[0], x)
+		if err != nil || !strings.Contains(strings.Join(args, " "), "--model-dir "+m.Dir+" --manifest "+m.ManifestPath+" --backend "+backend) {
+			t.Fatal(args, err)
+		}
 	}
 }
 
-// Turned on, the trial run compiles and checks the FP16 build; a batch started then freezes that build
-// and runs it on Core ML; turned off, the next batch runs the INT8 build on the CPU again.
-func TestAccelerationRunsTheFrozenAcceleratedBuildEndToEnd(t *testing.T) {
+// Both new batches and resumed work keep their frozen weights while the device preference can differ.
+func TestGPUAndCPUUseTheSameFrozenFP16BuildEndToEnd(t *testing.T) {
 	m := accelOption(t)
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	e := openEngineWith(t, ws, &memKey{}, true, withModel(m))
 	defer e.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	rt := setGPU(t, e, true)
-	if !rt.Accelerated || !rt.Accelerable || rt.Device != "gpu" || rt.Backend != "CoreMLExecutionProvider" || rt.Dir != m.Accel.Dir || rt.ID != "astrlink-guard-int8" || rt.Build != "astrlink-guard-fp16" {
-		t.Fatalf("%+v", rt)
-	}
-	run := func(name string) (FileStatus, *snapshot.ModelExecution) {
+	var previous *snapshot.ModelExecution
+	for _, on := range []bool{true, false} {
+		setGPU(t, e, on)
+		name := "cpu.txt"
+		if on {
+			name = "gpu.txt"
+		}
 		p := filepath.Join(in, name)
 		os.WriteFile(p, []byte("请联系张伟，电话 13812345678，邮箱 zhangwei@example.com。\n"), 0o600)
 		st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out})
@@ -195,69 +193,40 @@ func TestAccelerationRunsTheFrozenAcceleratedBuildEndToEnd(t *testing.T) {
 		if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
 			t.Fatal(err)
 		}
-		if st, err = e.Wait(ctx, st.ID); err != nil {
+		// A later setting change must not change the policy already frozen for this run.
+		setGPU(t, e, !on)
+		st, err = e.Wait(ctx, st.ID)
+		if err != nil {
 			t.Fatal(err)
 		}
 		f := st.Files[0]
+		if f.State != "completed" || f.Categories["person"] < 1 {
+			t.Fatalf("%+v", f)
+		}
 		l, err := e.load(ctx, f.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return f, l.snap.Content().Detect.Execution
-	}
-	f, exec := run("gpu.txt")
-	if f.State != "completed" || f.Categories["person"] < 1 {
-		t.Fatalf("%+v", f)
-	}
-	if exec == nil || exec.ModelID != "astrlink-guard-fp16" || exec.Backend != "CoreMLExecutionProvider" || exec.Digest != e.models[0].accel.digest {
-		t.Fatalf("frozen: %+v", exec)
-	}
-	raw, _ := os.ReadFile(filepath.Join(out, f.Output))
-	if strings.Contains(string(raw), "张伟") || !strings.Contains(string(raw), "[姓名]") {
-		t.Fatalf("not redacted: %q", raw)
-	}
-	if entries, _ := os.ReadDir(e.accelCache(e.models[0].accel)); len(entries) == 0 {
-		t.Fatal("the compiled model is not cached")
-	}
-	if rt = setGPU(t, e, false); rt.Accelerated || rt.Device != "cpu" || rt.Dir != m.Dir {
-		t.Fatalf("%+v", rt)
-	}
-	f, exec = run("cpu.txt")
-	if f.State != "completed" || f.Categories["person"] < 1 || exec != nil {
-		t.Fatalf("%+v %+v", f, exec)
-	}
-}
-
-// The detection stage runs the build its snapshot froze: when that build's files cannot be verified the file
-// fails; the stage never falls back to the CPU build and delivers.
-func TestTheDetectionStageRunsTheFrozenBuildAndNeverFallsBack(t *testing.T) {
-	m := accelOption(t)
-	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
-	e := openEngineWith(t, ws, &memKey{}, true, withModel(m))
-	defer e.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-	defer cancel()
-	setGPU(t, e, true)
-	broken := *e.models[0].accel
-	broken.dir = t.TempDir() // same identity, files gone
-	e.models[0].accel = &broken
-	p := filepath.Join(in, "m.txt")
-	os.WriteFile(p, []byte("请联系张伟，电话 13812345678。\n"), 0o600)
-	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
-		t.Fatal(err)
-	}
-	if st, err = e.Wait(ctx, st.ID); err != nil {
-		t.Fatal(err)
-	}
-	if st.Files[0].State == "completed" || st.ExitCode == 0 {
-		t.Fatalf("fell back instead of failing: %+v", st.Files[0])
-	}
-	if entries, _ := os.ReadDir(out); len(entries) != 0 {
-		t.Fatalf("nothing may be delivered: %v", entries)
+		exec := l.snap.Content().Detect.Execution
+		want := "CPUExecutionProvider"
+		if on {
+			want = "auto"
+		}
+		if exec == nil || exec.ModelID != "astrlink-guard-fp16" || exec.Digest != e.models[0].digest || exec.Backend != want {
+			t.Fatalf("%+v", exec)
+		}
+		if previous != nil && (previous.ModelID != exec.ModelID || previous.Digest != exec.Digest) {
+			t.Fatal("CPU fallback changed weights")
+		}
+		previous = exec
+		backend := e.reportedBackend(e.models[0], on)
+		if backend == "auto" || (on && backend != "CoreMLExecutionProvider") || (!on && backend != "CPUExecutionProvider") {
+			t.Fatalf("worker did not report the actual backend: %s", backend)
+		}
+		raw, _ := os.ReadFile(filepath.Join(out, f.Output))
+		if strings.Contains(string(raw), "张伟") || !strings.Contains(string(raw), "[姓名]") {
+			t.Fatalf("not redacted: %q", raw)
+		}
 	}
 }
 

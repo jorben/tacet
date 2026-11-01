@@ -156,8 +156,7 @@ type pack struct {
 	Rules []config.RuleContent `json:"rules"`
 }
 
-// seedConfig writes the built-in rule set, scheme and preset once.
-// Each model of the catalog adds its profile, scheme and preset, whether or not its files are downloaded yet.
+// seedConfig exposes one office preset. Historical preset objects remain addressable for saved tasks.
 func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, models []*modelInfo) error {
 	var p pack
 	if err := json.Unmarshal(rulePack, &p); err != nil || len(p.Rules) == 0 {
@@ -195,8 +194,20 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, models []
 		objects = append(objects, object{k.profileID, k.profileName, config.ModelProfile, profile}, object{k.schemeID, k.schemeName, config.Scheme, mscheme},
 			object{k.presetID, k.preset, config.Preset, mpreset})
 	}
+	officeID := PresetID
+	if len(models) > 0 {
+		officeID = models[0].kind.presetID
+	}
 	for _, o := range objects {
+		if o.id == officeID {
+			o.name = "办公外发"
+		}
 		if _, err := repo.Get(tx, o.id); err == nil {
+			if o.kind == config.ModelProfile || o.id == officeID {
+				if err := repo.RefreshBuiltin(tx, o.id, o.data, o.name); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if _, err := repo.SeedBuiltin(tx, o.id, o.kind, o.name, o.data); err != nil {
@@ -206,13 +217,23 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, models []
 	return nil
 }
 
-// defaultPreset is what a run uses when none is named: rules plus the first model of the catalog (AstrLink)
-// when its files are there, else rules only. It reads the catalog: call it outside a transaction.
-func (e *Engine) defaultPreset(ctx context.Context) string {
-	if len(e.models) > 0 && e.available(ctx)[e.models[0].id] {
+// The office preset stays bound to its default model even before that model is downloaded.
+func (e *Engine) defaultPreset(_ context.Context) string {
+	if len(e.models) > 0 {
 		return e.models[0].kind.presetID
 	}
 	return PresetID
+}
+
+// legacyPreset hides historical variants while keeping their IDs usable by old saved tasks.
+func (e *Engine) legacyPreset(id string) bool {
+	if id == e.defaultPreset(context.Background()) {
+		return false
+	}
+	if id == PresetID || id == ModelPresetID || id == "builtin-preset-privacy-filter" {
+		return true
+	}
+	return false
 }
 
 func markPurged(tx store.Tx, job string) error {

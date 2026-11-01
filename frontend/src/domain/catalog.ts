@@ -13,8 +13,10 @@ export const CATEGORIES: Record<CategoryId, { l: string; ph: string }> = {
   other: { l: "其他", ph: "已隐去" },
 };
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as CategoryId[];
-/** Categories a scheme can switch on and off, in display order. */
+/** Office categories used in detection statistics. */
 export const OFFICE_CATEGORIES: OfficeCategoryId[] = ["org", "name", "phone", "email", "id", "addr", "card", "date"];
+/** Categories offered by schemes; the built-in models have no organization label. */
+export const PRESET_CATEGORIES = OFFICE_CATEGORIES.filter((c) => c !== "org");
 /** Order of the category list in the single-file review sidebar. */
 export const REVIEW_CATEGORY_ORDER: CategoryId[] = [...OFFICE_CATEGORIES, "other"];
 /** Categories offered when a selection is masked by hand. */

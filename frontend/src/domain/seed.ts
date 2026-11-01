@@ -1,28 +1,28 @@
 // What a fresh installation starts with: one model, built-in and sample schemes, rule sets and plugins.
 import type { ModelPlugin, PluginInfo, Preset, Ruleset, Settings } from "./types";
 
-export const DEFAULT_PRESET_NAME = "通用办公脱敏";
+export const DEFAULT_PRESET_NAME = "办公外发";
 
 export const seedModels = (): ModelPlugin[] => [
-  { id: "astr", name: "AstrLink Guard", version: "0.1.3", variant: "INT8", languages: "中文 / 中英混排", weightMiB: 36, recommended: true, confRec: 0.5, confMin: 0.3, status: "ready", progress: 100, error: null },
+  { id: "astr", categories: ["person", "address", "date", "phone", "email", "account", "payment_card", "ip_address", "url", "secret"], name: "AstrLink Guard", version: "0.1.3", variant: "FP16", languages: "中文 / 中英混排", weightMiB: 72, recommended: true, confRec: 0.5, confMin: 0.3, status: "ready", progress: 100, error: null },
 ];
 
 export const seedPresets = (): Preset[] => [
   {
-    id: "office", name: "通用办公脱敏", ver: "内建", builtin: true, det: "model", model: "astr", conf: 0.5, rules: ["cn"],
-    cats: { org: "mask", name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove", edited: "",
+    id: "office", name: "办公外发", ver: "内建", builtin: true, det: "model", model: "astr", conf: 0.5, rules: ["cn"],
+    cats: { name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove", edited: "",
   },
   {
     id: "cv", name: "简历脱敏", ver: "v3", det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"],
-    cats: { org: "ph", name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "off" }, img: "remove", edited: "2 天前",
+    cats: { name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "off" }, img: "remove", edited: "2 天前",
     hist: [
-      { ver: "v2", when: "上周", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"], cats: { org: "ph", name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
-      { ver: "v1", when: "上月", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: { org: "mask", name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
+      { ver: "v2", when: "上周", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"], cats: { name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
+      { ver: "v1", when: "上月", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: { name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
     ],
   },
   {
     id: "log", name: "日志清理", ver: "v1", det: "rules", model: "astr", conf: 0.5, rules: ["cn"],
-    cats: { org: "na", name: "na", phone: "mask", email: "ph", id: "mask", addr: "na", card: "mask", date: "off" }, img: "remove", edited: "上月",
+    cats: { name: "na", phone: "mask", email: "ph", id: "mask", addr: "na", card: "mask", date: "off" }, img: "remove", edited: "上月",
   },
 ];
 
@@ -70,4 +70,4 @@ export const seedPlugins = (): PluginInfo[] => [
   { id: "fin", name: "金融行业规则包", role: "规则", fmt: "", ver: "1.2.0", src: "gitee.com/fintools/tacet-fin-rules", commit: "a91d3e0", on: true, trusted: false, refs: 0 },
 ];
 
-export const seedSettings = (): Settings => ({ redact: "black", tier: "comfort", autoUpd: false, keep: "7", closeAct: "tray", gpu: false });
+export const seedSettings = (): Settings => ({ redact: "black", tier: "comfort", autoUpd: false, keep: "7", closeAct: "tray", gpu: true });

@@ -76,7 +76,7 @@ class AcceleratedModelTest(unittest.TestCase):
     def setUpClass(cls):
         from tacet_detect_astrlink.detector import Detector
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.cpu = Detector(INT8_DIR, manifest('astrlink-guard-int8.json'))
+        cls.cpu = Detector(FP16_DIR, manifest('astrlink-guard-fp16.json'), backend='CPUExecutionProvider')
         cls.gpu = Detector(FP16_DIR, manifest('astrlink-guard-fp16.json'), cache_dir=Path(cls.tmp.name))
 
     @classmethod
@@ -87,7 +87,8 @@ class AcceleratedModelTest(unittest.TestCase):
         self.assertEqual(self.gpu.backend, 'CoreMLExecutionProvider')
         self.assertEqual(self.gpu._session.get_providers()[0], 'CoreMLExecutionProvider')
         self.assertEqual(self.gpu._static, 512)
-        self.assertEqual(self.cpu._static, None)
+        self.assertEqual(self.cpu._static, 512)
+        self.assertEqual(self.cpu.revision, self.gpu.revision)
 
     def test_finds_what_the_cpu_baseline_finds(self):
         for text in SAMPLES:
