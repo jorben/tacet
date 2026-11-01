@@ -49,15 +49,17 @@ type FileStatus struct {
 // BatchStatus is what the CLI prints and the desktop shows; both come from
 // the same judgement (verdict), never from separate rules.
 type BatchStatus struct {
-	ID        string         `json:"id"`
-	Kind      string         `json:"kind"`
-	Phase     string         `json:"phase"`
-	Total     int            `json:"total"`
-	Counts    map[string]int `json:"counts"`
-	Delivered int            `json:"delivered"`
-	ExitCode  int            `json:"exit_code"`
-	Files     []FileStatus   `json:"files"`
-	Truncated bool           `json:"truncated,omitempty"`
+	ID     string         `json:"id"`
+	Kind   string         `json:"kind"`
+	Phase  string         `json:"phase"`
+	Total  int            `json:"total"`
+	Counts map[string]int `json:"counts"`
+	// Active counts files queued or executing, excluding paused and preflighted drafts.
+	Active    int          `json:"active"`
+	Delivered int          `json:"delivered"`
+	ExitCode  int          `json:"exit_code"`
+	Files     []FileStatus `json:"files"`
+	Truncated bool         `json:"truncated,omitempty"`
 	// Started: the settings were frozen (the batch was confirmed). Authorized: publishing was authorized.
 	Started    bool `json:"started"`
 	Authorized bool `json:"authorized"`

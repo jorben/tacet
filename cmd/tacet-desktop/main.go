@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"io/fs"
 	"log"
 	"os"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
-	"github.com/wailsapp/wails/v3/pkg/icons"
 
 	"github.com/jorben/tacet/frontend"
 	"github.com/jorben/tacet/internal/app"
@@ -20,6 +20,21 @@ import (
 
 // wmEndSession is WM_ENDSESSION of winuser.h.
 const wmEndSession = 0x0016
+
+// The transparent black mask is a macOS template; Windows uses black or white
+// ink to contrast with the taskbar. Both PNGs share the same alpha channel.
+//
+//go:embed assets/tray-template.png
+var trayTemplate []byte
+
+//go:embed assets/tray-dark.png
+var trayDark []byte
+
+//go:embed assets/tray-active-template.png
+var trayActiveTemplate []byte
+
+//go:embed assets/tray-active-dark.png
+var trayActiveDark []byte
 
 func main() {
 	assets, err := fs.Sub(frontend.Dist, "dist")
@@ -41,10 +56,16 @@ func main() {
 		}
 		return app.OpenWith(ctx, app.Config{Workspace: ws})
 	}, host)
+	var trayAnimation *gui.TrayAnimation
 	a := application.New(application.Options{
 		Name:        app.Name,
 		Description: "Local document redaction",
-		OnShutdown:  func() { gui.Shutdown(svc) },
+		OnShutdown: func() {
+			if trayAnimation != nil {
+				trayAnimation.Close()
+			}
+			gui.Shutdown(svc)
+		},
 		Services: []application.Service{
 			application.NewService(svc),
 		},
@@ -97,13 +118,21 @@ func main() {
 	menu.Add("退出").OnClick(func(*application.Context) { win.Show(); gui.RequestQuit(a, svc) })
 	tray := a.SystemTray.New().SetMenu(menu)
 	tray.SetTooltip(app.Name)
-	if goruntime.GOOS == "darwin" {
-		tray.SetTemplateIcon(icons.SystrayMacTemplate)
-	} else {
-		tray.SetIcon(icons.SystrayLight).SetDarkModeIcon(icons.SystrayDark)
+	showTrayFrame := func(frame int) {
+		light, dark := trayTemplate, trayDark
+		if frame == 1 {
+			light, dark = trayActiveTemplate, trayActiveDark
+		}
+		if goruntime.GOOS == "darwin" {
+			tray.SetTemplateIcon(light)
+		} else {
+			tray.SetIcon(light).SetDarkModeIcon(dark)
+		}
 	}
+	showTrayFrame(0)
+	trayAnimation = gui.NewTrayAnimation(application.InvokeAsync, showTrayFrame)
 	tray.OnClick(func() { win.Show(); win.Focus() })
-	host.BindTray(tray, menu, status)
+	host.BindTray(tray, menu, status, trayAnimation)
 	// Woken from sleep (NSWorkspaceDidWakeNotification / PBT_APMRESUMEAUTOMATIC): read the state again.
 	a.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { go gui.Woke(svc) })
 	if err := a.Run(); err != nil {

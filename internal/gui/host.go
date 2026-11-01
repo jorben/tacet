@@ -18,9 +18,10 @@ type WailsHost struct {
 	app *application.App
 	win *application.WebviewWindow
 
-	tray       *application.SystemTray
-	trayMenu   *application.Menu
-	trayStatus *application.MenuItem
+	tray          *application.SystemTray
+	trayMenu      *application.Menu
+	trayStatus    *application.MenuItem
+	trayAnimation *TrayAnimation
 }
 
 // Bind connects the host to the running application and forwards files dropped
@@ -130,19 +131,22 @@ func (h *WailsHost) Emit(event string, data any) {
 }
 
 // BindTray connects the tray: its status line and its tooltip show the activity.
-func (h *WailsHost) BindTray(tray *application.SystemTray, menu *application.Menu, status *application.MenuItem) {
+func (h *WailsHost) BindTray(tray *application.SystemTray, menu *application.Menu, status *application.MenuItem, animation *TrayAnimation) {
 	h.mu.Lock()
-	h.tray, h.trayMenu, h.trayStatus = tray, menu, status
+	h.tray, h.trayMenu, h.trayStatus, h.trayAnimation = tray, menu, status, animation
 	h.mu.Unlock()
 }
 
 // ShowActivity is TrayHost: it updates the tray from any goroutine.
 func (h *WailsHost) ShowActivity(a Activity) {
 	h.mu.Lock()
-	tray, menu, status := h.tray, h.trayMenu, h.trayStatus
+	tray, menu, status, animation := h.tray, h.trayMenu, h.trayStatus, h.trayAnimation
 	h.mu.Unlock()
 	if tray == nil {
 		return
+	}
+	if animation != nil {
+		animation.SetRunning(a.Running > 0)
 	}
 	label := a.Label()
 	application.InvokeAsync(func() {

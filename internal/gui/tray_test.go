@@ -61,8 +61,9 @@ func TestTheTrayLabelSaysWhatRunsAndWhatWaits(t *testing.T) {
 		}
 	}
 	got := activityOf([]app.BatchStatus{
-		{Counts: map[string]int{"processing": 2, "awaiting_review": 1, "completed_per_policy": 5}},
-		{Counts: map[string]int{"processing": 1, "awaiting_publish": 1, "blocked": 1, "failed": 1, "skipped": 4, "unprocessable": 2}},
+		{Active: 2, Counts: map[string]int{"processing": 2, "awaiting_review": 1, "completed_per_policy": 5}},
+		{Active: 1, Counts: map[string]int{"processing": 1, "awaiting_publish": 1, "blocked": 1, "failed": 1, "skipped": 4, "unprocessable": 2}},
+		{Counts: map[string]int{"processing": 200}}, // paused/draft files share this verdict but are inactive
 	})
 	if got != (Activity{Running: 3, Waiting: 4}) {
 		t.Fatalf("%+v", got)
@@ -71,7 +72,7 @@ func TestTheTrayLabelSaysWhatRunsAndWhatWaits(t *testing.T) {
 
 // The tray follows the same statuses the window gets: at once when the engine opens, and after each change.
 func TestTheTrayFollowsTheUnfinishedBatches(t *testing.T) {
-	c := &trayCore{list: []app.BatchStatus{{ID: "b0001", Counts: map[string]int{"processing": 2, "awaiting_review": 1}}}}
+	c := &trayCore{list: []app.BatchStatus{{ID: "b0001", Active: 2, Counts: map[string]int{"processing": 2, "awaiting_review": 1}}}}
 	h := &trayHost{}
 	s := NewService(opener(c, nil), h)
 	defer Shutdown(s)
@@ -90,7 +91,7 @@ func TestTheTrayFollowsTheUnfinishedBatches(t *testing.T) {
 // After a wake-up every unfinished batch is read again and sent to the window, and the tray follows.
 func TestAfterAWakeUpTheWindowAndTheTrayAreReadAgain(t *testing.T) {
 	Woke(NewService(nil, &trayHost{})) // no engine yet: nothing to read, no failure
-	c := &trayCore{list: []app.BatchStatus{{ID: "b0001", Counts: map[string]int{"processing": 1}}}}
+	c := &trayCore{list: []app.BatchStatus{{ID: "b0001", Active: 1, Counts: map[string]int{"processing": 1}}}}
 	c.status = c.list[0]
 	h := &trayHost{}
 	s := NewService(opener(c, nil), h)
@@ -101,6 +102,7 @@ func TestAfterAWakeUpTheWindowAndTheTrayAreReadAgain(t *testing.T) {
 	_, shown := h.latest()
 	c.mu.Lock()
 	c.list[0].Counts = map[string]int{"awaiting_publish": 1}
+	c.list[0].Active = 0
 	c.mu.Unlock()
 	Woke(s)
 	eventually(t, func() bool { return h.count() > before })

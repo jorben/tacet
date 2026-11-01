@@ -22,7 +22,7 @@ type Activity struct {
 func activityOf(bs []app.BatchStatus) Activity {
 	var a Activity
 	for _, b := range bs {
-		a.Running += b.Counts["processing"]
+		a.Running += b.Active
 		a.Waiting += b.Counts["awaiting_review"] + b.Counts["awaiting_publish"] + b.Counts["blocked"] + b.Counts["failed"]
 	}
 	return a

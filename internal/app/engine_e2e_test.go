@@ -743,12 +743,15 @@ func TestUnfinishedBatchesSurviveARestartAndResume(t *testing.T) {
 	if kinds["batch"].Files[0].Name != "f0001" || kinds["batch"].Files[0].State != "paused" {
 		t.Fatalf("regular: %+v", kinds["batch"])
 	}
+	if kinds["quick"].Active != 0 || kinds["batch"].Active != 0 {
+		t.Fatalf("paused/review files must not animate the tray: %+v", kinds)
+	}
 	// the interrupted review is resumed, decided and published
 	if err = e.Resume(ctx, kinds["quick"].ID); err != nil {
 		t.Fatal(err)
 	}
 	st, err := e.Wait(ctx, kinds["quick"].ID)
-	if err != nil || st.Files[0].State != "awaiting_review" || st.Files[0].Pending != 2 {
+	if err != nil || st.Files[0].State != "awaiting_review" || st.Files[0].Pending != 2 || st.Active != 0 {
 		t.Fatalf("%+v %v", st, err)
 	}
 	fs, _ := e.Findings(ctx, st.Files[0].ID, 0, 10)

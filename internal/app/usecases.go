@@ -469,6 +469,11 @@ func (e *Engine) Status(ctx context.Context, batch string, limit int) (BatchStat
 			s := verdict.Judge(factsOf(j, pending, run.Grant))
 			statuses = append(statuses, s)
 			st.Counts[string(s)]++
+			switch j.Position.State {
+			case jobs.Preflighting, jobs.Queued, jobs.ExtractingDetecting, jobs.Resolving,
+				jobs.Exporting, jobs.Validating, jobs.Publishing:
+				st.Active++
+			}
 			if i < limit {
 				fs, err := e.fileStatus(tx, j, run, pending, s)
 				if err != nil {
