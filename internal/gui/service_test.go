@@ -26,6 +26,8 @@ type fakeCore struct {
 	notify    func(string)
 	closed    bool
 	workspace app.WorkspaceInfo
+	modelDirs map[string]string
+	asked     []string
 }
 
 func (f *fakeCore) Import(_ context.Context, r app.ImportRequest) (app.BatchStatus, error) {
@@ -46,6 +48,17 @@ func (f *fakeCore) Unlock(_ context.Context, _ string, pw []byte) error {
 func (f *fakeCore) Close() error { f.closed = true; return nil }
 func (f *fakeCore) WorkspaceInfo(context.Context) (app.WorkspaceInfo, error) {
 	return f.workspace, f.err
+}
+func (f *fakeCore) ModelDirectory(_ context.Context, id string) (string, error) {
+	f.asked = append(f.asked, id)
+	if d, ok := f.modelDirs[id]; ok {
+		return d, f.err
+	}
+	return "", errors.New("MODEL_NOT_INSTALLED")
+}
+func (f *fakeCore) DownloadModel(_ context.Context, id string) error {
+	f.asked = append(f.asked, "download:"+id)
+	return f.err
 }
 func (f *fakeCore) Subscribe(fn func(string)) func() {
 	f.notify = fn
@@ -382,4 +395,37 @@ func (c *settingsCore) SettingsSave(_ context.Context, in app.Settings) (app.Set
 	}
 	c.saved = in
 	return in, nil
+}
+
+func TestModelDirectoryOpensTheFolderTheEngineReports(t *testing.T) {
+	dir := "/Users/x/Library/Application Support/Tacet/models/installed/astrlink-guard_0.1.3_0123456789abcdef"
+	c := &fakeCore{modelDirs: map[string]string{"astrlink-guard-int8": dir}}
+	h := &fakeHost{}
+	s := NewService(opener(c, nil), h)
+	if err := s.OpenModelDirectory("astrlink-guard-int8"); err != nil || h.opened != dir {
+		t.Fatalf("%q %v", h.opened, err)
+	}
+	h.opened, h.err = "", errors.New("open /Users/x: denied")
+	if err := s.OpenModelDirectory("astrlink-guard-int8"); err == nil || err.Error() != "INTERNAL_ERROR" {
+		t.Fatalf("the host's message must not leak: %v", err)
+	}
+	h.opened, h.err = "", nil
+	if err := s.OpenModelDirectory("privacy-filter-int8"); err == nil || err.Error() != "MODEL_NOT_INSTALLED" || h.opened != "" {
+		t.Fatalf("a model without files opens nothing: %q %v", h.opened, err)
+	}
+	if err := NewService(nil, nil).OpenModelDirectory("astrlink-guard-int8"); err == nil {
+		t.Fatal("missing host must fail")
+	}
+}
+
+func TestModelCommandsForwardTheIDAndKeepOnlyTheCode(t *testing.T) {
+	c := &fakeCore{}
+	s := NewService(opener(c, nil), &fakeHost{})
+	if err := s.DownloadModel("privacy-filter-int8"); err != nil || c.asked[len(c.asked)-1] != "download:privacy-filter-int8" {
+		t.Fatalf("%v %v", c.asked, err)
+	}
+	c.err = errors.New("MODEL_MEMORY_INSUFFICIENT: 8 GiB at /Users/x")
+	if err := s.DownloadModel("privacy-filter-int8"); err == nil || err.Error() != "MODEL_MEMORY_INSUFFICIENT" {
+		t.Fatal(err)
+	}
 }

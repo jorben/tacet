@@ -605,3 +605,51 @@ func (s *Service) Plugins() ([]app.PluginInfo, error) {
 	ps, err := core.Plugins(context.Background())
 	return ps, publicError(err)
 }
+
+// Models lists the model catalog with each model's download state, where its files are and what it runs on.
+func (s *Service) Models() ([]app.ModelRuntime, error) {
+	core, err := s.engine()
+	if err != nil {
+		return nil, publicError(err)
+	}
+	ms, err := core.Models(context.Background())
+	return ms, publicError(err)
+}
+
+func (s *Service) model(id string, f func(app.Core, context.Context, string) error) error {
+	core, err := s.engine()
+	if err != nil {
+		return publicError(err)
+	}
+	return publicError(f(core, context.Background(), id))
+}
+
+// DownloadModel starts downloading a model from its pinned source; verification, installation and the trial
+// run follow in the background (Models reports the progress). Refused while documents are processed.
+func (s *Service) DownloadModel(id string) error { return s.model(id, app.Core.DownloadModel) }
+
+// PauseModel stops a download, keeping what was received.
+func (s *Service) PauseModel(id string) error { return s.model(id, app.Core.PauseModel) }
+
+// DiscardModel drops a partial download, so the next one starts afresh.
+func (s *Service) DiscardModel(id string) error { return s.model(id, app.Core.DiscardModel) }
+
+// PrepareModel loads an installed model and runs its trial again.
+func (s *Service) PrepareModel(id string) error { return s.model(id, app.Core.PrepareModel) }
+
+// OpenModelDirectory shows the folder of a model's files in the file manager. The folder is the one the
+// engine reports for that model, never a path supplied by the frontend.
+func (s *Service) OpenModelDirectory(id string) error {
+	if s.host == nil {
+		return errNoEngine
+	}
+	core, err := s.engine()
+	if err != nil {
+		return publicError(err)
+	}
+	dir, err := core.ModelDirectory(context.Background(), id)
+	if err != nil {
+		return publicError(err)
+	}
+	return publicError(s.host.OpenDirectory(dir))
+}

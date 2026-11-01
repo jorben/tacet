@@ -35,7 +35,7 @@ export const resetScenes = (): void => { seeded = false; };
 
 export const SCENE_GROUPS: [string, [string, string][]][] = [
   ["入口", [["首页", "home"], ["首页 · 首次使用", "fresh"]]],
-  ["模型准备", [["下载中", "model-download"], ["下载已暂停", "model-paused"], ["断网 / 下载中断", "model-offline"], ["空间不足", "model-disk"], ["校验失败", "model-integrity"], ["加载与试运行", "model-loading"], ["启动失败", "model-load"], ["已选文件 · 等待模型", "model-wait"], ["批量 · 模型未就绪", "model-batch"], ["插件 · 模型待下载", "model-plugins"]]],
+  ["模型准备", [["下载中", "model-download"], ["下载已暂停", "model-paused"], ["断网 / 下载中断", "model-offline"], ["空间不足", "model-disk"], ["校验失败", "model-integrity"], ["加载与试运行", "model-loading"], ["启动失败", "model-load"], ["已选文件 · 等待模型", "model-wait"], ["批量 · 模型未就绪", "model-batch"], ["插件 · 模型待下载", "model-plugins"], ["插件 · 两个模型", "model-catalog"]]],
   ["单份", [["检测中", "s1"], ["复核", "s2"], ["复核 · DOCX", "s5"], ["左右对比", "s4"], ["完成", "s3"]]],
   ["批量", [["预检", "b1"], ["处理中", "b2"], ["人工复核", "b5"], ["完成", "b3"], ["无人值守 · 完成", "b6"], ["导出清单", "b4"]]],
   ["其他", [["方案", "presets"], ["插件", "plugins"], ["设置", "settings"], ["关闭窗口", "close"]]],
@@ -98,6 +98,27 @@ export function scene(key: string): void {
     store.update((d) => { d.history = []; d.single = null; d.batch = null; d.homePreset = "通用办公脱敏"; d.view = "home"; });
     resetModels("missing");
     if (what === "plugins") { store.update((d) => { d.view = "plugins"; }); return; }
+    if (what === "catalog") {
+      // the live catalog's shape: the default model downloaded, an optional larger one not yet
+      store.update((d) => {
+        d.view = "plugins";
+        d.models.splice(1);
+        Object.assign(d.models[0]!, {
+          status: "ready", progress: 100,
+          runtime: {
+            dir: "/Users/jorben/Library/Application Support/Tacet/models/installed/astrlink-guard_0.1.3_0a070d3113615e33",
+            backend: "CPUExecutionProvider", device: "cpu", repository: "QuantumNous/astrlink-guard", accelerable: true, accelerated: false,
+            accel: { id: "astrlink-guard-fp16", variant: "FP16", status: "missing", progress: 0, error: null, weightMiB: 72 },
+          },
+        });
+        d.models.push({
+          id: "pf", name: "OpenAI Privacy Filter", version: "7ffa9a0", variant: "INT8", languages: "英文为主", weightMiB: 1569, recommended: false,
+          confRec: 0.5, confMin: 0.2, status: "missing", progress: 0, error: null, eligible: true, minMemoryGiB: 16,
+          runtime: { dir: "", backend: "CPUExecutionProvider", device: "cpu", repository: "openai/privacy-filter", accelerable: false, accelerated: false },
+        });
+      });
+      return;
+    }
     if (what === "batch") { newBatch(demoNames(12), { title: "待处理材料" }); return; }
     if (what === "download") { store.update((d) => { d.models[0]!.progress = 35; }); downloadModel(); return; }
     if (what === "paused") store.update((d) => { Object.assign(d.models[0]!, { status: "paused", progress: 45 }); });

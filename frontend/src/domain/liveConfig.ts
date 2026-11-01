@@ -2,12 +2,12 @@
 //
 // A screen "scheme" is two stored objects: a preset (which rule sets, which model, how confident) and a
 // scheme (what is done to each category). The screen shows them as one. A rule set maps one to one.
-import type { ConfigItem, EnginePlugin, EngineSettings } from "../services/types";
+import type { ConfigItem, EngineModelRuntime, EnginePlugin, EngineSettings } from "../services/types";
 import { OFFICE_CATEGORIES } from "./catalog";
 import { engineCategory, uiCategory } from "./live";
 import type {
   KeepDays, PluginInfo, RedactStyle, Settings, ThemePref,
-  Boundary, ImageAction, ModelPlugin, OfficeCategoryId, Preset, PresetTreatment, Rule, Ruleset,
+  Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, OfficeCategoryId, Preset, PresetTreatment, Rule, Ruleset,
 } from "./types";
 
 /** Engine category of each category the screens know. */
@@ -115,24 +115,66 @@ export function ruleCategories(sets: Pick<Ruleset, "rules">[]): Set<string> {
 /* ── schemes ──────────────────────────────────────────────────────────────── */
 
 export interface Model {
+  /** Screen id of the model (the engine's model id, e.g. astrlink-guard-int8). */
+  id: string;
   /** Engine id of the stored model profile. */
   profile: string;
+  /** What a run reserves for it, in bytes. */
+  memory: number;
   floor: number;
   calibrated: number;
   /** Engine categories its labels produce. */
   categories: string[];
 }
 
-export function modelFromItem(it: ConfigItem): { plugin: ModelPlugin; model: Model } | null {
-  const c = parse<{ model_id?: string; adapter_floor?: number; calibrated?: number; label_map?: Record<string, string> }>(it.content, {});
-  if (!c.model_id || c.adapter_floor == null || c.calibrated == null) return null;
+const MODEL_STATUS: Record<string, ModelStatus> = {
+  pending: "missing", downloading: "downloading", paused: "paused", verifying: "verifying", preparing: "loading",
+  // installed: its files were verified and tried when downloaded; every run verifies them again before loading
+  installed: "ready", ready: "ready", error: "error",
+};
+const MODEL_ERROR: Record<string, ModelErrorKind> = {
+  MODEL_NETWORK: "offline", MODEL_DISK_SPACE: "disk", MODEL_VERIFY_FAILED: "integrity", MODEL_FILES_CHANGED: "integrity",
+  MODEL_STORE_FAILED: "integrity", MODEL_PREPARE_FAILED: "load",
+};
+
+/** The download state, progress and runtime of a model as the screens keep them. */
+/** Screen status, progress and error kind of an engine download state. */
+const downloadState = (b: { state: string; code: string; bytes: number; downloaded: number }) => {
+  const status = MODEL_STATUS[b.state] ?? "missing";
   return {
-    model: { profile: it.id, floor: c.adapter_floor, calibrated: c.calibrated, categories: [...new Set(Object.values(c.label_map ?? {}))] },
-    plugin: {
-      id: "astr", name: "AstrLink Guard", version: "0.1.3", variant: "INT8", languages: "中文 / 中英混排", weightMiB: 36, recommended: true,
-      confRec: c.calibrated, confMin: c.adapter_floor, status: "ready", progress: 100, error: null,
+    status,
+    progress: b.bytes > 0 ? Math.min(100, Math.floor((b.downloaded * 100) / b.bytes)) : 0,
+    error: status === "error" ? MODEL_ERROR[b.code] ?? "offline" : null,
+  };
+};
+
+export function modelStateFromEngine(rt: EngineModelRuntime): Pick<ModelPlugin, "status" | "progress" | "error" | "eligible" | "minMemoryGiB" | "runtime"> {
+  return {
+    ...downloadState(rt),
+    eligible: rt.eligible !== false,
+    minMemoryGiB: rt.minMemory ? Math.round(rt.minMemory / 2 ** 30) : 0,
+    runtime: {
+      dir: rt.dir, backend: rt.backend, device: rt.device === "gpu" ? "gpu" : "cpu", repository: rt.repository ?? "",
+      accelerable: !!rt.accelerable, accelerated: !!rt.accelerated,
+      ...(rt.accel ? { accel: { id: rt.accel.id, variant: rt.accel.variant, weightMiB: Math.round(rt.accel.bytes / 2 ** 20), ...downloadState(rt.accel) } } : {}),
     },
   };
+}
+
+/** A stored model profile and, when the engine lists it, the model's catalog entry. */
+export function modelFromItem(it: ConfigItem, rt?: EngineModelRuntime): { plugin: ModelPlugin; model: Model } | null {
+  const c = parse<{ model_id?: string; adapter_floor?: number; calibrated?: number; label_map?: Record<string, string>; memory_bytes?: number }>(it.content, {});
+  if (!c.model_id || c.adapter_floor == null || c.calibrated == null) return null;
+  const model: Model = {
+    id: c.model_id, profile: it.id, memory: c.memory_bytes ?? 0, floor: c.adapter_floor, calibrated: c.calibrated,
+    categories: [...new Set(Object.values(c.label_map ?? {}))],
+  };
+  const base: ModelPlugin = {
+    id: c.model_id, name: rt?.name || it.name, version: rt?.version ?? "", variant: rt?.variant ?? "", languages: rt?.languages ?? "",
+    weightMiB: rt ? Math.round(rt.bytes / 2 ** 20) : 0, recommended: it.id === BUILTIN_MODEL_PROFILE,
+    confRec: c.calibrated, confMin: c.adapter_floor, status: "ready", progress: 100, error: null,
+  };
+  return { model, plugin: rt ? { ...base, ...modelStateFromEngine(rt) } : base };
 }
 
 interface SchemeJSON { category_actions: Record<string, string>; image_default: string; human_review?: string[] }
@@ -154,8 +196,9 @@ interface PresetJSON {
 const toTreatment = (a: string | undefined): PresetTreatment | null => (a === "placeholder" ? "ph" : a === "mask" || a === "delete" ? "mask" : null);
 
 /** The screen's scheme from its two stored objects. */
-export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefined, rulesets: Ruleset[], model: Model | null): Preset {
+export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefined, rulesets: Ruleset[], models: Model[]): Preset {
   const p = parse<PresetJSON>(preset.content, {} as PresetJSON);
+  const model = models.find((m) => m.profile === p.model_profile_id) ?? null;
   const s = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}) } as SchemeJSON;
   const det = p.rules_only || !model ? "rules" : "model";
   const cats = {} as Record<OfficeCategoryId, PresetTreatment>;
@@ -165,7 +208,7 @@ export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefin
   }
   const ids = [p.ruleset_id, ...(p.extra_ruleset_ids ?? [])].filter((id) => rulesets.some((r) => r.id === id));
   return {
-    id: preset.id, name: preset.name, ver: versionLabel(preset), builtin: preset.readOnly, det, model: "astr",
+    id: preset.id, name: preset.name, ver: versionLabel(preset), builtin: preset.readOnly, det, model: model?.id ?? models[0]?.id ?? "",
     conf: det === "model" ? (p.min_confidence ?? model?.calibrated ?? null) : null,
     rules: ids, cats, img: (s.image_default === "review" ? "keep" : "remove") as ImageAction, edited: "", hist: [],
     stored: { id: preset.id, version: preset.version, schemeId: scheme?.id, schemeVersion: scheme?.version },
@@ -184,7 +227,8 @@ export interface Written {
  * The stored objects of a screen scheme. `previous` holds the stored scheme and preset so that settings the
  * screen has no control for (resource profile, extra engine categories) are kept as they were.
  */
-export function presetContents(p: Preset, rulesets: Ruleset[], model: Model | null, previous?: { scheme?: ConfigItem; preset?: ConfigItem }): Written {
+export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], previous?: { scheme?: ConfigItem; preset?: ConfigItem }): Written {
+  const model = models.find((m) => m.id === p.model) ?? null;
   const prevScheme = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(previous?.scheme?.content ?? "{}", {}) } as SchemeJSON;
   const prevPreset = parse<Partial<PresetJSON>>(previous?.preset?.content ?? "{}", {});
   const chosen = p.rules.map((id) => rulesets.find((r) => r.id === id)).filter((r): r is Ruleset => !!r);
@@ -215,7 +259,8 @@ export function presetContents(p: Preset, rulesets: Ruleset[], model: Model | nu
   const preset = (schemeId: string, schemeRev?: number): string => {
     const out: PresetJSON = {
       ruleset_id: primary ?? "", scheme_id: schemeId, mode: prevPreset.mode ?? "guided", rules_only: !useModel,
-      memory_bytes: prevPreset.memory_bytes ?? 1 << 30, dpi: prevPreset.dpi ?? 200, style: prevPreset.style ?? "default", retention_days: prevPreset.retention_days ?? 0,
+      // the budget must hold the model the scheme now uses (a larger model raises it)
+      memory_bytes: Math.max(prevPreset.memory_bytes ?? 1 << 30, useModel ? model!.memory : 0), dpi: prevPreset.dpi ?? 200, style: prevPreset.style ?? "default", retention_days: prevPreset.retention_days ?? 0,
     };
     if (extra.length) out.extra_ruleset_ids = extra;
     if (schemeRev) out.scheme_rev = schemeRev;
@@ -239,7 +284,7 @@ export function exportRuleset(rs: Pick<Ruleset, "id" | "name" | "rules">): strin
 
 /** A scheme as an exchange file: rule sets are named, not referenced by id; the model is not included. */
 export function exportScheme(p: Preset, rulesets: Ruleset[]): string {
-  const w = presetContents(p, rulesets, { profile: "", floor: 0, calibrated: p.conf ?? 0.5, categories: [...ENGINE_MODEL_CATEGORIES] });
+  const w = presetContents(p, rulesets, [{ id: p.model, profile: "", memory: 0, floor: 0, calibrated: p.conf ?? 0.5, categories: [...ENGINE_MODEL_CATEGORIES] }]);
   const preset = JSON.parse(w.preset("")) as PresetJSON;
   const names = p.rules.map((id) => rulesets.find((r) => r.id === id)?.name).filter((n): n is string => !!n);
   return JSON.stringify({
@@ -256,7 +301,8 @@ export type Imported =
 const item = (kind: string, name: string, content: unknown): ConfigItem => ({ id: "", kind, name, note: "", version: 1, readOnly: false, content: JSON.stringify(content) });
 
 /** Reads an exchange file. Nothing in it names an object of this installation except rule sets, by name. */
-export function importPackage(text: string, want: "ruleset" | "preset", rulesets: Ruleset[], model: Model | null): Imported {
+export function importPackage(text: string, want: "ruleset" | "preset", rulesets: Ruleset[], models: Model[]): Imported {
+  const model = models[0] ?? null; // an exchange file names no model: a model scheme takes the default one
   let p: Record<string, unknown>;
   try { p = JSON.parse(text); } catch { return { error: "format" }; }
   if (!p || typeof p !== "object" || p.tacet_config !== PACKAGE_VERSION || typeof p.name !== "string" || !p.name.trim() || p.name.length > 256) return { error: "format" };
@@ -277,11 +323,11 @@ export function importPackage(text: string, want: "ruleset" | "preset", rulesets
   const s = (p.settings ?? {}) as Partial<PresetJSON>;
   const useModel = p.detection === "model" && !!model;
   const presetJSON: PresetJSON = {
-    ruleset_id: ids[0]!, scheme_id: "", mode: "guided", rules_only: !useModel, memory_bytes: s.memory_bytes ?? 1 << 30, dpi: s.dpi ?? 200, style: s.style ?? "default",
+    ruleset_id: ids[0]!, scheme_id: "", mode: "guided", rules_only: !useModel, memory_bytes: Math.max(s.memory_bytes ?? 1 << 30, useModel ? model!.memory : 0), dpi: s.dpi ?? 200, style: s.style ?? "default",
     retention_days: s.retention_days ?? 0, ...(ids.length > 1 ? { extra_ruleset_ids: ids.slice(1) } : {}),
     ...(useModel ? { model_profile_id: model!.profile, min_confidence: typeof p.confidence === "number" ? p.confidence : model!.calibrated } : {}),
   };
-  const preset = presetFromItems(item("preset", p.name, presetJSON), item("scheme", p.name, p.scheme), rulesets, model);
+  const preset = presetFromItems(item("preset", p.name, presetJSON), item("scheme", p.name, p.scheme), rulesets, models);
   return { kind: "scheme", name: p.name, preset: { ...preset, ver: "v1", stored: undefined, builtin: false } };
 }
 
@@ -292,14 +338,14 @@ export function settingsFromEngine(e: EngineSettings): { settings: Settings; the
   return {
     settings: {
       redact: e.redactStyle as RedactStyle, tier: e.resourceTier === "std" ? "std" : "comfort", autoUpd: e.autoUpdate,
-      keep: keep === "0" || keep === "30" ? keep : "7", closeAct: e.closeBehavior === "quit" ? "quit" : "tray",
+      keep: keep === "0" || keep === "30" ? keep : "7", closeAct: e.closeBehavior === "quit" ? "quit" : "tray", gpu: !!e.gpuAcceleration,
     },
     theme: e.theme === "light" || e.theme === "dark" ? e.theme : "system",
   };
 }
 
 export const settingsToEngine = (s: Settings, theme: ThemePref): EngineSettings => ({
-  closeBehavior: s.closeAct, theme, redactStyle: s.redact || "black", resourceTier: s.tier, retentionDays: Number(s.keep), autoUpdate: s.autoUpd,
+  closeBehavior: s.closeAct, theme, redactStyle: s.redact || "black", resourceTier: s.tier, retentionDays: Number(s.keep), autoUpdate: s.autoUpd, gpuAcceleration: s.gpu,
 });
 
 /* ── plugins ──────────────────────────────────────────────────────────────── */

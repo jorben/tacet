@@ -104,6 +104,8 @@ export interface EngineSettings {
   resourceTier: string;
   retentionDays: number;
   autoUpdate: boolean;
+  /** Use the GPU build of a model when it is downloaded (Apple Silicon); off by default. */
+  gpuAcceleration?: boolean;
 }
 
 export interface EnginePlugin {
@@ -113,6 +115,55 @@ export interface EnginePlugin {
   formats: string[] | null;
   builtin: boolean;
   enabled: boolean;
+}
+
+/** The download state of one build of a model (the accelerated one). */
+export interface EngineBuildStatus {
+  id: string;
+  variant: string;
+  backend: string;
+  state: string;
+  code: string;
+  bytes: number;
+  downloaded: number;
+  dir: string;
+}
+
+/** One model of the catalog: its download state, where its files are and what it computes on. */
+export interface EngineModelRuntime {
+  /** Model id and variant, as in the model profile (e.g. astrlink-guard-int8). */
+  id: string;
+  /** The build that runs now: the accelerated one's id when acceleration is on. */
+  build: string;
+  name: string;
+  version: string;
+  variant: string;
+  languages: string;
+  /** Id of its built-in preset. */
+  preset: string;
+  /** pending, downloading, paused, verifying, preparing, installed, ready or error. */
+  state: string;
+  /** Why, for the error state (MODEL_NETWORK, MODEL_DISK_SPACE, MODEL_VERIFY_FAILED, …). */
+  code: string;
+  bytes: number;
+  downloaded: number;
+  /** Installed memory the machine needs to download it; 0 = any. */
+  minMemory: number;
+  /** This machine has that memory. */
+  eligible: boolean;
+  /** Absolute directory of the model files once installed, else "". */
+  dir: string;
+  /** ONNX Runtime execution provider, e.g. CPUExecutionProvider. */
+  backend: string;
+  device: "cpu" | "gpu";
+  /** The model's Hugging Face id ("owner/name") from its integrity manifest; empty when unknown. */
+  repository: string;
+  /** The installation offers the optional accelerated build (Apple Silicon, FP16 via Core ML)… */
+  accelerable: boolean;
+  /** …and this is that build's own download state. */
+  accel?: EngineBuildStatus | null;
+  /** GPU acceleration is on: batches started now run the accelerated build, which the fields above describe. */
+  accelerated: boolean;
 }
 
 export interface EngineWorkspaceInfo {
@@ -160,6 +211,18 @@ export interface EngineService {
   /** Asks for an exchange file; "" means cancelled. */
   openConfigFile(): Promise<string>;
   plugins(): Promise<EnginePlugin[]>;
+  /** The model catalog with each model's download state. */
+  models(): Promise<EngineModelRuntime[]>;
+  /** Starts downloading a model or an accelerated build (verification, installation and trial follow in the background). */
+  downloadModel(id: string): Promise<void>;
+  /** Stops a download, keeping what was received. */
+  pauseModel(id: string): Promise<void>;
+  /** Drops a partial download so the next one starts afresh. */
+  discardModel(id: string): Promise<void>;
+  /** Loads an installed model and runs its trial again (in the background). */
+  prepareModel(id: string): Promise<void>;
+  /** Shows the folder of a model's files in the file manager (the kernel's own path, never one from the UI). */
+  openModelDirectory(id: string): Promise<void>;
   settings(): Promise<EngineSettings>;
   saveSettings(s: EngineSettings): Promise<EngineSettings>;
   configList(kind: string): Promise<ConfigItem[]>;
@@ -197,6 +260,8 @@ export interface TacetService {
   hideWindow(): Promise<void>;
   /** End the application. No-op in a browser. */
   quitApp(): Promise<void>;
+  /** Opens an https address in the system browser (a user action; the page never navigates itself). */
+  openUrl(url: string): Promise<void>;
   /**
    * Called once the UI is ready to handle user-initiated window closes (title-bar button, Cmd+W).
    * The handler is invoked instead of closing the window; return value is ignored.

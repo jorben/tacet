@@ -68,22 +68,28 @@ func (e *Engine) buildDetector(c snapshot.Content, model detect.ModelRunner) (*d
 
 // modelRunner starts the detection plugin for one stage run. The model is loaded once per run and a
 // worker never outlives it; one model worker runs at a time. The returned release ends the worker.
-func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef) (detect.ModelRunner, func(), error) {
-	m := e.model
+// id and exec are the model and build the snapshot froze (exec nil: the profile's own); a frozen build that
+// is gone fails the stage, it is never replaced.
+func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef, id string, exec *snapshot.ModelExecution) (detect.ModelRunner, func(), error) {
+	m := e.modelByID(id)
 	if m == nil {
 		return nil, nil, errors.New("MODEL_UNAVAILABLE")
 	}
+	args, timeout, err := e.modelArgs(ctx, m, exec)
+	if err != nil {
+		return nil, nil, err
+	}
 	select {
-	case m.sem <- struct{}{}:
+	case e.modelSem <- struct{}{}:
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()
 	}
-	w, err := e.launchWith(ctx, m.plug, []string{"--model-dir", e.opt.Model.Dir, "--manifest", e.opt.Model.ManifestPath}, nil)
+	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)
 	if err != nil {
-		<-m.sem
+		<-e.modelSem
 		return nil, nil, errors.New("MODEL_START_FAILED")
 	}
-	release := func() { w.Terminate(time.Second); <-m.sem }
+	release := func() { w.Terminate(time.Second); <-e.modelSem }
 	var n atomic.Uint64
 	pm, err := detect.NewPluginModel(w.Session, func() kernel.AttemptRef {
 		x := a
@@ -149,6 +155,11 @@ func (e *Engine) launch(ctx context.Context, p plugin, files []*os.File) (*host.
 
 // launchWith adds launch arguments (the detection plugin's model paths): they are arguments, never protocol data.
 func (e *Engine) launchWith(ctx context.Context, p plugin, args []string, files []*os.File) (*host.Worker, error) {
+	return e.launchWithin(ctx, p, args, files, handshakeTimeout)
+}
+
+// launchWithin starts a worker whose handshake may take up to timeout (a model build that compiles first).
+func (e *Engine) launchWithin(ctx context.Context, p plugin, args []string, files []*os.File, timeout time.Duration) (*host.Worker, error) {
 	spec := host.Spec{Path: e.opt.Python, Args: append([]string{"-I", "-m", p.module}, args...), Dir: os.TempDir(), ExtraFiles: files,
 		Env:        []string{"PATH=/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE=1"},
 		Generation: e.marker()}
@@ -156,7 +167,7 @@ func (e *Engine) launchWith(ctx context.Context, p plugin, args []string, files 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errSpawn, err)
 	}
-	ictx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	ictx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err = w.Session.Initialize(ictx, p.id.ID, p.id.Version, e.ws.Generation()); err != nil {
 		// which of the three it was is all that is said: the worker's diagnostics are discarded (they may
@@ -248,7 +259,7 @@ func (e *Engine) recoverAll(ctx context.Context) error {
 // startDispatch is the last step: the scheduler runs and task operations open.
 func (e *Engine) startDispatch(context.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	e.cancel = cancel
+	e.cancel, e.life = cancel, ctx
 	go func() {
 		defer close(e.done)
 		e.disp.Run(ctx, e.complete)

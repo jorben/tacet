@@ -6,6 +6,13 @@
 .model-copy{flex:1;min-width:0}.model-title{font-size:14px;font-weight:600;line-height:1.6}.model-tags{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:10px;vertical-align:middle}.model-section-note{margin-left:auto;font-weight:400;font-size:12px}.model-title .pill{font-weight:400}
 .model-desc{font-size:12px;color:var(--ink-2);margin-top:3px;line-height:1.7;overflow-wrap:anywhere}
 .model-meta{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6}
+.model-hf{margin-left:8px;vertical-align:middle;display:inline-flex;align-items:center;gap:3px;font-weight:500;cursor:pointer}
+.model-note{font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.6}.model-note.warn{color:var(--warn)}
+.model-runtime .model-path{display:flex;align-items:center;gap:2px;overflow-wrap:normal}
+.model-path-text{display:flex;min-width:0;white-space:nowrap}.model-path-head{min-width:0;overflow:hidden;text-overflow:ellipsis}.model-path-tail{flex:none}
+.model-path-open{flex:none;width:22px;height:22px;margin-left:2px;color:var(--muted)}.model-path-open:hover{color:var(--ink)}
+.model-runtime{margin:6px 0 0;display:grid;gap:2px;font-size:12px;line-height:1.5}.model-runtime>div{display:flex;gap:8px;min-width:0}
+.model-runtime dt{flex:none;color:var(--muted)}.model-runtime dd{margin:0;min-width:0;color:var(--ink-2);overflow-wrap:anywhere;user-select:text}.model-runtime .mono{font-size:11px}
 .model-ready{display:inline-flex;align-items:center;justify-content:center;min-width:84px;height:34px;color:var(--muted);font-size:12px;font-weight:400}
 .model-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .model-progress{margin-top:12px}.model-progress progress{display:block;width:100%;height:5px;border:0;border-radius:4px;overflow:hidden;accent-color:var(--primary);background:var(--line)}
@@ -21,23 +28,41 @@
 .model-shell[hidden]{display:none}
 @media(max-width:600px){.model-card.intro .model-copy{display:block}.model-card.intro .model-actions{margin-top:12px}.model-card{padding:14px}.model-head{gap:10px}.model-gate{padding:12px 12px 0}.model-shell{max-width:110px}.model-meta{font-size:11px}.model-actions .btn{height:36px}}
 
-/* Plugin model rows share the density and alignment of format rows. */
-#modelPlugins .model-card{margin-bottom:8px;min-height:60px;padding:10px 14px 10px 16px}
-#modelPlugins .model-head{align-items:center;gap:12px}
+/* Plugin model cards: as many columns of at least 380px as fit (one on narrow windows). Each card: name and
+   state on top, details, then a band under a hairline with where the files are and what they run on, and the
+   actions at its end. */
+#modelPlugins .model-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:12px}
+#modelPlugins .model-card{margin:0;padding:12px 14px;display:flex;flex-direction:column;transition:border-color .15s}
+#modelPlugins .model-card:hover{border-color:var(--faint)}
+#modelPlugins .model-head{align-items:flex-start;gap:12px;flex:1}
 #modelPlugins .model-icon{width:32px;height:32px;border-radius:8px}
-#modelPlugins .model-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:16px}
-#modelPlugins .model-copy>div,#modelPlugins .model-copy>p{grid-column:1}
-#modelPlugins .model-title{font-weight:500;line-height:1.5}
-#modelPlugins .model-meta{margin-top:2px;font-size:12px;line-height:1.5}
-#modelPlugins .model-actions{grid-column:2!important;grid-row:1 / span 4;margin:0;align-self:center}
-#modelPlugins .model-progress{margin-top:8px}
-#modelPlugins .model-ready{min-width:84px;text-align:center}
+#modelPlugins .model-copy{display:flex;flex-direction:column;min-height:100%}
+#modelPlugins .model-titlebar{display:flex;align-items:center;gap:8px;min-height:22px}
+#modelPlugins .model-title{font-weight:600;line-height:1.4;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:0 2px}
+#modelPlugins .model-hf{height:20px;padding:0 6px;font-size:11px;margin-left:6px}
+#modelPlugins .model-state{margin-left:auto;flex:none}
+#modelPlugins .model-meta{margin-top:1px;font-size:12px;line-height:1.5}
+#modelPlugins .model-note{margin-top:4px;line-height:1.5}
+#modelPlugins .model-note.warn{padding:4px 8px;border-radius:6px;background:var(--warn-soft)}
+#modelPlugins .model-progress{margin-top:8px;display:flex;align-items:center;gap:10px}
+#modelPlugins .model-progress progress{flex:1}
+#modelPlugins .model-progress-label{margin:0;flex:none;min-width:3.2em}
+#modelPlugins .model-foot{margin-top:auto;padding-top:8px}
+#modelPlugins .model-foot:has(.model-runtime){display:flex;align-items:flex-end;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
+#modelPlugins .model-runtime{margin:0;flex:1;min-width:0;grid-template-columns:auto minmax(0,1fr);column-gap:10px;row-gap:0}
+#modelPlugins .model-runtime>div{display:contents}
+#modelPlugins .model-runtime dt,#modelPlugins .model-runtime dd{line-height:20px;min-height:20px}
+#modelPlugins .model-accel{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#modelPlugins .model-accel-state{color:var(--muted)}#modelPlugins .model-accel-state.ok{color:var(--ok)}#modelPlugins .model-accel-state.warn{color:var(--warn)}#modelPlugins .model-accel-state.pri{color:var(--primary)}
+#modelPlugins .model-link{color:var(--primary);font-size:12px;font-weight:500;padding:0 2px;border-radius:4px;cursor:pointer}#modelPlugins .model-link:hover{text-decoration:underline}
+#modelPlugins .model-link:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+#modelPlugins .model-actions{margin:0 0 -4px;flex:none;justify-content:flex-end;align-self:flex-end;gap:6px} /* a 28px button centred on the last 20px line */
+#modelPlugins .model-foot:not(:has(.model-runtime)) .model-actions{align-self:stretch}
+#modelPlugins .model-actions .btn{height:28px;padding:0 12px;font-size:12px}
 @media(max-width:600px){
  #modelPlugins .model-card{padding:10px 12px}
  #modelPlugins .model-head{gap:10px}
- #modelPlugins .model-copy{column-gap:10px}
  #modelPlugins .model-meta{font-size:11px}
- #modelPlugins .model-actions .btn{height:34px;padding:0 10px;font-size:12px}
 }
 
 /* Home preparation notice: one text block with independently aligned action. */

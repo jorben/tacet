@@ -19,6 +19,7 @@ const RULES = {
 };
 const MODEL = item("model_profile", "m", { model_id: "astrlink-guard-int8", manifest_digest: "sha256:aa", backend: "cpu", adapter_floor: 0.5, calibrated: 0.8, label_map: { private_person: "person", phone: "phone", private_address: "address" }, memory_bytes: 1 });
 const model = modelFromItem(MODEL)!.model;
+const models = [model];
 
 describe("规则集 ↔ 存储内容", () => {
   it("读出再写回，内容不变：校验器、上下文词、cjk 边界、词表、停用都保留", () => {
@@ -56,30 +57,30 @@ describe("方案 ↔ 存储对象", () => {
   const preset = item("preset", "pr", { ruleset_id: "cn", extra_ruleset_ids: ["co"], scheme_id: "sc", model_profile_id: "m", mode: "guided", rules_only: false, min_confidence: 0.7, memory_bytes: 5, dpi: 150, style: "mosaic", retention_days: 3 });
 
   it("两个存储对象显示为一个方案：处理方式、规则集、置信度、图像默认值", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
+    const p = presetFromItems(preset, scheme, rs, models);
     expect(p).toMatchObject({ det: "model", conf: 0.7, rules: ["cn", "co"], img: "keep", ver: "v1", stored: { id: "pr", schemeId: "sc" } });
     expect(p.cats).toMatchObject({ phone: "ph", card: "mask", name: "ph", email: "off", org: "na" });
   });
 
   it("没有模型时按仅规则显示，模型才能找的类别为“不适用”", () => {
-    const p = presetFromItems({ ...preset, content: JSON.stringify({ ...JSON.parse(preset.content), rules_only: true }) }, scheme, rs, null);
+    const p = presetFromItems({ ...preset, content: JSON.stringify({ ...JSON.parse(preset.content), rules_only: true }) }, scheme, rs, []);
     expect(p).toMatchObject({ det: "rules", conf: null });
     expect(p.cats.name).toBe("ph"); // stored as handled; the screen shows what is stored
   });
 
   it("写回：保留屏幕没有开关的设置，类别按规则/模型的覆盖取舍", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
-    const w = presetContents(p, rs, model, { scheme, preset });
+    const p = presetFromItems(preset, scheme, rs, models);
+    const w = presetContents(p, rs, models, { scheme, preset });
     expect(sameContent(w.scheme, scheme.content)).toBe(true);
     expect(sameContent(w.preset("sc"), preset.content)).toBe(true);
     expect(w.dropped).toEqual([]);
   });
 
   it("没有任何规则或模型检测的类别不写入，并报告", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
+    const p = presetFromItems(preset, scheme, rs, models);
     p.cats.addr = "mask";
     p.cats.org = "mask";
-    const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, null, { scheme, preset });
+    const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
     expect(w.dropped.sort()).toEqual(["addr", "name", "org"]);
     const s = JSON.parse(w.scheme);
     expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "phone"]);
@@ -88,16 +89,16 @@ describe("方案 ↔ 存储对象", () => {
   });
 
   it("置信度不低于模型的适配器下限；新方案的资源档位取默认", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
+    const p = presetFromItems(preset, scheme, rs, models);
     p.conf = 0.1;
-    expect(JSON.parse(presetContents(p, rs, model).preset("s"))).toMatchObject({ min_confidence: 0.5, memory_bytes: 1 << 30, dpi: 200, mode: "guided" });
+    expect(JSON.parse(presetContents(p, rs, models).preset("s"))).toMatchObject({ min_confidence: 0.5, memory_bytes: 1 << 30, dpi: 200, mode: "guided" });
   });
 
   it("屏幕上改的类别处理方式反映到方案内容", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
+    const p = presetFromItems(preset, scheme, rs, models);
     p.cats.phone = "mask";
     p.cats.card = "off";
-    const a = JSON.parse(presetContents(p, rs, model, { scheme, preset }).scheme).category_actions;
+    const a = JSON.parse(presetContents(p, rs, models, { scheme, preset }).scheme).category_actions;
     expect(a).toMatchObject({ phone: "mask", person: "placeholder" });
     expect(a.payment_card).toBeUndefined();
   });
@@ -112,7 +113,7 @@ describe("交换文件", () => {
   it("规则集导出再导入得到相同的规则，文件里没有编号、版本或历史", () => {
     const text = exportRuleset(rs[1]!);
     expect(text).not.toMatch(/"id"\s*:\s*"co"/);
-    const got = importPackage(text, "ruleset", rs, null);
+    const got = importPackage(text, "ruleset", rs, []);
     expect(got).toMatchObject({ kind: "ruleset", name: "企业词条" });
     if (!("ruleset" in got)) throw new Error();
     expect(got.ruleset.rules[0]).toMatchObject({ name: "公司", kind: "词表", body: "甲公司" });
@@ -120,29 +121,29 @@ describe("交换文件", () => {
   });
 
   it("方案导出按名称引用规则集、不含模型；导入后重新接上同名规则集和当前模型", () => {
-    const p = presetFromItems(preset, scheme, rs, model);
+    const p = presetFromItems(preset, scheme, rs, models);
     const text = exportScheme(p, rs);
     expect(text).not.toContain("m\"");
     expect(text).not.toContain("model_profile");
     const parsed = JSON.parse(text);
     expect(parsed.rulesets).toEqual(["中国规则", "企业词条"]);
-    const got = importPackage(text, "preset", rs, model);
+    const got = importPackage(text, "preset", rs, models);
     if (!("preset" in got)) throw new Error(JSON.stringify(got));
     expect(got.preset).toMatchObject({ name: "我的方案", det: "model", conf: 0.7, rules: ["cn", "co"], ver: "v1" });
     expect(got.preset.cats.phone).toBe("ph");
     expect(got.preset.stored).toBeUndefined();
     // no model here: the same file becomes a rules-only scheme
-    const rulesOnly = importPackage(text, "preset", rs, null);
+    const rulesOnly = importPackage(text, "preset", rs, []);
     expect("preset" in rulesOnly && rulesOnly.preset.det).toBe("rules");
   });
 
   it("不是配置文件、类型不符、缺规则集、内容不合要求都被拒绝", () => {
-    expect(importPackage("not json", "ruleset", rs, null)).toEqual({ error: "format" });
-    expect(importPackage('{"tacet_config":2,"name":"x"}', "ruleset", rs, null)).toEqual({ error: "format" });
-    expect(importPackage('{"tacet_config":1,"name":" "}', "ruleset", rs, null)).toEqual({ error: "format" });
-    expect(importPackage(exportRuleset(rs[1]!), "preset", rs, null)).toEqual({ error: "kind" });
-    expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, model), rs), "ruleset", rs, null)).toEqual({ error: "kind" });
-    expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, model), rs), "preset", [rs[0]!], model)).toEqual({ error: "rulesets", detail: "企业词条" });
-    expect(importPackage('{"tacet_config":1,"kind":"ruleset","name":"n","rules":[{"id":"a","category":"phone"}]}', "ruleset", rs, null)).toMatchObject({ error: "content" });
+    expect(importPackage("not json", "ruleset", rs, [])).toEqual({ error: "format" });
+    expect(importPackage('{"tacet_config":2,"name":"x"}', "ruleset", rs, [])).toEqual({ error: "format" });
+    expect(importPackage('{"tacet_config":1,"name":" "}', "ruleset", rs, [])).toEqual({ error: "format" });
+    expect(importPackage(exportRuleset(rs[1]!), "preset", rs, [])).toEqual({ error: "kind" });
+    expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, models), rs), "ruleset", rs, [])).toEqual({ error: "kind" });
+    expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, models), rs), "preset", [rs[0]!], models)).toEqual({ error: "rulesets", detail: "企业词条" });
+    expect(importPackage('{"tacet_config":1,"kind":"ruleset","name":"n","rules":[{"id":"a","category":"phone"}]}', "ruleset", rs, [])).toMatchObject({ error: "content" });
   });
 });

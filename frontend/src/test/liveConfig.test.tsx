@@ -3,12 +3,13 @@ import { act, waitFor } from "@testing-library/react";
 import { copyPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, rollback } from "../actions/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
+import { downloadAccel, downloadModel } from "../actions/models";
 import { exportLive, flushConfig, saveSettingsNow, importLive, loadConfig, openVersions, stopConfigSync } from "../actions/liveConfig";
 import { takePaths } from "../actions/live";
 import { overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
-import type { ConfigItem } from "../services/types";
+import type { ConfigItem, EngineModelRuntime } from "../services/types";
 import { getState, store } from "../store";
 import { FakeEngine } from "./liveFake";
 
@@ -251,7 +252,7 @@ describe("方案与规则集的存储同步", () => {
     fake.stored = { closeBehavior: "quit", theme: "dark", redactStyle: "plaid", resourceTier: "std", retentionDays: 0, autoUpdate: true };
     await loadConfig();
     const s = getState();
-    expect(s.settings).toEqual({ redact: "plaid", tier: "std", autoUpd: true, keep: "0", closeAct: "quit" });
+    expect(s.settings).toEqual({ redact: "plaid", tier: "std", autoUpd: true, keep: "0", closeAct: "quit", gpu: false });
     expect(s.themePref).toBe("dark");
     expect(s.theme).toBe("dark");
     await sleep(500);
@@ -259,7 +260,7 @@ describe("方案与规则集的存储同步", () => {
     act(() => { setSetting("keep", "30"); setSetting("tier", "comfort"); setThemePref("light"); });
     await waitFor(() => expect(fake.calls).toContain("saveSettings"));
     expect(fake.calls.filter((c) => c === "saveSettings")).toHaveLength(1);
-    expect(fake.stored).toEqual({ closeBehavior: "quit", theme: "light", redactStyle: "plaid", resourceTier: "comfort", retentionDays: 30, autoUpdate: true });
+    expect(fake.stored).toEqual({ closeBehavior: "quit", theme: "light", redactStyle: "plaid", resourceTier: "comfort", retentionDays: 30, autoUpdate: true, gpuAcceleration: false });
   });
 
   it("插件页显示真实登记的内建插件；第三方安装、停用内建、检查更新都如实说明不可用，不做模拟", async () => {
@@ -280,6 +281,126 @@ describe("方案与规则集的存储同步", () => {
     act(() => checkForUpdate());
     expect(toastText()).toContain("更新通道尚未配置");
     expect(getState().update.status).toBe("idle");
+  });
+
+  const RT = (over: Partial<EngineModelRuntime> = {}): EngineModelRuntime => ({
+    id: "astrlink-guard-int8", build: "astrlink-guard-int8", name: "AstrLink Guard", version: "0.1.3", variant: "INT8", languages: "中文 / 中英混排",
+    preset: "builtin-preset-model", state: "ready", code: "", bytes: 38961301, downloaded: 38961301, minMemory: 0, eligible: true,
+    dir: "/Users/x/Library/Application Support/Tacet/models/installed/astrlink-guard_0.1.3_0123", backend: "CPUExecutionProvider", device: "cpu",
+    repository: "QuantumNous/astrlink-guard", accelerable: false, accelerated: false, ...over,
+  });
+  const PF = item("model_profile", "builtin-model-privacy-filter", "OpenAI Privacy Filter（固定版本）", { model_id: "privacy-filter-int8", manifest_digest: "sha256:bb", backend: "CPUExecutionProvider", adapter_floor: 0.2, calibrated: 0.5, label_map: { private_person: "person", private_email: "email" }, memory_bytes: 3 * 2 ** 30 });
+  const P_PF = item("preset", "builtin-preset-privacy-filter", "办公外发（规则 + Privacy Filter）", { ruleset_id: "builtin-cn-office", scheme_id: "builtin-scheme-model", model_profile_id: "builtin-model-privacy-filter", mode: "guided", rules_only: false, min_confidence: 0.5, memory_bytes: 4 * 2 ** 30, dpi: 200, style: "solid", retention_days: 0 });
+  const PF_RT = RT({ id: "privacy-filter-int8", build: "privacy-filter-int8", name: "OpenAI Privacy Filter", version: "7ffa9a0", languages: "英文为主", preset: "builtin-preset-privacy-filter", state: "pending", downloaded: 0, bytes: 1645000000, dir: "", minMemory: 16 * 2 ** 30, repository: "openai/privacy-filter" });
+
+  it("模型来自内核的目录：顺序、名称、状态、进度与存储位置；没有模型时不查询", async () => {
+    fake.items.push({ ...PF }, { ...P_PF });
+    fake.modelList = [RT(), { ...PF_RT, state: "downloading", downloaded: 411250000 }];
+    await loadConfig();
+    const [a, p] = getState().models;
+    expect(a).toMatchObject({ id: "astrlink-guard-int8", name: "AstrLink Guard", status: "ready", weightMiB: 37, runtime: { dir: fake.modelList[0]!.dir, device: "cpu", repository: "QuantumNous/astrlink-guard" } });
+    expect(p).toMatchObject({ id: "privacy-filter-int8", name: "OpenAI Privacy Filter", languages: "英文为主", status: "downloading", progress: 25, minMemoryGiB: 16, runtime: { dir: "" } });
+    // each scheme is bound to its own model
+    expect(getState().presets.find((x) => x.stored?.id === "builtin-preset-privacy-filter")!.model).toBe("privacy-filter-int8");
+    expect(getState().presets.find((x) => x.stored?.id === "builtin-preset-model")!.model).toBe("astrlink-guard-int8");
+    fake.items = fake.items.filter((i) => i.kind !== "model_profile");
+    fake.calls = [];
+    await loadConfig();
+    expect(fake.calls).not.toContain("models");
+  });
+
+  it("默认模型尚未下载时首页用仅规则方案", async () => {
+    fake.modelList = [RT({ state: "pending", downloaded: 0, dir: "" })];
+    await loadConfig();
+    expect(getState().models[0]!.status).toBe("missing");
+    expect(getState().homePreset).toBe("办公外发（仅规则）");
+  });
+
+  it("下载交给内核；轮询进度直到就绪并提示", async () => {
+    fake.items.push({ ...PF }, { ...P_PF });
+    fake.modelList = [RT(), { ...PF_RT, minMemory: 0 }];
+    await loadConfig();
+    act(() => downloadModel("privacy-filter-int8"));
+    await waitFor(() => expect(fake.calls).toContain("downloadModel:privacy-filter-int8"));
+    await waitFor(() => expect(getState().models[1]!.status).toBe("downloading"));
+    fake.modelList[1]!.downloaded = 822500000;
+    await waitFor(() => expect(getState().models[1]!.progress).toBe(50), { timeout: 2000 });
+    Object.assign(fake.modelList[1]!, { state: "ready", downloaded: fake.modelList[1]!.bytes, dir: "/m/installed/privacy-filter_7ffa9a0_aa" });
+    await waitFor(() => expect(getState().models[1]!.status).toBe("ready"), { timeout: 2000 });
+    expect(getState().models[1]!.runtime!.dir).toBe("/m/installed/privacy-filter_7ffa9a0_aa");
+    expect(toastText()).toContain("OpenAI Privacy Filter 已就绪");
+  });
+
+  it("本机内存不足：不发起下载，说明需要的内存", async () => {
+    fake.items.push({ ...PF }, { ...P_PF });
+    fake.modelList = [RT(), { ...PF_RT, eligible: false }];
+    await loadConfig();
+    act(() => downloadModel("privacy-filter-int8"));
+    expect(toastText()).toContain("16 GiB");
+    await sleep(50);
+    expect(fake.calls.filter((c) => c.startsWith("downloadModel"))).toEqual([]);
+  });
+
+  it("校验未通过后重新下载：先丢弃残留再下载；内核拒绝时说明原因", async () => {
+    fake.modelList = [RT({ state: "error", code: "MODEL_VERIFY_FAILED", dir: "" })];
+    await loadConfig();
+    expect(getState().models[0]).toMatchObject({ status: "error", error: "integrity" });
+    act(() => downloadModel("astrlink-guard-int8"));
+    await waitFor(() => expect(fake.calls).toContain("downloadModel:astrlink-guard-int8"));
+    expect(fake.calls.indexOf("discardModel:astrlink-guard-int8")).toBeLessThan(fake.calls.indexOf("downloadModel:astrlink-guard-int8"));
+    fake.modelList[0]!.state = "paused";
+    await loadConfig();
+    fake.modelFails = new Error("MODEL_BUSY");
+    act(() => downloadModel("astrlink-guard-int8"));
+    await waitFor(() => expect(toastText()).toContain("请先完成或停止当前文档处理"));
+  });
+
+  it("方案改用更大的模型时，内存预算随之提高", async () => {
+    fake.items.push({ ...PF }, { ...P_PF });
+    fake.modelList = [RT(), { ...PF_RT, state: "ready" }];
+    await loadConfig();
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));
+    const copy = getState().presets.find((p) => !p.builtin)!;
+    act(() => store.update((d) => { d.presets.find((p) => p.id === copy.id)!.model = "privacy-filter-int8"; }));
+    await waitFor(() => expect(JSON.parse(fake.items.find((i) => i.id === copy.id)!.content).model_profile_id).toBe("builtin-model-privacy-filter"));
+    expect(JSON.parse(fake.items.find((i) => i.id === copy.id)!.content).memory_bytes).toBeGreaterThanOrEqual(3 * 2 ** 30);
+  });
+
+  const ACCEL = { id: "astrlink-guard-fp16", variant: "FP16", backend: "CoreMLExecutionProvider", state: "pending", code: "", bytes: 75451868, downloaded: 0, dir: "" };
+
+  it("GPU 加速只是一项设置：随设置写回，不下载也不试运行；GPU 版本在模型卡里单独下载", async () => {
+    fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL } })];
+    await loadConfig();
+    expect(getState().settings.gpu).toBe(false);
+    expect(getState().models[0]!.runtime!.accel).toMatchObject({ id: "astrlink-guard-fp16", variant: "FP16", status: "missing", weightMiB: 72 });
+    act(() => setSetting("gpu", true));
+    await waitFor(() => expect(fake.stored.gpuAcceleration).toBe(true));
+    expect(fake.calls.filter((c) => c.startsWith("downloadModel") || c.startsWith("prepareModel"))).toEqual([]);
+    act(() => downloadAccel("astrlink-guard-int8"));
+    await waitFor(() => expect(fake.calls).toContain("downloadModel:astrlink-guard-fp16"));
+    await waitFor(() => expect(getState().models[0]!.runtime!.accel!.status).toBe("downloading"));
+    Object.assign(fake.modelList[0]!.accel!, { state: "ready", downloaded: ACCEL.bytes, dir: "/m/installed/astrlink-guard_0.1.3_ade3" });
+    Object.assign(fake.modelList[0]!, { accelerated: true, device: "gpu", build: "astrlink-guard-fp16", dir: "/m/installed/astrlink-guard_0.1.3_ade3" });
+    await waitFor(() => expect(getState().models[0]!.runtime!.accel!.status).toBe("ready"), { timeout: 2000 });
+    expect(getState().models[0]!.runtime).toMatchObject({ accelerated: true, device: "gpu" });
+    expect(toastText()).toContain("AstrLink Guard GPU 版本 已就绪");
+    // the model itself was never touched
+    expect(fake.calls).not.toContain("downloadModel:astrlink-guard-int8");
+  });
+
+  it("GPU 版本校验未通过：重新下载前先丢弃残留；试运行失败时重新准备", async () => {
+    fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL, state: "error", code: "MODEL_VERIFY_FAILED" } })];
+    await loadConfig();
+    expect(getState().models[0]!.runtime!.accel).toMatchObject({ status: "error", error: "integrity" });
+    act(() => downloadAccel("astrlink-guard-int8"));
+    await waitFor(() => expect(fake.calls).toContain("downloadModel:astrlink-guard-fp16"));
+    expect(fake.calls.indexOf("discardModel:astrlink-guard-fp16")).toBeLessThan(fake.calls.indexOf("downloadModel:astrlink-guard-fp16"));
+    fake.modelList[0]!.accel = { ...ACCEL, state: "error", code: "MODEL_PREPARE_FAILED", downloaded: ACCEL.bytes };
+    await loadConfig();
+    act(() => downloadAccel("astrlink-guard-int8"));
+    await waitFor(() => expect(fake.calls).toContain("prepareModel:astrlink-guard-fp16"));
   });
 
   it("只改主题也会写回", async () => {

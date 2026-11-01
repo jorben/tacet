@@ -130,16 +130,16 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 	var batch string
 	var ids []string
 	var members []Member
+	preset := r.Preset
+	if preset == "" {
+		preset = e.defaultPreset(ctx) // reads the model catalog: before the transaction
+	}
 	err := e.ws.Commit(ctx, func(tx store.Tx) error {
 		n, err := next(tx, "batch")
 		if err != nil {
 			return err
 		}
 		batch = fmt.Sprintf("b%04d", n)
-		preset := r.Preset
-		if preset == "" {
-			preset = e.defaultPreset()
-		}
 		if err = putRun(tx, Run{Batch: batch, Preset: preset, OutputDir: r.OutputDir, Kind: r.Kind}); err != nil {
 			return err
 		}
@@ -291,8 +291,9 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 	}
 	preset := r.Preset
 	if preset == "" {
-		preset = e.defaultPreset()
+		preset = e.defaultPreset(ctx)
 	}
+	avail := e.available(ctx) // the catalog is read before the transaction
 	err = e.ws.Commit(ctx, func(tx store.Tx) error {
 		run, err := getRun(tx, r.Batch)
 		if err != nil {
@@ -320,17 +321,18 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 		}
 		sort.Strings(env.Formats)
 		digests := map[string]string{}
-		if m := e.model; m != nil {
-			env.Models[m.id] = snapshot.Model{Categories: m.categories, AdapterFloor: m.floor, MemoryBytes: modelMemoryBytes}
+		for _, m := range e.models {
+			env.Models[m.id] = snapshot.Model{Categories: m.categories, AdapterFloor: m.floor, MemoryBytes: m.kind.memory}
 			digests[m.id] = m.digest
 		}
 		out := r.OutputDir
 		if out == "" {
 			out = run.OutputDir
 		}
+		settings, serr := e.cfg.Settings(tx)
 		style := ""
-		if s, err := e.cfg.Settings(tx); err == nil {
-			style = s.RedactStyle
+		if serr == nil {
+			style = settings.RedactStyle
 		}
 		content, report, err := snapshot.ResolvePreset(tx, e.cfg, preset, snapshot.Bindings{Environment: env, ModelDigests: digests, Style: style,
 			Runtime:  snapshot.RuntimeContent{Protocol: "1.0", Formats: refsByFormat},
@@ -340,6 +342,14 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 		}
 		if len(report.Blocking) > 0 {
 			return fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
+		}
+		if content.Detect.ModelID != "" && !content.Detect.RulesOnly {
+			m := e.modelByID(content.Detect.ModelID)
+			if m == nil || !avail[m.id] {
+				return fmt.Errorf("%w: %s", ErrNotReady, ErrModelNotInstalled)
+			}
+			// the build that runs is frozen with the batch: a resumed run uses the same weights and provider
+			content.Detect.Execution = e.execution(settings, m, avail)
 		}
 		if r.Mode == "strict" { // chosen for this batch; frozen with it (dispose facet)
 			content.Dispose.Mode = "strict"

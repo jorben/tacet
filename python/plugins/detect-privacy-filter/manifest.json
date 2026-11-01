@@ -1,0 +1,22 @@
+{
+  "id": "tacet.privacy-filter",
+  "version": "0.1.0",
+  "kind": "plugin",
+  "protocol": {
+    "min": "1.0",
+    "max": "1.0"
+  },
+  "license": "Apache-2.0",
+  "roles": [
+    "detect"
+  ],
+  "runtime": {
+    "kind": "python",
+    "entry": "tacet_detect_privacy_filter"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "windows-amd64"
+  ],
+  "capabilities": {}
+}

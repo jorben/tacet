@@ -70,4 +70,4 @@ export const seedPlugins = (): PluginInfo[] => [
   { id: "fin", name: "金融行业规则包", role: "规则", fmt: "", ver: "1.2.0", src: "gitee.com/fintools/tacet-fin-rules", commit: "a91d3e0", on: true, trusted: false, refs: 0 },
 ];
 
-export const seedSettings = (): Settings => ({ redact: "black", tier: "comfort", autoUpd: false, keep: "7", closeAct: "tray" });
+export const seedSettings = (): Settings => ({ redact: "black", tier: "comfort", autoUpd: false, keep: "7", closeAct: "tray", gpu: false });

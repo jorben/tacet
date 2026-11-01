@@ -1,11 +1,14 @@
 import { useEffect, useRef } from "react";
-import { cancelPendingOperation, continuePendingOperation, downloadModel, pauseModel, prepareModel, showModels } from "../../actions/models";
+import {
+  cancelPendingOperation, continuePendingOperation, downloadAccel, downloadModel, homeRelative, pauseAccel, hubUrl, openModelDirectory, openModelPage, pauseModel, prepareModel, showModels,
+  splitPath,
+} from "../../actions/models";
 import { MODEL_ERRORS, MODEL_LABELS } from "../../domain/catalog";
 import { modelById } from "../../domain/presets";
 import type { ModelPlugin } from "../../domain/types";
 import { useAppState } from "../../store";
 import { contextModelId, modelIsBusy } from "../../store/selectors";
-import { Button, Icon, Pill } from "../../ui";
+import { Button, Icon, IconButton, Pill, PillButton } from "../../ui";
 
 const TITLES: Record<Exclude<ModelPlugin["status"], "error">, string> = {
   missing: "此方案需要的模型尚未下载",
@@ -60,7 +63,7 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
   const detail = error ? MODEL_ERRORS[m.error || "offline"] : null;
   const title = manage ? m.name : detail ? detail[0] : TITLES[st as keyof typeof TITLES];
   const desc = detail ? detail[1] : DESCRIPTIONS[st as keyof typeof DESCRIPTIONS];
-  const showTags = manage && !["missing", "ready"].includes(st);
+  const stateTone = error ? "warn" : st === "ready" ? "ok" : st === "missing" || st === "paused" ? "ghost" : "pri";
   const busy = modelIsBusy(models);
 
   return (
@@ -76,13 +79,27 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
           <Icon name={manage ? "cpu" : error ? "alert" : st === "ready" ? "check" : "cpu"} size={18} />
         </span>
         <div className="model-copy">
-          <div className="model-title" role="status" aria-live="polite" aria-atomic="true">
+          <div className="model-titlebar">
+          <div className="model-title" {...(manage ? {} : { role: "status", "aria-live": "polite" as const, "aria-atomic": true })}>
             {title}
-            {showTags && (
-              <span className="model-tags">
-                <Pill tone={error ? "warn" : "ghost"}>{MODEL_LABELS[st]}</Pill>
-              </span>
+            {manage && m.runtime && hubUrl(m.runtime.repository) && (
+              <PillButton
+                tone="ghost"
+                className="model-hf"
+                title={"在 Hugging Face 查看 " + m.runtime.repository}
+                aria-label={"在浏览器中打开 " + m.name + " 的 Hugging Face 模型页"}
+                onClick={() => openModelPage(m.runtime!.repository)}
+              >
+                HF
+                <Icon name="ext" size={12} />
+              </PillButton>
             )}
+          </div>
+          {manage && (
+            <Pill tone={stateTone} dot={stateTone === "pri"} className="model-state" role="status" aria-atomic="true" aria-label={m.name + "：" + MODEL_LABELS[st]}>
+              {MODEL_LABELS[st]}
+            </Pill>
+          )}
           </div>
           {!(manage && !error) && (
             <p className="model-desc">
@@ -93,8 +110,12 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
           <div className="model-meta">
             {manage ? "" : (p?.preset || "本次任务") + " · " + m.name + " · "}
             {m.version} · {m.variant} · {m.languages}
-            {st === "missing" && m.weightMiB ? " · 权重约 " + m.weightMiB + " MiB" : ""}
+            {st === "missing" && m.weightMiB ? " · 权重约 " + sizeLabel(m.weightMiB) : ""}
           </div>
+          {manage && m.languages.includes("英文") && <p className="model-note">以英文为主，阈值未经校准；中文文档的结果需人工复核。</p>}
+          {manage && st === "missing" && m.eligible === false && (
+            <p className="model-note warn" role="note">需要至少 {m.minMemoryGiB || 16} GiB 内存，本机不满足，无法下载。</p>
+          )}
           {(st === "downloading" || st === "paused") && (
             <div className="model-progress">
               <progress max={100} value={m.progress} aria-label={m.name + " 下载进度"} />
@@ -103,7 +124,15 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
               </div>
             </div>
           )}
-          <ModelActions model={m} manage={manage} />
+          {manage ? (
+            // where the files are and what they run on, with the actions at the end of the same band
+            <div className="model-foot">
+              {m.runtime && <ModelRuntime id={m.id} runtime={m.runtime} />}
+              <ModelActions model={m} manage={manage} />
+            </div>
+          ) : (
+            <ModelActions model={m} manage={manage} />
+          )}
         </div>
       </div>
       {p && (
@@ -124,6 +153,68 @@ export function ModelCard({ manage = false, modelId }: ModelCardProps) {
   );
 }
 
+/** Where the model files are and whether inference runs on the CPU or a GPU. */
+/** "36 MiB" or "1.5 GiB". */
+const sizeLabel = (mib: number): string => (mib >= 1024 ? (mib / 1024).toFixed(1) + " GiB" : mib + " MiB");
+
+/** Where the model files are (once downloaded) and whether inference runs on the CPU or a GPU. */
+function ModelRuntime({ id, runtime: r }: { id: string; runtime: NonNullable<ModelPlugin["runtime"]> }) {
+  const [head, tail] = splitPath(homeRelative(r.dir));
+  return (
+    <dl className="model-runtime">
+      <div>
+        <dt>推理设备</dt>
+        <dd title={r.backend}>{r.device === "gpu" ? "GPU · Core ML" : "CPU · ONNX Runtime"}</dd>
+      </div>
+      {r.dir && <div>
+        <dt>存储位置</dt>
+        <dd className="model-path">
+          <span
+            className="model-path-text mono"
+            title={r.dir}
+            onCopy={(e) => { e.clipboardData.setData("text/plain", r.dir); e.preventDefault(); }}
+          >
+            <span className="model-path-head">{head}</span>
+            <span className="model-path-tail">{tail}</span>
+          </span>
+          <IconButton icon="folder" size={14} className="model-path-open" label="打开存储位置" tooltip="打开存储位置" tooltipAlign="end" onClick={() => void openModelDirectory(id)} />
+        </dd>
+      </div>}
+      {r.accel && <AccelRow id={id} runtime={r} accel={r.accel} />}
+    </dl>
+  );
+}
+
+/** The GPU build of the model: its own download, apart from the GPU acceleration setting that decides its use. */
+function AccelRow({ id, runtime: r, accel: a }: { id: string; runtime: NonNullable<ModelPlugin["runtime"]>; accel: NonNullable<NonNullable<ModelPlugin["runtime"]>["accel"]> }) {
+  const st = a.status;
+  const state =
+    st === "ready" ? (r.accelerated ? "使用中" : "已下载 · GPU 加速未开启")
+    : st === "missing" ? "未下载"
+    : st === "downloading" ? "下载中 " + a.progress + "%"
+    : st === "paused" ? "已暂停 " + a.progress + "%"
+    : st === "verifying" ? "校验中"
+    : st === "loading" ? "编译与试运行中"
+    : MODEL_ERRORS[a.error || "offline"][0];
+  const tone = st === "ready" ? (r.accelerated ? "ok" : "") : st === "error" ? "warn" : st === "missing" ? "" : "pri";
+  const action =
+    st === "missing" ? "下载" : st === "paused" ? "继续" : st === "error" ? MODEL_ERRORS[a.error || "offline"][2] : st === "downloading" ? "暂停" : "";
+  return (
+    <div>
+      <dt>GPU 版本</dt>
+      <dd className="model-accel">
+        <span>{a.variant} · {sizeLabel(a.weightMiB)}</span>
+        <span className={"model-accel-state " + tone} role="status" aria-atomic="true">{state}</span>
+        {action && (
+          <button type="button" className="model-link" onClick={() => (st === "downloading" ? pauseAccel(id) : downloadAccel(id))}>
+            {action}
+          </button>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 function ModelActions({ model: m, manage }: { model: ModelPlugin; manage: boolean }) {
   const st = m.status;
   const error = st === "error";
@@ -132,7 +223,7 @@ function ModelActions({ model: m, manage }: { model: ModelPlugin; manage: boolea
   if (st === "missing" || st === "paused" || error) {
     const retryLoad = error && m.error === "load";
     actions.push(
-      <Button key="main" variant="primary" onClick={() => (retryLoad ? prepareModel(m.id) : downloadModel(m.id))}>
+      <Button key="main" variant="primary" disabled={st === "missing" && m.eligible === false} onClick={() => (retryLoad ? prepareModel(m.id) : downloadModel(m.id))}>
         {detail ? detail[2] : st === "paused" ? "继续下载" : "下载模型"}
       </Button>,
     );
@@ -140,12 +231,5 @@ function ModelActions({ model: m, manage }: { model: ModelPlugin; manage: boolea
   }
   if (st === "downloading") actions.push(<Button key="pause" variant="ghost" onClick={() => pauseModel(m.id)}>暂停</Button>);
   if (!manage) actions.push(<Button key="view" variant="ghost" onClick={() => showModels(m.id)}>查看模型</Button>);
-  if (manage && st === "ready") {
-    actions.push(
-      <span key="ready" className="model-ready" role="status">
-        已就绪
-      </span>,
-    );
-  }
   return actions.length ? <div className="model-actions">{actions}</div> : null;
 }

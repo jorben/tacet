@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"github.com/jorben/tacet/internal/kernel"
@@ -9,7 +10,6 @@ import (
 	"github.com/jorben/tacet/internal/platform"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/jorben/tacet/internal/findings"
 	"github.com/jorben/tacet/internal/jobs"
 	"github.com/jorben/tacet/internal/keys"
+	"github.com/jorben/tacet/internal/models"
 	"github.com/jorben/tacet/internal/netgate"
 	"github.com/jorben/tacet/internal/policy"
 	"github.com/jorben/tacet/internal/publish"
@@ -48,21 +49,54 @@ type Builtin struct {
 	Formats  []string // file extensions it takes (without dot)
 }
 
-// ModelOption names the fixed model resource and the detection plugin that runs it.
+// ModelOption names one model of the catalog: its integrity manifest (resources/models/*.json, shipped
+// with the application) and the detection plugin that runs it. The files are downloaded by the user into
+// the models folder; Dir, when set, names files that are already present instead (development, tests).
 type ModelOption struct {
-	Dir          string  // absolute directory with the model files
-	ManifestPath string  // absolute path of the integrity manifest (resources/models/*.json)
+	Dir          string  // absolute directory of preinstalled files; "" = downloaded
+	ManifestPath string  // absolute path of the integrity manifest
 	Plugin       Builtin // the detection plugin (role detect); Formats is empty
+	// Accel, when set, is the optional accelerated build of the same model (FP16 through Core ML on
+	// Apple Silicon), downloaded when the user turns GPU acceleration on; it runs only after its trial.
+	Accel *ModelVariant
 }
 
-// modelInfo is what the engine knows about its model after reading the manifest.
+// ModelVariant is another build of a model: its files and integrity manifest.
+type ModelVariant struct {
+	Dir          string // absolute directory of preinstalled files; "" = downloaded
+	ManifestPath string // absolute path of its integrity manifest
+}
+
+// ModelSource is where downloads come from. Production uses Hugging Face at the manifest's pinned
+// revision; tests point it at a local server.
+type ModelSource struct {
+	Base  string   // "https://huggingface.co"
+	Hosts []string // network allowlist, redirect hosts included
+	TLS   *tls.Config
+}
+
+// modelInfo is what the engine knows about one model of the catalog after reading its manifest.
 type modelInfo struct {
 	id, digest, backend string
+	name, version       string
+	variant, languages  string
+	repository          string // "owner/name" on Hugging Face, from the manifest; empty when not well formed
 	floor, recommended  float64
 	categories          []string
 	labels              map[string]string
 	plug                plugin
-	sem                 chan struct{} // one model worker at a time: its memory is not shared
+	opt                 *ModelOption
+	kind                modelKind
+	entry               models.Entry // its catalog entry: the download key and the digest of its files
+	minMemory           uint64       // installed memory a machine needs to download it; 0 = any
+	accel               *variantInfo // the accelerated build, when this installation offers one
+}
+
+// variantInfo is what the engine knows about an accelerated build after reading its manifest.
+type variantInfo struct {
+	id, digest, backend string
+	dir, manifest       string // dir "" = downloaded
+	entry               models.Entry
 }
 
 // Options configure one engine over one workspace directory.
@@ -75,10 +109,17 @@ type Options struct {
 	RulePack  []byte // built-in rule pack (resources/rules/cn-office-v1.json)
 	Create    bool
 	Platform  string // darwin-arm64 or windows-amd64
-	// Model, when set, adds the model-assisted preset. The model files are verified by the
-	// detection plugin against ManifestPath before anything is loaded; a model that fails
+	// Models is the model catalog; each adds its model-assisted preset. The model files are verified by
+	// the detection plugin against the manifest before anything is loaded; a model that fails
 	// verification fails the stage, it never counts as "nothing found".
-	Model  *ModelOption
+	Models []*ModelOption
+	// ModelsRoot is the folder downloaded models are kept in, shared by the workspaces of one user;
+	// "" is a folder inside the workspace.
+	ModelsRoot string
+	// ModelSource is where models are downloaded from; nil is Hugging Face.
+	ModelSource *ModelSource
+	// Memory reports the machine's installed memory; nil is platform.PhysicalMemory.
+	Memory func() (uint64, error)
 	Budget sched.Budget
 	// Now is the clock of retention (tests move it); nil is the real clock.
 	Now func() time.Time
@@ -125,7 +166,10 @@ type Engine struct {
 	listeners map[int]func(batch string)
 	listenSeq int
 	pv        *previewState
-	model     *modelInfo
+	models    []*modelInfo    // the catalog, in manifest order
+	modelSem  chan struct{}   // one model worker at a time (detection, preparation): their memory is not shared
+	catalog   *models.Service // downloads and installed state; nil when every model is preinstalled
+	life      context.Context // the engine's lifetime: background downloads run under it
 	ret       *retention.Service
 	budget    sched.Budget
 	// beforeConfirm, when set by a test, runs before a file that finished its inspection after
@@ -145,7 +189,7 @@ type plugin struct {
 
 func allModules() []store.Module {
 	return []store.Module{jobs.Module(), snapshot.Module(), config.Module(), registry.Module(), refs.Module(), findings.Module(), coverage.Module(),
-		extract.Module(), review.Module(), exceptions.Module(), policy.Module(), export.Module(), validate.Module(), publish.Module(), retention.Module(), appModule()}
+		extract.Module(), review.Module(), exceptions.Module(), policy.Module(), export.Module(), validate.Module(), publish.Module(), retention.Module(), models.Module(), appModule()}
 }
 
 // Open takes the workspace, restores keys and files, seeds the built-in
@@ -155,7 +199,13 @@ func Open(ctx context.Context, opt Options) (*Engine, error) {
 		(opt.Platform != "darwin-arm64" && opt.Platform != "windows-amd64") {
 		return nil, ErrOptions
 	}
-	if opt.Model != nil && (!filepath.IsAbs(opt.Model.Dir) || !filepath.IsAbs(opt.Model.ManifestPath)) {
+	for _, m := range opt.Models {
+		if m == nil || (m.Dir != "" && !filepath.IsAbs(m.Dir)) || !filepath.IsAbs(m.ManifestPath) ||
+			(m.Accel != nil && ((m.Accel.Dir != "" && !filepath.IsAbs(m.Accel.Dir)) || !filepath.IsAbs(m.Accel.ManifestPath))) {
+			return nil, ErrOptions
+		}
+	}
+	if opt.ModelsRoot != "" && !filepath.IsAbs(opt.ModelsRoot) {
 		return nil, ErrOptions
 	}
 	if opt.Create {
@@ -163,7 +213,8 @@ func Open(ctx context.Context, opt Options) (*Engine, error) {
 			return nil, err
 		}
 	}
-	e := &Engine{opt: opt, gate: netgate.NewGate(), plugins: map[string]plugin{}, detect: map[string]*detectCache{}, secrets: map[string][]byte{}, listeners: map[int]func(string){}, done: make(chan struct{})}
+	e := &Engine{opt: opt, gate: netgate.NewGate(), plugins: map[string]plugin{}, detect: map[string]*detectCache{}, secrets: map[string][]byte{}, listeners: map[int]func(string){}, done: make(chan struct{}),
+		modelSem: make(chan struct{}, 1), life: context.Background()}
 	declare := opt.Activity
 	if declare == nil {
 		declare = platform.DeclareActivity
@@ -235,6 +286,9 @@ func (e *Engine) openWorkspace(ctx context.Context, reg *store.Registry) error {
 	if err = e.seed(ctx); err != nil {
 		return err
 	}
+	if err = e.openCatalog(ctx); err != nil {
+		return err
+	}
 	if e.fr, err = findings.NewRepository(e.batchKey); err != nil {
 		return err
 	}
@@ -269,64 +323,9 @@ func (e *Engine) seed(ctx context.Context) error {
 				e.plugins[f] = plugin{module: b.Module, id: ref, man: p.Manifest}
 			}
 		}
-		if e.opt.Model != nil {
-			if err := e.registerModel(tx); err != nil {
-				return err
-			}
+		if err := e.registerModels(tx); err != nil {
+			return err
 		}
-		return seedConfig(tx, e.cfg, e.opt.RulePack, e.model)
+		return seedConfig(tx, e.cfg, e.opt.RulePack, e.models)
 	})
-}
-
-// labelCategories is how the fixed model's labels become Tacet categories.
-var labelCategories = map[string]string{
-	"private_person": "person", "private_address": "address", "private_date": "date", "phone": "phone", "email": "email",
-	"account": "account", "payment_card": "payment_card", "ip_address": "ip_address", "url": "url", "common_secret": "secret",
-}
-
-// registerModel reads the integrity manifest and registers the detection plugin.
-func (e *Engine) registerModel(tx store.Tx) error {
-	o := e.opt.Model
-	raw, err := os.ReadFile(o.ManifestPath)
-	if err != nil {
-		return ErrOptions
-	}
-	var man struct {
-		ID       string  `json:"id"`
-		Backend  string  `json:"backend"`
-		Variant  string  `json:"variant"`
-		Version  string  `json:"version"`
-		Upstream float64 `json:"upstream_recommended_score"`
-	}
-	if json.Unmarshal(raw, &man) != nil || man.ID == "" || man.Upstream <= 0 || man.Upstream > 1 {
-		return ErrOptions
-	}
-	var pm registry.Manifest
-	if json.Unmarshal(o.Plugin.Manifest, &pm) != nil {
-		return ErrOptions
-	}
-	digest := "sha256:" + hexSum(o.Plugin.Manifest, []byte(e.opt.EnvDigest))
-	p, err := e.reg.Register(tx, o.Plugin.Manifest, digest, e.opt.EnvDigest, true)
-	if errors.Is(err, registry.ErrConflict) {
-		p, err = e.reg.Get(tx, registry.Identity{ID: pm.ID, Version: pm.Version, Digest: digest})
-	}
-	if err != nil {
-		return err
-	}
-	if err = e.reg.Enable(tx, p.Identity, true); err != nil {
-		return err
-	}
-	m := &modelInfo{id: man.ID + "-" + man.Variant, digest: "sha256:" + hexSum(raw), backend: man.Backend, floor: 0.5, recommended: man.Upstream,
-		labels: labelCategories, sem: make(chan struct{}, 1),
-		plug: plugin{module: o.Plugin.Module, id: snapshot.PluginRef{ID: p.ID, Version: p.Version, Digest: p.Digest, Env: p.Environment}, man: p.Manifest}}
-	seen := map[string]bool{}
-	for _, c := range labelCategories {
-		if !seen[c] {
-			seen[c] = true
-			m.categories = append(m.categories, c)
-		}
-	}
-	sort.Strings(m.categories)
-	e.model = m
-	return nil
 }

@@ -66,15 +66,17 @@ export function PluginsPage() {
         <SectionTitle first>
           模型<span className="model-section-note">按需下载，在方案中选择使用</span>
         </SectionTitle>
-        {models.map((m) => (
-          <ModelCard key={m.id} manage modelId={m.id} />
-        ))}
+        <div className="model-list">
+          {models.map((m) => (
+            <ModelCard key={m.id} manage modelId={m.id} />
+          ))}
+        </div>
       </section>
-      {(["格式", "规则"] as const).map((role, i) => {
+      {(["格式", "规则"] as const).map((role) => {
         const xs = builtin.filter((p) => p.role === role);
         return xs.length ? (
           <Fragment key={role}>
-            <SectionTitle first={i === 0}>{role}</SectionTitle>
+            <SectionTitle>{role}</SectionTitle>
             <List>
               {xs.map((p) => (
                 <PluginRow key={p.id} plugin={p} />

@@ -88,16 +88,41 @@ func openEngineWith(t *testing.T, dir string, key *memKey, create bool, tune fun
 	return e
 }
 
-// modelOption is the fixed model when its files are here (the M0 resource folder); the test is skipped otherwise.
-func modelOption(t *testing.T) *ModelOption {
+// m0Models is the model catalog with the files of the M0 resource folder preinstalled.
+func m0Models(t *testing.T) []*ModelOption {
 	t.Helper()
 	r, _ := root(t)
 	var o Options
-	locateModel(r, &o)
-	if o.Model == nil {
-		t.Skip("needs the fixed M0 model resource")
+	o.Platform, _ = platformID() // the accelerated build is offered on Apple Silicon only
+	locateModels(r, filepath.Join(r, ".pi", "m0-resources"), &o)
+	return o.Models
+}
+
+// modelOption is AstrLink with its files present (the M0 resource folder); the test is skipped otherwise.
+func modelOption(t *testing.T) *ModelOption {
+	t.Helper()
+	for _, m := range m0Models(t) {
+		if strings.HasSuffix(m.ManifestPath, "astrlink-guard-int8.json") && m.Dir != "" {
+			if m.Accel != nil && m.Accel.Dir == "" {
+				m.Accel = nil // the accelerated build's files are not there
+			}
+			return m
+		}
 	}
-	return o.Model
+	t.Skip("needs the fixed M0 model resource")
+	return nil
+}
+
+// pfOption is OpenAI Privacy Filter with its files present; the test is skipped otherwise.
+func pfOption(t *testing.T) *ModelOption {
+	t.Helper()
+	for _, m := range m0Models(t) {
+		if strings.HasSuffix(m.ManifestPath, "privacy-filter-int8.json") && m.Dir != "" {
+			return m
+		}
+	}
+	t.Skip("needs the privacy-filter model resource")
+	return nil
 }
 
 func TestBatchEndToEnd(t *testing.T) {
@@ -769,7 +794,7 @@ func TestUnfinishedBatchesSurviveARestartAndResume(t *testing.T) {
 	}
 }
 
-func withModel(m *ModelOption) func(*Options) { return func(o *Options) { o.Model = m } }
+func withModel(ms ...*ModelOption) func(*Options) { return func(o *Options) { o.Models = ms } }
 
 // The model preset runs the real AstrLink Guard through the detection plugin: it finds a person that no rule
 // can, the policy redacts it with the placeholder, and the delivered file no longer holds the name.

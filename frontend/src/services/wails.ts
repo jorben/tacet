@@ -1,6 +1,6 @@
-import { Application, Events, System, Window } from "@wailsio/runtime";
+import { Application, Browser, Events, System, Window } from "@wailsio/runtime";
 import * as G from "../../bindings/github.com/jorben/tacet/internal/gui/service";
-import type { EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EnginePagePreview, EngineFile, EngineService, HostKind, TacetService } from "./types";
+import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EnginePagePreview, EngineFile, EngineService, HostKind, TacetService } from "./types";
 
 /** Must match internal/gui/window.go EventCloseRequested. */
 export const EVENT_CLOSE_REQUESTED = "tacet:close-requested";
@@ -45,6 +45,12 @@ const engine: EngineService = {
   async documentUnits(job, after, limit) { return ((await G.DocumentUnits(job, after, limit)) ?? []) as any; },
   pagePreview: (job, page, dpi) => G.PagePreview(job, page, dpi) as Promise<EnginePagePreview>,
   async plugins() { return ((await G.Plugins()) ?? []) as EnginePlugin[]; },
+  async models() { return ((await G.Models()) ?? []) as EngineModelRuntime[]; },
+  downloadModel: (id) => G.DownloadModel(id),
+  pauseModel: (id) => G.PauseModel(id),
+  discardModel: (id) => G.DiscardModel(id),
+  prepareModel: (id) => G.PrepareModel(id),
+  openModelDirectory: (id) => G.OpenModelDirectory(id),
   settings: () => G.Settings() as Promise<EngineSettings>,
   saveSettings: (s) => G.SaveSettings(s as never) as Promise<EngineSettings>,
   saveConfigFile: (n, t) => G.SaveConfigFile(n, t),
@@ -83,6 +89,9 @@ export const wailsService: TacetService = {
   },
   async quitApp() {
     await Application.Quit();
+  },
+  async openUrl(url) {
+    await Browser.OpenURL(url);
   },
   onQuitRequested(handler) {
     return Events.On(EVENT_QUIT_REQUESTED, () => handler());

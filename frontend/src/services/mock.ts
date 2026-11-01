@@ -9,6 +9,9 @@ export const mockService: TacetService = {
   async minimiseWindow() {},
   async hideWindow() {},
   async quitApp() {},
+  async openUrl(url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  },
   onQuitRequested() {
     return () => {};
   },

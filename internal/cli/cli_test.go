@@ -72,12 +72,18 @@ func (f *fake) ConfigSave(context.Context, string, uint64, string, string, strin
 func (f *fake) ConfigCopy(context.Context, string, string) (app.ConfigItem, error) {
 	return app.ConfigItem{}, nil
 }
-func (f *fake) ConfigDelete(context.Context, string, uint64) error { return nil }
-func (f *fake) Plugins(context.Context) ([]app.PluginInfo, error)  { return nil, nil }
-func (f *fake) SettingsGet(context.Context) (app.Settings, error)  { return app.Settings{}, nil }
+func (f *fake) ConfigDelete(context.Context, string, uint64) error     { return nil }
+func (f *fake) Plugins(context.Context) ([]app.PluginInfo, error)      { return nil, nil }
+func (f *fake) Models(context.Context) ([]app.ModelRuntime, error)     { return nil, nil }
+func (f *fake) DownloadModel(context.Context, string) error            { return nil }
+func (f *fake) PauseModel(context.Context, string) error               { return nil }
+func (f *fake) DiscardModel(context.Context, string) error             { return nil }
+func (f *fake) PrepareModel(context.Context, string) error             { return nil }
+func (f *fake) ModelDirectory(context.Context, string) (string, error) { return "", nil }
 func (f *fake) WorkspaceInfo(context.Context) (app.WorkspaceInfo, error) {
 	return app.WorkspaceInfo{}, nil
 }
+func (f *fake) SettingsGet(context.Context) (app.Settings, error) { return app.Settings{}, nil }
 func (f *fake) SettingsSave(context.Context, app.Settings) (app.Settings, error) {
 	return app.Settings{}, nil
 }

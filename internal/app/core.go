@@ -177,6 +177,8 @@ type Settings struct {
 	ResourceTier  string `json:"resourceTier"` // comfort or std
 	RetentionDays int    `json:"retentionDays"`
 	AutoUpdate    bool   `json:"autoUpdate"`
+	// GPUAcceleration: use the GPU build of a model when it is downloaded (Apple Silicon); off by default.
+	GPUAcceleration bool `json:"gpuAcceleration"`
 }
 
 // PluginInfo is a registered plugin as the plugins page shows it.
@@ -187,6 +189,50 @@ type PluginInfo struct {
 	Formats []string `json:"formats"`
 	Builtin bool     `json:"builtin"`
 	Enabled bool     `json:"enabled"`
+}
+
+// ModelRuntime is one model of the catalog as the plugins page shows it: its download state, where its files
+// are and what it runs on.
+type ModelRuntime struct {
+	ID        string `json:"id"`    // model id and variant, as in the model profile
+	Build     string `json:"build"` // the build that runs: the accelerated one's id when acceleration is on, else ID
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	Variant   string `json:"variant"`
+	Languages string `json:"languages"`
+	Preset    string `json:"preset"` // id of its built-in preset
+	// State is the download state (internal/models): pending, downloading, paused, verifying, preparing,
+	// installed, ready or error; Code says why for error.
+	State      string `json:"state"`
+	Code       string `json:"code"`
+	Bytes      int64  `json:"bytes"`      // size of all its files
+	Downloaded int64  `json:"downloaded"` // bytes received so far (all of them once installed)
+	MinMemory  uint64 `json:"minMemory"`  // installed memory the machine needs; 0 = any
+	Eligible   bool   `json:"eligible"`   // this machine has that memory
+	Dir        string `json:"dir"`        // absolute directory of its files once installed, else ""
+	Backend    string `json:"backend"`    // ONNX Runtime execution provider from the integrity manifest
+	Device     string `json:"device"`     // cpu or gpu
+	// Repository is the model's Hugging Face id ("owner/name") from its integrity manifest; empty if unknown.
+	Repository string `json:"repository"`
+	// Accelerable: this installation offers the optional accelerated build (Apple Silicon, FP16 via Core ML);
+	// Accel is that build's own download state.
+	Accelerable bool         `json:"accelerable"`
+	Accel       *BuildStatus `json:"accel"`
+	// Accelerated: GPU acceleration is on and the accelerated build is downloaded, so batches started now
+	// run it (the fields above describe it).
+	Accelerated bool `json:"accelerated"`
+}
+
+// BuildStatus is the download state of one build of a model (the accelerated one).
+type BuildStatus struct {
+	ID         string `json:"id"`
+	Variant    string `json:"variant"`
+	Backend    string `json:"backend"`
+	State      string `json:"state"` // as ModelRuntime.State
+	Code       string `json:"code"`
+	Bytes      int64  `json:"bytes"`
+	Downloaded int64  `json:"downloaded"`
+	Dir        string `json:"dir"`
 }
 
 // Core is the one interface the desktop app and the CLI use (AR-10). The
@@ -245,6 +291,17 @@ type Core interface {
 	ConfigDelete(ctx context.Context, id string, expected uint64) error
 	// Plugins lists the plugins this installation runs: the built-in format and detection plugins.
 	Plugins(ctx context.Context) ([]PluginInfo, error)
+	// Models lists the model catalog with each model's download state.
+	Models(ctx context.Context) ([]ModelRuntime, error)
+	// DownloadModel starts downloading a model (verification, installation and trial follow) and returns;
+	// PauseModel stops it keeping what was received; DiscardModel drops a partial download; PrepareModel
+	// runs an installed model's trial again.
+	DownloadModel(ctx context.Context, id string) error
+	PauseModel(ctx context.Context, id string) error
+	DiscardModel(ctx context.Context, id string) error
+	PrepareModel(ctx context.Context, id string) error
+	// ModelDirectory is the folder of the files a model runs with now.
+	ModelDirectory(ctx context.Context, id string) (string, error)
 	WorkspaceInfo(ctx context.Context) (WorkspaceInfo, error)
 	SettingsGet(ctx context.Context) (Settings, error)
 	SettingsSave(ctx context.Context, s Settings) (Settings, error)

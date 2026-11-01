@@ -252,6 +252,11 @@ func (s *Service) Recover(ctx context.Context) error {
 			return ErrFailed
 		}
 		next := st
+		if _, err := os.Stat(s.installed(e)); err == nil && st == StatePending {
+			// another workspace of the same user installed it into the shared folder; its files are
+			// checked before any use (CheckBinding, the plugin's own verification)
+			next = StateInstalled
+		}
 		switch st {
 		case StateDownloading, StateVerifying:
 			next = StatePaused
@@ -268,4 +273,13 @@ func (s *Service) Recover(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Dir is where a model's files are once installed (whether or not they are there now).
+func (s *Service) Dir(key string) string {
+	e, ok := s.entries[key]
+	if !ok {
+		return ""
+	}
+	return s.installed(e)
 }

@@ -149,6 +149,25 @@ export interface ModelPlugin {
   status: ModelStatus;
   progress: number;
   error: ModelErrorKind | null;
+  /** The machine has the memory the model needs (false: it cannot be downloaded here). */
+  eligible?: boolean;
+  /** Installed memory the model needs, in GiB; 0 or absent = any. */
+  minMemoryGiB?: number;
+  /** Where the files are and what the model computes on, as the kernel reports it; absent when not known. */
+  runtime?: ModelRuntime;
+}
+
+/** Where the model files are, what they run on, and whether GPU acceleration is offered / on. */
+export interface ModelRuntime {
+  dir: string;
+  backend: string;
+  device: "cpu" | "gpu";
+  /** Hugging Face id ("owner/name"); empty when unknown. */
+  repository: string;
+  accelerable: boolean;
+  accelerated: boolean;
+  /** The GPU build: its own download state (absent when the installation offers none). */
+  accel?: { id: string; variant: string; status: ModelStatus; progress: number; error: ModelErrorKind | null; weightMiB: number };
 }
 
 /** An operation that waits for a model to become ready. The continuation itself lives in `store/pending.ts`. */
@@ -458,6 +477,8 @@ export interface Settings {
   autoUpd: boolean;
   keep: KeepDays;
   closeAct: "tray" | "quit";
+  /** Use a model's GPU build when it is downloaded. */
+  gpu: boolean;
 }
 
 export type UpdateStatus = "idle" | "checking" | "available" | "updating" | "latest";

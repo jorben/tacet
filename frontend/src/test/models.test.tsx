@@ -1,7 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { store } from "../store";
+import { homeRelative, hubUrl, splitPath } from "../actions/models";
+import { FakeEngine } from "./liveFake";
+import { setService } from "../services";
+import { mockService } from "../services/mock";
 import { $, $$, chooseFiles, go, mountApp, press, tick, win } from "./helpers";
+import { getState } from "../store";
 
 beforeAll(mountApp);
 beforeEach(() => vi.useFakeTimers());
@@ -15,6 +20,136 @@ describe("模型准备状态", () => {
     expect(win()).toContain("下载模型");
     expect(win()).toContain("权重约 36 MiB");
   });
+
+  it("插件页显示模型的推理设备与存储位置（内核报告时）", () => {
+    go("model-plugins");
+    expect($("#modelPlugins .model-runtime")).toBeNull();
+    act(() => store.update((d) => { d.models[0]!.runtime = { dir: "/Users/x/Tacet/models/astrlink-guard-int8", backend: "CPUExecutionProvider", device: "cpu", repository: "", accelerable: false, accelerated: false }; }));
+    const rt = $("#modelPlugins .model-runtime")!;
+    expect(rt.textContent).toContain("推理设备CPU · ONNX Runtime");
+    expect(rt.textContent).toContain("存储位置~/Tacet/models/astrlink-guard-int8");
+    expect(rt.querySelector("dd")!.getAttribute("title")).toBe("CPUExecutionProvider");
+    act(() => store.update((d) => { d.models[0]!.runtime!.device = "gpu"; }));
+    expect($("#modelPlugins .model-runtime")!.textContent).toContain("GPU · Core ML");
+    act(() => store.update((d) => { delete d.models[0]!.runtime; }));
+  });
+
+  it("插件页模型卡的 HF 标签在浏览器中打开模型页；地址不合规时不显示", async () => {
+    const opened: string[] = [];
+    setService({ ...mockService, openUrl: async (u: string) => { opened.push(u); } });
+    go("model-plugins");
+    expect($("#modelPlugins .model-hf")).toBeNull();
+    const rt = { dir: "/m/astrlink-guard-int8", backend: "CPUExecutionProvider", device: "cpu" as const, repository: "QuantumNous/astrlink-guard", accelerable: false, accelerated: false };
+    act(() => store.update((d) => { d.models[0]!.runtime = rt; }));
+    const hf = $("#modelPlugins .model-hf")!;
+    expect(hf.textContent).toContain("HF");
+    expect(hf.getAttribute("title")).toBe("在 Hugging Face 查看 QuantumNous/astrlink-guard");
+    act(() => hf.click());
+    expect(opened).toEqual(["https://huggingface.co/QuantumNous/astrlink-guard"]);
+    for (const bad of ["", "astrlink-guard", "a/b/c", "../x", "https://evil.example/x", "a/b?x"]) {
+      act(() => store.update((d) => { d.models[0]!.runtime = { ...rt, repository: bad }; }));
+      expect($("#modelPlugins .model-hf")).toBeNull();
+    }
+    expect(hubUrl("a/..")).toBeNull();
+    act(() => store.update((d) => { delete d.models[0]!.runtime; }));
+    setService(null);
+  });
+
+  it("插件页：以英文为主的模型标明需人工复核；内存不足时下载按钮不可用并说明原因", () => {
+    go("model-plugins");
+    act(() => store.update((d) => {
+      d.models.push({ ...d.models[0]!, id: "pf", name: "OpenAI Privacy Filter", languages: "英文为主", weightMiB: 1569, status: "missing", progress: 0, eligible: false, minMemoryGiB: 16 });
+    }));
+    const card = $('#modelPlugins [data-model="pf"]')!;
+    expect(card.textContent).toContain("权重约 1.5 GiB");
+    expect(card.textContent).toContain("以英文为主，阈值未经校准；中文文档的结果需人工复核");
+    expect(card.textContent).toContain("需要至少 16 GiB 内存，本机不满足，无法下载");
+    expect(card.querySelector<HTMLButtonElement>(".model-actions .btn")!.disabled).toBe(true);
+    expect($$("#modelPlugins .model-list > .model-card")).toHaveLength(2);
+    act(() => store.update((d) => { d.models.pop(); }));
+  });
+
+  it("插件页：模型卡片放在双栏容器里，格式等其他插件仍是单栏列表", () => {
+    go("model-plugins");
+    expect($("#modelPlugins > .model-list > .model-card")).toBeTruthy();
+    expect($$(".model-list .row")).toHaveLength(0);
+    expect($(".model-list")!.closest("#modelPlugins")).toBeTruthy();
+  });
+
+  it("存储位置：路径分成可省略的前段与始终显示的末段；末尾的图标打开内核报告的目录", async () => {
+    const long = "/Users/someone/Library/Application Support/Tacet/models/astrlink-guard-int8";
+    expect(splitPath(long)).toEqual(["/Users/someone/Library/Application Support/Tacet/models", "/astrlink-guard-int8"]);
+    expect(splitPath("C:\\Users\\x\\AppData\\Tacet\\m1")).toEqual(["C:\\Users\\x\\AppData\\Tacet", "\\m1"]);
+    const tail = "/" + "x".repeat(50);
+    const [h, t] = splitPath("/a" + tail);
+    expect(h + t).toBe("/a" + tail);
+    expect(t).toHaveLength(20);
+    // a long last folder is cut after a separator, so the tail starts at a word
+    expect(splitPath("~/m/installed/astrlink-guard_0.1.3_0a070d3113615e33")).toEqual(["~/m/installed/astrlink-guard_", "0.1.3_0a070d3113615e33"]);
+    expect(homeRelative("/Users/jorben/Library/x")).toBe("~/Library/x");
+    expect(homeRelative("/Users/jorben")).toBe("~");
+    expect(homeRelative("/Volumes/Users/jorben/x")).toBe("/Volumes/Users/jorben/x");
+    expect(splitPath("nofolder")).toEqual(["", "nofolder"]);
+    const engine = new FakeEngine();
+    setService({ ...mockService, engine });
+    go("model-plugins");
+    act(() => store.update((d) => {
+      d.models[0]!.runtime = { dir: long, backend: "CPUExecutionProvider", device: "cpu", repository: "", accelerable: false, accelerated: false };
+    }));
+    const path = $("#modelPlugins .model-path")!;
+    expect(path.querySelector(".model-path-head")!.textContent).toBe("~/Library/Application Support/Tacet/models");
+    expect(path.querySelector(".model-path-tail")!.textContent).toBe("/astrlink-guard-int8");
+    expect(path.querySelector(".model-path-text")!.getAttribute("title")).toBe(long);
+    // what is copied is the real path, not the "~" shown
+    const copied: string[] = [];
+    fireEvent.copy(path.querySelector(".model-path-text")!, { clipboardData: { setData: (_: string, v: string) => copied.push(v) } });
+    expect(copied).toEqual([long]);
+    const open = path.querySelector<HTMLButtonElement>('[aria-label="打开存储位置"]')!;
+    await act(async () => { open.click(); });
+    expect(engine.calls).toContain("openModelDirectory:astr");
+    engine.modelDirFails = new Error("OPEN_DIRECTORY_FAILED");
+    await act(async () => { open.click(); });
+    expect($(".toast")!.textContent).toContain("无法打开模型目录");
+    act(() => store.update((d) => { delete d.models[0]!.runtime; }));
+    setService(null);
+  });
+
+  it("设置页：GPU 加速只在有 GPU 版本的设备上出现；它是一项设置，说明随 GPU 版本是否已下载而变", () => {
+    go("settings");
+    expect($("#settingsPage")!.textContent).not.toContain("GPU 加速");
+    const accel = { id: "astrlink-guard-fp16", variant: "FP16", status: "missing" as const, progress: 0, error: null, weightMiB: 72 };
+    const rt = { dir: "/m/astrlink-guard-int8", backend: "CPUExecutionProvider", device: "cpu" as const, repository: "", accelerable: true, accelerated: false, accel };
+    act(() => store.update((d) => { d.models[0]!.runtime = rt; d.settings.gpu = false; }));
+    const sw = () => $('#settingsPage [role="switch"][aria-label="GPU 加速"]')!;
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    expect($("#settingsPage")!.textContent).toContain("默认使用 CPU");
+    act(() => sw().click());
+    expect(getState().settings.gpu).toBe(true);
+    expect($("#settingsPage")!.textContent).toContain("已开启，下载 AstrLink Guard 的 GPU 版本后生效");
+    press("前往下载");
+    expect(getState().view).toBe("plugins");
+    act(() => store.update((d) => { d.view = "settings"; d.models[0]!.runtime = { ...rt, accelerated: true, device: "gpu", accel: { ...accel, status: "ready" } }; }));
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    expect($("#settingsPage")!.textContent).toContain("已生效：AstrLink Guard 使用 GPU 版本");
+    act(() => store.update((d) => { delete d.models[0]!.runtime; d.settings.gpu = false; }));
+  });
+
+  it("插件页：AstrLink 卡片里单独显示 GPU 版本的下载状态与操作", () => {
+    go("model-catalog");
+    const row = () => $('#modelPlugins [data-model="astr"] .model-accel')!;
+    expect(row().textContent).toContain("FP16 · 72 MiB");
+    expect(row().textContent).toContain("未下载");
+    expect(row().querySelector(".model-link")!.textContent).toBe("下载");
+    act(() => store.update((d) => { Object.assign(d.models[0]!.runtime!.accel!, { status: "downloading", progress: 40 }); }));
+    expect(row().textContent).toContain("下载中 40%");
+    expect(row().querySelector(".model-link")!.textContent).toBe("暂停");
+    act(() => store.update((d) => { Object.assign(d.models[0]!.runtime!.accel!, { status: "ready", progress: 100 }); }));
+    expect(row().textContent).toContain("已下载 · GPU 加速未开启");
+    expect(row().querySelector(".model-link")).toBeNull();
+    act(() => store.update((d) => { d.models[0]!.runtime!.accelerated = true; }));
+    expect(row().textContent).toContain("使用中");
+  });
+
 
   it("下载中 → 校验中 → 准备中 → 已就绪，可暂停", () => {
     go("model-plugins");

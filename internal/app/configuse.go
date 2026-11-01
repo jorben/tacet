@@ -163,7 +163,8 @@ func (e *Engine) SettingsGet(ctx context.Context) (Settings, error) {
 	var out Settings
 	err := e.ws.Commit(ctx, func(tx store.Tx) error {
 		s, err := e.cfg.Settings(tx)
-		out = Settings{CloseBehavior: s.CloseBehavior, Theme: s.Theme, RedactStyle: s.RedactStyle, ResourceTier: s.ResourceTier, RetentionDays: s.RetentionDays, AutoUpdate: s.AutomaticUpdateChecks}
+		out = Settings{CloseBehavior: s.CloseBehavior, Theme: s.Theme, RedactStyle: s.RedactStyle, ResourceTier: s.ResourceTier, RetentionDays: s.RetentionDays, AutoUpdate: s.AutomaticUpdateChecks,
+			GPUAcceleration: s.GPUAcceleration}
 		return err
 	})
 	return out, mapConfigErr(err)
@@ -175,8 +176,8 @@ func (e *Engine) SettingsSave(ctx context.Context, in Settings) (Settings, error
 		if err != nil {
 			return err
 		}
-		cur.CloseBehavior, cur.Theme, cur.RedactStyle, cur.ResourceTier, cur.RetentionDays, cur.AutomaticUpdateChecks =
-			in.CloseBehavior, in.Theme, in.RedactStyle, in.ResourceTier, in.RetentionDays, in.AutoUpdate
+		cur.CloseBehavior, cur.Theme, cur.RedactStyle, cur.ResourceTier, cur.RetentionDays, cur.AutomaticUpdateChecks, cur.GPUAcceleration =
+			in.CloseBehavior, in.Theme, in.RedactStyle, in.ResourceTier, in.RetentionDays, in.AutoUpdate, in.GPUAcceleration
 		return e.cfg.SaveSettings(tx, cur)
 	})
 	if err != nil {
@@ -198,8 +199,8 @@ func (e *Engine) Plugins(ctx context.Context) ([]PluginInfo, error) {
 	for f, p := range e.plugins {
 		add(p, []string{f})
 	}
-	if e.model != nil {
-		add(e.model.plug, nil)
+	for _, m := range e.models {
+		add(m.plug, nil)
 	}
 	out := make([]PluginInfo, 0, len(byID))
 	for _, x := range byID {

@@ -147,7 +147,7 @@ func TestOnlyAllowlistedHttpsTargetsWithoutCredentialsAreReachable(t *testing.T)
 	if _, err := closed.Get(srv.URL); !errors.Is(err, ErrNetworkTarget) {
 		t.Fatalf("empty allowlist: %v", err)
 	}
-	for _, bad := range []string{"", "a/b", "host:443", "user@host", "a b"} {
+	for _, bad := range []string{"", "a/b", "host:443", "user@host", "a b", ".com", ".", "..hf.co", ".hf.co.", "*.hf.co"} {
 		if _, err := lease.HTTPClient(Options{Hosts: []string{bad}}); !errors.Is(err, ErrNetworkTarget) {
 			t.Fatalf("host entry %q accepted", bad)
 		}
@@ -237,5 +237,28 @@ func TestProcessingStaysBlockedWhileANetworkTransferIsInFlight(t *testing.T) {
 			t.Fatalf("processing never became possible: %v", err)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestASubdomainEntryAdmitsOnlyItsSubdomains(t *testing.T) {
+	l, err := newAllowlist([]string{".hf.co", "huggingface.co"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for host, want := range map[string]bool{
+		"huggingface.co": true, "HuggingFace.co": true, "us.aws.cdn.hf.co": true, "cas-bridge.xethub.HF.co": true,
+		"hf.co": false, "evilhf.co": false, "hf.co.evil.example": false, "x.huggingface.co": false, "us.cdn.hf.co.": false, "a..hf.co": false,
+	} {
+		if l.permits(host) != want {
+			t.Errorf("%s: want %v", host, want)
+		}
+	}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	_, lease := netLease(t)
+	defer lease.Release()
+	c, _ := lease.HTTPClient(Options{Hosts: []string{".hf.co"}, TLS: tlsOf(srv)})
+	if _, err := c.Get(srv.URL); !errors.Is(err, ErrNetworkTarget) {
+		t.Fatalf("a host outside the suffix was contacted: %v", err)
 	}
 }

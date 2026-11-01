@@ -137,6 +137,18 @@ func TestResolvedPresetUsesLatestReferencesButFrozenTaskKeepsContent(t *testing.
 		if _, _, err := ResolvePreset(tx, repo, "preset", bad); !errors.Is(err, ErrBinding) {
 			t.Fatal("missing runtime binding accepted")
 		}
+		// an accelerated build recorded in the detect facet is part of what is frozen
+		plain, _, err := ResolvePreset(tx, repo, "preset", bindings)
+		if err != nil || plain.Detect.Execution != nil {
+			t.Fatalf("%+v %v", plain.Detect.Execution, err)
+		}
+		fast, _, _ := ResolvePreset(tx, repo, "preset", bindings)
+		fast.Detect.Execution = &ModelExecution{ModelID: "astrlink-fp16", Digest: "sha256:" + strings.Repeat("b", 64), Backend: "CoreMLExecutionProvider"}
+		a, _ := Freeze(plain)
+		b, _ := Freeze(fast)
+		if a.Digest("detect") == b.Digest("detect") {
+			t.Fatal("the frozen build does not change the detect facet")
+		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)

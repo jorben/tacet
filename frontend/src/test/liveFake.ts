@@ -1,4 +1,4 @@
-import type { EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EngineService, EngineUnit } from "../services/types";
+import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EngineService, EngineUnit } from "../services/types";
 
 export const cleanBatchStub = true;
 
@@ -100,6 +100,21 @@ export class FakeEngine implements EngineService {
   stored: EngineSettings = { closeBehavior: "tray", theme: "system", redactStyle: "black", resourceTier: "comfort", retentionDays: 7, autoUpdate: false };
   pluginList: EnginePlugin[] = [];
   async plugins() { return this.pluginList; }
+  modelList: EngineModelRuntime[] = [];
+  async models() { this.calls.push("models"); return this.modelList.map((m) => ({ ...m })); }
+  modelFails: Error | null = null;
+  /** A model, or the build part of the model whose accelerated build it is. */
+  private model(id: string) { return (this.modelList.find((m) => m.id === id) ?? this.modelList.find((m) => m.accel?.id === id)?.accel)! as { state: string; code: string; downloaded: number }; }
+  async downloadModel(id: string) {
+    this.calls.push("downloadModel:" + id);
+    if (this.modelFails) throw this.modelFails;
+    Object.assign(this.model(id), { state: "downloading", code: "" });
+  }
+  async pauseModel(id: string) { this.calls.push("pauseModel:" + id); Object.assign(this.model(id), { state: "paused" }); }
+  async discardModel(id: string) { this.calls.push("discardModel:" + id); Object.assign(this.model(id), { state: "pending", code: "", downloaded: 0 }); }
+  async prepareModel(id: string) { this.calls.push("prepareModel:" + id); Object.assign(this.model(id), { state: "preparing", code: "" }); }
+  modelDirFails: Error | null = null;
+  async openModelDirectory(id: string) { this.calls.push("openModelDirectory:" + id); if (this.modelDirFails) throw this.modelDirFails; }
   settingsFails: Error | null = null;
   async settings() { return { ...this.stored }; }
   async saveSettings(s: EngineSettings) {

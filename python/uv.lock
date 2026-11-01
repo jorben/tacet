@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "tacet-detect-astrlink",
+    "tacet-detect-privacy-filter",
     "tacet-format-csv",
     "tacet-format-docx",
     "tacet-format-json",
@@ -889,6 +890,25 @@ wheels = [
 name = "tacet-detect-astrlink"
 version = "0.1.0"
 source = { editable = "plugins/detect-astrlink" }
+dependencies = [
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "tacet-plugin-sdk" },
+    { name = "tokenizers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2,<3" },
+    { name = "onnxruntime", specifier = ">=1.24,<2" },
+    { name = "tacet-plugin-sdk", editable = "sdk" },
+    { name = "tokenizers", specifier = ">=0.22,<1" },
+]
+
+[[package]]
+name = "tacet-detect-privacy-filter"
+version = "0.1.0"
+source = { editable = "plugins/detect-privacy-filter" }
 dependencies = [
     { name = "numpy" },
     { name = "onnxruntime" },

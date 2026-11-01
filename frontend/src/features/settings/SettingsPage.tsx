@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { openModal } from "../../overlay/store";
 import { openSettingsKeepMenu, openWorkspaceDirectory, setSetting, setThemePref } from "../../actions/settings";
 import { liveEngine } from "../../actions/live";
+import { showModels } from "../../actions/models";
 import { useAppState } from "../../store";
-import { Button, Icon, List, Page, PillButton, Row, SectionTitle, SelectButton, Segmented } from "../../ui";
+import { Button, Icon, List, Page, PillButton, Row, SectionTitle, SelectButton, Segmented, Switch } from "../../ui";
 import { RedactStyleGallery } from "./RedactStyleGallery";
 import { UpdateRows } from "./UpdateRows";
 
@@ -33,6 +34,7 @@ export function SettingsPage() {
         <Row icon="cpu" title="资源档位" description={settings.tier === "comfort" ? "CPU ≤ 50% · 内存 2 GiB" : "内存 4 GiB · 更快"}>
           <Segmented value={settings.tier} onChange={(v) => setSetting("tier", v)} options={[{ value: "comfort", label: "舒适" }, { value: "std", label: "标准" }]} />
         </Row>
+        <GpuAccelerationRow />
         <Row icon="clock" title="中断后可恢复">
           <SelectButton onClick={(e) => openSettingsKeepMenu(e.currentTarget)}>{settings.keep === "0" ? "不保留" : "保留 " + settings.keep + " 天"}</SelectButton>
         </Row>
@@ -93,6 +95,30 @@ function WorkspaceRow() {
     <Row icon="hdd" title="工作区" description={"加密保护中 · " + size + " · " + recoverable + " 可恢复任务"}>
       <Button disabled={opening} onClick={() => void openDirectory()}>{opening ? "正在打开…" : "打开目录"}</Button>
       <Button onClick={() => openModal({ type: "cleanWorkspace" })}>清理…</Button>
+    </Row>
+  );
+}
+
+/**
+ * "Use the GPU when the conditions allow": a plain setting, offered where the installation has a GPU build
+ * (Apple Silicon). Downloading that build belongs to the model, on the plugins page.
+ */
+function GpuAccelerationRow() {
+  const model = useAppState((s) => s.models.find((m) => m.runtime?.accelerable));
+  const on = useAppState((s) => s.settings.gpu);
+  if (!model) return null;
+  const ready = model.runtime?.accel?.status === "ready";
+  const description = !on
+    ? "默认使用 CPU；开启后，下载了 GPU 版本的模型改用 GPU，长段落更快"
+    : ready ? "已生效：" + model.name + " 使用 GPU 版本（Core ML）" : "已开启，下载 " + model.name + " 的 GPU 版本后生效";
+  return (
+    <Row icon="cpu" title="GPU 加速" description={description}>
+      {on && !ready && (
+        <Button variant="ghost" onClick={() => showModels(model.id)}>
+          前往下载
+        </Button>
+      )}
+      <Switch checked={on} label="GPU 加速" onChange={() => setSetting("gpu", !on)} />
     </Row>
   );
 }

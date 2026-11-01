@@ -1,7 +1,7 @@
 """Protocol entry of the AstrLink Guard detection plugin (role: detect).
 
-Launch: python -I -m tacet_detect_astrlink --model-dir DIR --manifest FILE
-The host passes both paths; they are launch arguments, never protocol data. The
+Launch: python -I -m tacet_detect_astrlink --model-dir DIR --manifest FILE [--cache-dir DIR]
+The host passes the paths (the cache folder only for a backend that compiles the model); they are launch arguments, never protocol data. The
 model is verified against its manifest before any inference library is
 imported, and loaded once per worker.
 """
@@ -43,10 +43,11 @@ def main(argv):
     parser = argparse.ArgumentParser(prog='tacet_detect_astrlink')
     parser.add_argument('--model-dir', required=True)
     parser.add_argument('--manifest', required=True)
+    parser.add_argument('--cache-dir')
     args = parser.parse_args(argv)
     from .detector import Detector
     manifest = json.loads(Path(args.manifest).read_text(encoding='utf-8'))
-    _detector = Detector(Path(args.model_dir), manifest)
+    _detector = Detector(Path(args.model_dir), manifest, cache_dir=Path(args.cache_dir) if args.cache_dir else None)
     return Worker(sys.stdin.buffer, sys.stdout.buffer, 'tacet.astrlink', '0.1.0',
                   ['detect'], {'detect.run': detect_run}).run()
 

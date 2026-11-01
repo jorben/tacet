@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 
 	"github.com/jorben/tacet/internal/keys"
 	"github.com/jorben/tacet/internal/platform"
@@ -94,7 +95,7 @@ func Locate(root string) (Options, error) {
 		h.Write(lock)
 	}
 	o.EnvDigest = "sha256:" + hex.EncodeToString(h.Sum(nil))
-	locateModel(root, &o)
+	locateModels(root, os.Getenv("TACET_PREINSTALLED_MODELS"), &o)
 	manifests, _ := filepath.Glob(filepath.Join(root, "python", "plugins", "*", "manifest.json"))
 	sort.Strings(manifests)
 	for _, m := range manifests {
@@ -123,32 +124,56 @@ func Locate(root string) (Options, error) {
 	return o, nil
 }
 
-// locateModel finds the fixed model and its detection plugin. The model files are a separate resource
-// (TACET_MODEL_DIR, models/astrlink-guard-int8 in a release, the M0 resource folder in a checkout); when they
-// are absent the rules-only preset still works and the model preset is simply not offered.
-func locateModel(root string, o *Options) {
-	manifest := filepath.Join(root, "resources", "models", "astrlink-guard-int8.json")
-	pluginManifest, err := os.ReadFile(filepath.Join(root, "python", "plugins", "detect-astrlink", "manifest.json"))
-	if err != nil {
-		return
-	}
-	candidates := []string{filepath.Join(root, "models", "astrlink-guard-int8"), filepath.Join(root, ".pi", "m0-resources", "astrlink-guard-int8")}
-	if d := os.Getenv("TACET_MODEL_DIR"); d != "" {
-		candidates = []string{d}
-	}
-	for _, dir := range candidates {
-		if !filepath.IsAbs(dir) {
-			continue
+// catalogModels are the models of the catalog in the order the interface lists them (the first is the
+// default model), with the built-in detection plugin that runs each and the accelerated build it may have.
+var catalogModels = []struct {
+	manifest, plugin, module, accel string
+}{
+	{"astrlink-guard-int8.json", "detect-astrlink", "tacet_detect_astrlink", "astrlink-guard-fp16.json"},
+	{"privacy-filter-int8.json", "detect-privacy-filter", "tacet_detect_privacy_filter", ""},
+}
+
+// locateModels reads the model catalog below root. The files are downloaded by the user; preinstalled, when
+// set, is a folder whose "<id>-<variant>" subfolders hold files already present (development and tests). The
+// accelerated build is offered on Apple Silicon only.
+func locateModels(root, preinstalled string, o *Options) {
+	dirOf := func(manifest string) string {
+		if preinstalled == "" || !filepath.IsAbs(preinstalled) {
+			return ""
 		}
-		if _, err := os.Stat(filepath.Join(dir, "model_int8.onnx")); err != nil {
+		d := filepath.Join(preinstalled, strings.TrimSuffix(manifest, ".json"))
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			return d
+		}
+		return ""
+	}
+	for _, c := range catalogModels {
+		manifest := filepath.Join(root, "resources", "models", c.manifest)
+		plug, err := os.ReadFile(filepath.Join(root, "python", "plugins", c.plugin, "manifest.json"))
+		if err != nil {
 			continue
 		}
 		if _, err := os.Stat(manifest); err != nil {
-			return
+			continue
 		}
-		o.Model = &ModelOption{Dir: dir, ManifestPath: manifest, Plugin: Builtin{Module: "tacet_detect_astrlink", Manifest: pluginManifest}}
-		return
+		m := &ModelOption{Dir: dirOf(c.manifest), ManifestPath: manifest, Plugin: Builtin{Module: c.module, Manifest: plug}}
+		if accel := filepath.Join(root, "resources", "models", c.accel); c.accel != "" && o.Platform == "darwin-arm64" {
+			if _, err := os.Stat(accel); err == nil {
+				m.Accel = &ModelVariant{Dir: dirOf(c.accel), ManifestPath: accel}
+			}
+		}
+		o.Models = append(o.Models, m)
 	}
+}
+
+// DefaultModelsRoot is the per-user folder downloaded models are kept in, shared by the desktop app and the
+// command line so a model is downloaded once.
+func DefaultModelsRoot() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "Tacet", "models"), nil
 }
 
 func has(l []string, s string) bool {
@@ -177,6 +202,9 @@ func OpenWith(ctx context.Context, c Config) (*Engine, error) {
 		return nil, err
 	}
 	o.Dir = c.Workspace
+	if o.ModelsRoot, err = DefaultModelsRoot(); err != nil {
+		return nil, err
+	}
 	o.UserKey = c.UserKey
 	if o.UserKey == nil {
 		acct := c.Account

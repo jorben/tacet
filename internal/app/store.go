@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -148,23 +149,16 @@ const (
 	RuleSetID = "builtin-cn-office"
 	SchemeID  = "builtin-scheme-placeholder"
 	PresetID  = "builtin-preset-office"
-
-	// present only when a model is configured
-	ModelProfileID = "builtin-model-astrlink"
-	ModelSchemeID  = "builtin-scheme-model"
-	ModelPresetID  = "builtin-preset-model"
+	// the model presets' ids are in modelKinds (catalog.go)
 )
-
-// modelMemoryBytes is what the preset reserves for the model: the measured peak of the fixed model
-// (about 175 MB resident, docs/v1/backend/m0-progress.md) rounded up with headroom for long texts.
-const modelMemoryBytes = 400 << 20
 
 type pack struct {
 	Rules []config.RuleContent `json:"rules"`
 }
 
 // seedConfig writes the built-in rule set, scheme and preset once.
-func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, model *modelInfo) error {
+// Each model of the catalog adds its profile, scheme and preset, whether or not its files are downloaded yet.
+func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, models []*modelInfo) error {
 	var p pack
 	if err := json.Unmarshal(rulePack, &p); err != nil || len(p.Rules) == 0 {
 		return ErrOptions
@@ -183,8 +177,9 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, model *mo
 		data     []byte
 	}
 	objects := []object{{RuleSetID, "办公文档规则", config.RuleSet, rulesJSON}, {SchemeID, "占位符方案", config.Scheme, scheme}, {PresetID, "办公外发（仅规则）", config.Preset, preset}}
-	if model != nil {
+	for _, model := range models {
 		// The model finds persons and addresses that no rule can; rule categories keep their rules.
+		k := model.kind
 		mcats := map[string]string{}
 		for c, a := range cats {
 			mcats[c] = a
@@ -194,11 +189,11 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, model *mo
 		}
 		mscheme, _ := json.Marshal(config.SchemeContent{CategoryActions: mcats, ImageDefault: "remove"})
 		profile, _ := json.Marshal(config.ModelContent{ModelID: model.id, ManifestDigest: model.digest, Backend: model.backend, AdapterFloor: model.floor,
-			Calibrated: model.recommended, LabelMap: model.labels, MemoryBytes: modelMemoryBytes})
-		mpreset, _ := json.Marshal(config.PresetContent{RuleSetID: RuleSetID, SchemeID: ModelSchemeID, ModelProfileID: ModelProfileID, Mode: "guided", RulesOnly: false,
-			MinConfidence: model.recommended, MemoryBytes: 1 << 30, DPI: 200, Style: "default", RetentionDays: 0})
-		objects = append(objects, object{ModelProfileID, "AstrLink Guard（固定版本）", config.ModelProfile, profile}, object{ModelSchemeID, "占位符方案（含模型类别）", config.Scheme, mscheme},
-			object{ModelPresetID, "办公外发（规则 + 模型）", config.Preset, mpreset})
+			Calibrated: model.recommended, LabelMap: model.labels, MemoryBytes: k.memory})
+		mpreset, _ := json.Marshal(config.PresetContent{RuleSetID: RuleSetID, SchemeID: k.schemeID, ModelProfileID: k.profileID, Mode: "guided", RulesOnly: false,
+			MinConfidence: model.recommended, MemoryBytes: k.presetMemory, DPI: 200, Style: "default", RetentionDays: 0})
+		objects = append(objects, object{k.profileID, k.profileName, config.ModelProfile, profile}, object{k.schemeID, k.schemeName, config.Scheme, mscheme},
+			object{k.presetID, k.preset, config.Preset, mpreset})
 	}
 	for _, o := range objects {
 		if _, err := repo.Get(tx, o.id); err == nil {
@@ -211,10 +206,11 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, model *mo
 	return nil
 }
 
-// defaultPreset is what a run uses when none is named: rules plus model when there is a model.
-func (e *Engine) defaultPreset() string {
-	if e.model != nil {
-		return ModelPresetID
+// defaultPreset is what a run uses when none is named: rules plus the first model of the catalog (AstrLink)
+// when its files are there, else rules only. It reads the catalog: call it outside a transaction.
+func (e *Engine) defaultPreset(ctx context.Context) string {
+	if len(e.models) > 0 && e.available(ctx)[e.models[0].id] {
+		return e.models[0].kind.presetID
 	}
 	return PresetID
 }

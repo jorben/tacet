@@ -19,6 +19,7 @@ describe("生产形态外壳", () => {
       minimiseWindow: minimise,
       hideWindow: hide,
       quitApp: quit,
+      openUrl: async () => {},
       onQuitRequested: (h) => {
         quitHandler = h;
         return () => {};

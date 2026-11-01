@@ -40,7 +40,7 @@ export function selectPreset(id: string): void {
 export function newPreset(): void {
   const id = nextId("p");
   store.update((d) => {
-    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: allCategories<PresetTreatment>("mask"), img: "remove", edited: "刚刚" });
+    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: d.models[0]?.id ?? "astr", conf: 0.5, rules: ["cn"], cats: allCategories<PresetTreatment>("mask"), img: "remove", edited: "刚刚" });
     d.presetSel = id;
   });
 }

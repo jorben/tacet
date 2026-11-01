@@ -2,7 +2,7 @@
 // before; this module loads what is stored when the application starts and writes every change back, so nothing a
 // person sets up lives only in memory.
 import {
-  BUILTIN_MODEL_PRESET, BUILTIN_RULES_PRESET, modelFromItem, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
+  BUILTIN_MODEL_PRESET, BUILTIN_RULES_PRESET, modelFromItem, modelStateFromEngine, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
   schemeIdOf, versionLabel, type Model,
 } from "../domain/liveConfig";
 import type { OfficeCategoryId, Preset, Ruleset } from "../domain/types";
@@ -19,7 +19,8 @@ let synced = new Map<string, ConfigItem>();
 /** Screen objects as last written or read; an object not changed since needs no comparison. */
 let known = new WeakSet<object>();
 const markKnown = (o: object | undefined): void => { if (o) known.add(o); };
-let model: Model | null = null;
+let models: Model[] = [];
+let modelTimer: ReturnType<typeof setTimeout> | undefined;
 let loaded = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let running: Promise<void> | null = null;
@@ -38,8 +39,10 @@ const CONFIG_ERRORS: Record<string, string> = {
   RULE_LOOKAROUND_UNSUPPORTED: "不支持前后断言，请改用“前后边界”",
   NOT_FOUND: "对象已不存在，已重新载入",
 };
+/** The closed code a kernel call failed with. */
+const errorCode = (e: unknown): string => String((e as { message?: string })?.message ?? e).replace(/^.*?([A-Z][A-Z0-9_]{2,})\b.*$/s, "$1");
 export const configErrorText = (e: unknown): string => {
-  const code = String((e as { message?: string })?.message ?? e).replace(/^.*?([A-Z][A-Z0-9_]{2,})\b.*$/s, "$1");
+  const code = errorCode(e);
   return CONFIG_ERRORS[code] ?? "保存未完成（" + code + "）";
 };
 
@@ -57,19 +60,26 @@ export async function loadConfig(): Promise<void> {
   if (!e) return;
   const [rs, sc, pr, mp] = await Promise.all(["ruleset", "scheme", "preset", "model_profile"].map((k) => e.configList(k)));
   synced = new Map([...rs, ...sc, ...pr, ...mp].map((i) => [i.id, i]));
-  const mi = mp.map(modelFromItem).find((x) => x) ?? null;
-  model = mi?.model ?? null;
+  // the catalog decides the order (its first model is the default one); a profile without an entry keeps its place last
+  const rts = mp.length ? await e.models().catch(() => []) : [];
+  const order = (id: string) => { const i = rts.findIndex((r) => r.id === id); return i < 0 ? rts.length : i; };
+  const mi = mp.map((it) => { const x = modelFromItem(it); return x && modelFromItem(it, rts.find((r) => r.id === x.model.id)); })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => order(a.model.id) - order(b.model.id));
+  models = mi.map((x) => x.model);
   const rulesets = rs.map(rulesetFromItem);
   const schemes = new Map(sc.map((s) => [s.id, s]));
-  const presets: Preset[] = pr.map((p) => presetFromItems(p, schemes.get(schemeIdOf(p)), rulesets, model));
+  const presets: Preset[] = pr.map((p) => presetFromItems(p, schemes.get(schemeIdOf(p)), rulesets, models));
   await loadSettings().catch(() => {});
   await loadPlugins().catch(() => {});
   if (!presets.length) return; // nothing stored to show: the screens keep what they have
-  const home = presets.find((p) => p.stored?.id === (model ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET)) ?? presets[0];
+  // the default model's scheme is the home scheme once that model is downloaded; until then rules only
+  const homeId = mi[0]?.plugin.status === "ready" ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET;
+  const home = presets.find((p) => p.stored?.id === homeId) ?? presets[0];
   store.update((d) => {
     d.rulesets = rulesets;
     d.presets = presets;
-    d.models = mi ? [mi.plugin] : [];
+    d.models = mi.map((x) => x.plugin);
     d.presetSel = home?.id ?? "";
     d.rulesetSel = null;
     if (home) d.homePreset = home.name;
@@ -80,9 +90,44 @@ export async function loadConfig(): Promise<void> {
   loaded = true;
   last = { presets: getState().presets, rulesets: getState().rulesets };
   if (!unsubscribe) unsubscribe = store.subscribe(onStore);
+  watchModels();
+}
+
+const MODEL_POLL_MS = 700;
+const modelBusy = (st: string): boolean => st === "downloading" || st === "verifying" || st === "loading";
+
+/** Reads the download state of every model; while one is busy, again shortly. A model that became ready says so. */
+export async function refreshModels(): Promise<void> {
+  const e = liveEngine();
+  if (!e) return;
+  const rts = await e.models().catch(() => null);
+  if (!rts) return;
+  const became: string[] = [];
+  store.update((d) => {
+    d.models.forEach((m) => {
+      const rt = rts.find((r) => r.id === m.id);
+      if (!rt) return;
+      const next = modelStateFromEngine(rt);
+      if (m.status !== "ready" && next.status === "ready" && modelBusy(m.status)) became.push(m.name);
+      const a = m.runtime?.accel, na = next.runtime?.accel;
+      if (a && na && a.status !== "ready" && na.status === "ready" && modelBusy(a.status)) became.push(m.name + " GPU 版本");
+      Object.assign(m, next);
+      if (rt.bytes) m.weightMiB = Math.round(rt.bytes / 2 ** 20);
+    });
+  });
+  became.forEach((name) => toast(name + " 已就绪" + (getState().modelPending ? "，可以继续处理" : "，可以离线使用")));
+  watchModels();
+}
+
+/** Keeps the model states fresh while a download, verification or trial runs. */
+export function watchModels(): void {
+  clearTimeout(modelTimer);
+  if (!loaded || !getState().models.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""))) return;
+  modelTimer = setTimeout(() => void refreshModels(), MODEL_POLL_MS);
 }
 
 export function stopConfigSync(): void {
+  clearTimeout(modelTimer);
   unsubscribe?.();
   unsubscribe = null;
   clearTimeout(timer);
@@ -175,7 +220,7 @@ async function writeChanges(): Promise<void> {
   for (const p of getState().presets) {
     if (p.builtin || known.has(p)) continue;
     const s = getState();
-    const w = presetContents(p, s.rulesets as Ruleset[], model, {
+    const w = presetContents(p, s.rulesets as Ruleset[], models, {
       scheme: p.stored?.schemeId ? synced.get(p.stored.schemeId) : undefined,
       preset: p.stored ? synced.get(p.stored.id) : undefined,
     });
@@ -310,7 +355,7 @@ export async function importLive(kind: "preset" | "ruleset"): Promise<void> {
   try {
     const text = await e.openConfigFile();
     if (!text) return;
-    const got = importPackage(text, kind, getState().rulesets, model);
+    const got = importPackage(text, kind, getState().rulesets, models);
     if ("error" in got) {
       toast(IMPORT_ERRORS[got.error] + (got.detail ? "：" + got.detail : ""));
       return;
@@ -378,6 +423,7 @@ export async function saveSettingsNow(): Promise<void> {
     await loadSettings().catch(() => {});
   }
 }
+
 
 /** The plugins this installation really runs replace the sample list. */
 export async function loadPlugins(): Promise<void> {

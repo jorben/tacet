@@ -256,7 +256,7 @@ func (e *Engine) pipeline(ctx context.Context, a kernel.AttemptRef, l loaded) (p
 	release = func() {}
 	var det *detect.Service
 	if c.Detect.ModelID != "" && !c.Detect.RulesOnly {
-		runner, rel, merr := e.modelRunner(ctx, a)
+		runner, rel, merr := e.modelRunner(ctx, a, c.Detect.ModelID, c.Detect.Execution)
 		if merr != nil {
 			return nil, nil, merr
 		}

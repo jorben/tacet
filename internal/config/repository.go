@@ -408,6 +408,8 @@ type Settings struct {
 	ResourceTier  string `json:"resource_tier,omitempty"`  // comfort or std
 	RetentionDays int    `json:"retention_days,omitempty"` // how long unfinished work is kept: 0, 7 or 30
 	RetentionSet  bool   `json:"retention_set,omitempty"`  // distinguishes "do not keep" (0) from "never chosen"
+	// GPUAcceleration: batches started from now on run a model's accelerated build when it is downloaded.
+	GPUAcceleration bool `json:"gpu_acceleration,omitempty"`
 }
 
 var redactStyles = map[string]bool{"black": true, "gray": true, "mosaic": true, "stripe": true, "heart": true, "paw": true, "snow": true, "seal": true, "star": true, "dot": true, "rainbow": true, "plaid": true}

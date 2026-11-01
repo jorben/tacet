@@ -35,3 +35,33 @@ func TestPluginsListsEveryRegisteredBuiltinOnceWithItsFormats(t *testing.T) {
 		}
 	}
 }
+
+func TestModelsReportDirectoryDeviceAndSource(t *testing.T) {
+	e := openEngine(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true)
+	list, err := e.Models(context.Background())
+	e.Close()
+	if err != nil || len(list) != 0 {
+		t.Fatalf("without a catalog: %+v %v", list, err)
+	}
+	o := modelOption(t)
+	e = openEngineWith(t, filepath.Join(t.TempDir(), "ws"), &memKey{}, true, withModel(o))
+	defer e.Close()
+	list, err = e.Models(context.Background())
+	if err != nil || len(list) != 1 {
+		t.Fatal(list, err)
+	}
+	m := list[0]
+	if m.Dir != o.Dir || m.Backend != "CPUExecutionProvider" || m.Device != "cpu" || m.ID != "astrlink-guard-int8" || m.Repository != "QuantumNous/astrlink-guard" ||
+		m.Accelerated || m.Accelerable != (o.Accel != nil) || m.State != "ready" || m.Name != "AstrLink Guard" || m.Variant != "INT8" || m.Preset != ModelPresetID || !m.Eligible {
+		t.Fatalf("%+v", m)
+	}
+}
+
+func TestDeviceOfTellsCPUFromGPUProviders(t *testing.T) {
+	for backend, want := range map[string]string{"CPUExecutionProvider": "cpu", "": "cpu", "CUDAExecutionProvider": "gpu",
+		"CoreMLExecutionProvider": "gpu", "DmlExecutionProvider": "gpu"} {
+		if got := deviceOf(backend); got != want {
+			t.Errorf("%q: %s, want %s", backend, got, want)
+		}
+	}
+}
