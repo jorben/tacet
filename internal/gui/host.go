@@ -75,6 +75,17 @@ func (h *WailsHost) PickFolder(title string) (string, error) {
 	return dir, nil
 }
 
+func (h *WailsHost) OpenDirectory(path string) error {
+	a, _, err := h.bound()
+	if err != nil {
+		return err
+	}
+	if err := a.Env.OpenFileManager(path, false); err != nil {
+		return errors.New("OPEN_DIRECTORY_FAILED")
+	}
+	return nil
+}
+
 func (h *WailsHost) SaveText(title, suggested, text string) (bool, error) {
 	a, win, err := h.bound()
 	if err != nil {

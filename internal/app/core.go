@@ -163,6 +163,12 @@ type ConfigVersion struct {
 	SavedAt int64  `json:"savedAt"` // unix seconds
 }
 
+// WorkspaceInfo describes the active workspace and its current file sizes.
+type WorkspaceInfo struct {
+	Dir   string `json:"dir"`
+	Bytes int64  `json:"bytes"`
+}
+
 // Settings are the application preferences the settings page keeps.
 type Settings struct {
 	CloseBehavior string `json:"closeBehavior"` // tray or quit
@@ -239,6 +245,7 @@ type Core interface {
 	ConfigDelete(ctx context.Context, id string, expected uint64) error
 	// Plugins lists the plugins this installation runs: the built-in format and detection plugins.
 	Plugins(ctx context.Context) ([]PluginInfo, error)
+	WorkspaceInfo(ctx context.Context) (WorkspaceInfo, error)
 	SettingsGet(ctx context.Context) (Settings, error)
 	SettingsSave(ctx context.Context, s Settings) (Settings, error)
 	ConfigRollback(ctx context.Context, id string, expected, restore uint64) (ConfigItem, error)

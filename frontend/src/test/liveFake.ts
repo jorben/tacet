@@ -48,6 +48,10 @@ export class FakeEngine implements EngineService {
   async pickFiles() { return []; }
   async pickFolder() { return "/picked"; }
   async defaultOutputDir() { return "/Users/x/Desktop/Tacet 已脱敏"; }
+  workspace = { dir: "/private/tacet/workspace", bytes: 2.5 * 1024 ** 3 };
+  workspaceFails: Error | null = null;
+  async workspaceInfo() { this.calls.push("workspaceInfo"); if (this.workspaceFails) throw this.workspaceFails; return this.workspace; }
+  async openWorkspace() { this.calls.push("openWorkspace"); if (this.workspaceFails) throw this.workspaceFails; }
   importedPreset: string | undefined;
   async importFiles(a: { files: string[]; quick: boolean; preset?: string }) {
     this.importedPreset = a.preset;

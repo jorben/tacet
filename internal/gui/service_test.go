@@ -16,15 +16,16 @@ import (
 // fakeCore answers what the service forwards; unset methods panic through the nil interface.
 type fakeCore struct {
 	app.Core
-	mu       sync.Mutex
-	status   app.BatchStatus
-	imported app.ImportRequest
-	started  app.StartRequest
-	retried  []string
-	pw       []byte
-	err      error
-	notify   func(string)
-	closed   bool
+	mu        sync.Mutex
+	status    app.BatchStatus
+	imported  app.ImportRequest
+	started   app.StartRequest
+	retried   []string
+	pw        []byte
+	err       error
+	notify    func(string)
+	closed    bool
+	workspace app.WorkspaceInfo
 }
 
 func (f *fakeCore) Import(_ context.Context, r app.ImportRequest) (app.BatchStatus, error) {
@@ -43,6 +44,9 @@ func (f *fakeCore) Unlock(_ context.Context, _ string, pw []byte) error {
 	return f.err
 }
 func (f *fakeCore) Close() error { f.closed = true; return nil }
+func (f *fakeCore) WorkspaceInfo(context.Context) (app.WorkspaceInfo, error) {
+	return f.workspace, f.err
+}
 func (f *fakeCore) Subscribe(fn func(string)) func() {
 	f.notify = fn
 	return func() { f.notify = nil }
@@ -50,6 +54,7 @@ func (f *fakeCore) Subscribe(fn func(string)) func() {
 
 type fakeHost struct {
 	saved, picked string
+	opened        string
 	cancel        bool
 	err           error
 	mu            sync.Mutex
@@ -68,6 +73,7 @@ func (h *fakeHost) PickText(string, int64) (string, bool, error) {
 	return h.picked, !h.cancel && h.picked != "", h.err
 }
 func (h *fakeHost) PickFolder(string) (string, error) { return "/out", nil }
+func (h *fakeHost) OpenDirectory(path string) error   { h.opened = path; return h.err }
 func (h *fakeHost) Emit(e string, d any) {
 	h.mu.Lock()
 	h.events = append(h.events, e)
@@ -78,6 +84,31 @@ func (h *fakeHost) count() int { h.mu.Lock(); defer h.mu.Unlock(); return len(h.
 
 func opener(c app.Core, err error) Opener {
 	return func(context.Context) (app.Core, error) { return c, err }
+}
+
+func TestWorkspaceOpensTheActiveDirectory(t *testing.T) {
+	c := &fakeCore{workspace: app.WorkspaceInfo{Dir: "/private/custom-workspace", Bytes: 1234}}
+	h := &fakeHost{}
+	s := NewService(opener(c, nil), h)
+	info, err := s.WorkspaceInfo()
+	if err != nil || info != c.workspace {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if err := s.OpenWorkspace(); err != nil || h.opened != c.workspace.Dir {
+		t.Fatalf("%q %v", h.opened, err)
+	}
+	h.err = errors.New("open /private/secret: denied")
+	if err := s.OpenWorkspace(); err == nil || err.Error() != "INTERNAL_ERROR" {
+		t.Fatalf("%v", err)
+	}
+	c.err = errors.New("WORKSPACE_UNAVAILABLE")
+	h.opened = ""
+	if err := s.OpenWorkspace(); err == nil || h.opened != "" {
+		t.Fatalf("must not open on query failure: %q %v", h.opened, err)
+	}
+	if err := NewService(nil, nil).OpenWorkspace(); err == nil {
+		t.Fatal("missing host must fail")
+	}
 }
 
 func TestCloseHandlerReady(t *testing.T) {

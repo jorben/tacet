@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { openModal } from "../../overlay/store";
-import { openSettingsKeepMenu, setSetting, setThemePref } from "../../actions/settings";
+import { openSettingsKeepMenu, openWorkspaceDirectory, setSetting, setThemePref } from "../../actions/settings";
+import { liveEngine } from "../../actions/live";
 import { useAppState } from "../../store";
 import { Button, Icon, List, Page, PillButton, Row, SectionTitle, SelectButton, Segmented } from "../../ui";
 import { RedactStyleGallery } from "./RedactStyleGallery";
@@ -8,7 +10,6 @@ import { UpdateRows } from "./UpdateRows";
 export function SettingsPage() {
   const themePref = useAppState((s) => s.themePref);
   const settings = useAppState((s) => s.settings);
-  const recoverable = useAppState((s) => s.history.filter((h) => h.st === "keep").length);
   return (
     <Page id="settingsPage">
       <div className="h1" style={{ marginBottom: 18 }}>
@@ -40,9 +41,7 @@ export function SettingsPage() {
       <RedactStyleGallery value={settings.redact || "black"} />
       <SectionTitle>存储</SectionTitle>
       <List>
-        <Row icon="hdd" title="工作区" description={"加密 · 1.4 GiB · " + recoverable + " 个可恢复任务"}>
-          <Button onClick={() => openModal({ type: "cleanWorkspace" })}>清理…</Button>
-        </Row>
+        <WorkspaceRow />
       </List>
       <SectionTitle>版本</SectionTitle>
       <List>
@@ -69,5 +68,31 @@ export function SettingsPage() {
         </Row>
       </List>
     </Page>
+  );
+}
+
+function WorkspaceRow() {
+  const recoverable = useAppState((s) => s.history.filter((h) => h.st === "keep").length);
+  const engine = liveEngine();
+  const [size, setSize] = useState(engine ? "计算中…" : "1.4 GiB");
+  const [opening, setOpening] = useState(false);
+  useEffect(() => {
+    if (!engine) return;
+    let alive = true;
+    engine.workspaceInfo().then((info) => {
+      if (alive) setSize((info.bytes / 1024 ** 3).toFixed(1) + " GiB");
+    }).catch(() => { if (alive) setSize("容量暂不可用"); });
+    return () => { alive = false; };
+  }, [engine, recoverable]);
+  const openDirectory = async () => {
+    setOpening(true);
+    try { await openWorkspaceDirectory(); }
+    finally { setOpening(false); }
+  };
+  return (
+    <Row icon="hdd" title="工作区" description={"加密保护中 · " + size + " · " + recoverable + " 可恢复任务"}>
+      <Button disabled={opening} onClick={() => void openDirectory()}>{opening ? "正在打开…" : "打开目录"}</Button>
+      <Button onClick={() => openModal({ type: "cleanWorkspace" })}>清理…</Button>
+    </Row>
   );
 }

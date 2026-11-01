@@ -27,6 +27,8 @@ const engine: EngineService = {
   async pickFiles() { return (await G.PickFiles()) ?? []; },
   pickFolder: () => G.PickFolder(),
   defaultOutputDir: () => G.DefaultOutputDir(),
+  workspaceInfo: () => G.WorkspaceInfo(),
+  openWorkspace: () => G.OpenWorkspace(),
   importFiles: (a) => G.ImportFiles({ files: a.files, quick: a.quick, preset: a.preset ?? "", outputDir: a.outputDir ?? "" }) as Promise<EngineBatch>,
   async unfinished() { return ((await G.UnfinishedBatches()) ?? []) as EngineBatch[]; },
   preflight: (b) => G.Preflight(b) as Promise<EngineBatch>,

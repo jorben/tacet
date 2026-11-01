@@ -115,6 +115,11 @@ export interface EnginePlugin {
   enabled: boolean;
 }
 
+export interface EngineWorkspaceInfo {
+  dir: string;
+  bytes: number;
+}
+
 export interface EngineInfo {
   name: string;
   version: string;
@@ -128,6 +133,9 @@ export interface EngineService {
   pickFiles(): Promise<string[]>;
   pickFolder(): Promise<string>;
   defaultOutputDir(): Promise<string>;
+  workspaceInfo(): Promise<EngineWorkspaceInfo>;
+  /** Opens the active workspace in the system file manager. */
+  openWorkspace(): Promise<void>;
   importFiles(a: { files: string[]; quick: boolean; preset?: string; outputDir?: string }): Promise<EngineBatch>;
   preflight(batch: string): Promise<EngineBatch>;
   /** What a restart left behind: at most one quick task and one batch, paused where they stopped. */

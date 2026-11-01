@@ -6,7 +6,7 @@ import { openKeepMenu } from "./batch";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { slotBusy } from "../store/selectors";
 import { saveSettingsSoon } from "./liveConfig";
-import { isLive } from "./live";
+import { isLive, liveEngine } from "./live";
 
 const systemTheme = (): "light" | "dark" => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
@@ -67,6 +67,16 @@ export function confirmUpdate(unfinished?: "drop" | "rerun"): void {
 }
 
 /* ── Workspace ────────────────────────────────────────────────────────────── */
+
+export async function openWorkspaceDirectory(): Promise<void> {
+  const engine = liveEngine();
+  if (!engine) { toast("请在桌面应用中打开工作区目录"); return; }
+  try {
+    await engine.openWorkspace();
+  } catch {
+    toast("无法打开工作区目录，请稍后重试");
+  }
+}
 
 export function cleanWorkspace(): void {
   closeModal();

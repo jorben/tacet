@@ -33,6 +33,7 @@ type Info struct {
 type Host interface {
 	PickFiles(title string) ([]string, error)
 	PickFolder(title string) (string, error)
+	OpenDirectory(path string) error
 	// SaveText asks where to put a text file and writes it; false means the person cancelled.
 	SaveText(title, suggested, text string) (bool, error)
 	// PickText asks for a text file and returns its content; "" with ok=false means cancelled.
@@ -231,6 +232,28 @@ func (s *Service) DefaultOutputDir() (string, error) {
 		return "", errors.New("OUTPUT_UNAVAILABLE")
 	}
 	return filepath.Join(home, "Desktop", "Tacet 已脱敏"), nil
+}
+
+// WorkspaceInfo reports the active workspace's actual storage use.
+func (s *Service) WorkspaceInfo() (app.WorkspaceInfo, error) {
+	core, err := s.engine()
+	if err != nil {
+		return app.WorkspaceInfo{}, publicError(err)
+	}
+	info, err := core.WorkspaceInfo(context.Background())
+	return info, publicError(err)
+}
+
+// OpenWorkspace opens only the active workspace, never a path supplied by the frontend.
+func (s *Service) OpenWorkspace() error {
+	if s.host == nil {
+		return errNoEngine
+	}
+	info, err := s.WorkspaceInfo()
+	if err != nil {
+		return err
+	}
+	return publicError(s.host.OpenDirectory(info.Dir))
 }
 
 // -- commands ------------------------------------------------------------------
