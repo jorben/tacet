@@ -44,6 +44,9 @@ func Module() store.Module {
 			rule_id TEXT NOT NULL, field TEXT NOT NULL, template TEXT NOT NULL, hmac BLOB)`,
 		`CREATE INDEX findings_by_attempt ON findings_finding(attempt, id)`,
 		`CREATE INDEX findings_by_group ON findings_finding(category, source, field, template, hmac)`,
+	}}, {Version: 2, SQL: []string{
+		// a manual finding the person took back (FR-22 undo): kept for the history, no longer visible
+		`ALTER TABLE findings_attempt ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0`,
 	}}}}
 }
 
@@ -297,7 +300,7 @@ func (f Filter) where() (string, []any, error) {
 	if f.Job == "" && f.Batch == "" {
 		return "", nil, ErrInvalid
 	}
-	w := " WHERE a.sealed=1"
+	w := " WHERE a.sealed=1 AND a.withdrawn=0"
 	var args []any
 	if f.Job != "" {
 		w += " AND a.job=?"

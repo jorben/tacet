@@ -208,6 +208,7 @@ func (p *Pipeline) unit(ctx context.Context, req Request, raw json.RawMessage, s
 		Ordinal    int
 		Text       string
 		Visibility string
+		Location   Location
 	}
 	if json.Unmarshal(raw, &u) != nil || !utf8.ValidString(u.Text) {
 		return ErrProtocol
@@ -237,7 +238,7 @@ func (p *Pipeline) unit(ctx context.Context, req Request, raw json.RawMessage, s
 			return err
 		}
 		if err := p.Units.Add(tx, a.JobID, Unit{Attempt: a.AttemptID, Seq: *seq + 1, UnitID: u.UnitID, Part: u.Part, Ordinal: u.Ordinal,
-			Visibility: u.Visibility, Chars: n, Body: bodyID}); err != nil {
+			Visibility: u.Visibility, Chars: n, Body: bodyID, Location: u.Location}); err != nil {
 			return err
 		}
 		_, err := p.Findings.Add(tx, a, req.Batch, findings.StageDetect, items)

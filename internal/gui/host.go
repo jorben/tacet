@@ -17,6 +17,10 @@ type WailsHost struct {
 	mu  sync.Mutex
 	app *application.App
 	win *application.WebviewWindow
+
+	tray       *application.SystemTray
+	trayMenu   *application.Menu
+	trayStatus *application.MenuItem
 }
 
 // Bind connects the host to the running application and forwards files dropped
@@ -123,4 +127,27 @@ func (h *WailsHost) Emit(event string, data any) {
 	if a, _, err := h.bound(); err == nil {
 		a.Event.Emit(event, data)
 	}
+}
+
+// BindTray connects the tray: its status line and its tooltip show the activity.
+func (h *WailsHost) BindTray(tray *application.SystemTray, menu *application.Menu, status *application.MenuItem) {
+	h.mu.Lock()
+	h.tray, h.trayMenu, h.trayStatus = tray, menu, status
+	h.mu.Unlock()
+}
+
+// ShowActivity is TrayHost: it updates the tray from any goroutine.
+func (h *WailsHost) ShowActivity(a Activity) {
+	h.mu.Lock()
+	tray, menu, status := h.tray, h.trayMenu, h.trayStatus
+	h.mu.Unlock()
+	if tray == nil {
+		return
+	}
+	label := a.Label()
+	application.InvokeAsync(func() {
+		status.SetLabel(label)
+		menu.Update()
+		tray.SetTooltip("Tacet · " + label)
+	})
 }

@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jorben/tacet/internal/findings"
 	"github.com/jorben/tacet/internal/kernel"
@@ -50,4 +51,52 @@ func (s *Service) AddManual(ctx context.Context, r ManualRequest) (finding int64
 		return 0, "", ErrInvalid
 	}
 	return 0, "", wrap(err)
+}
+
+// WithdrawManual undoes a manual redaction (FR-22): the finding is withdrawn and the redact decision that
+// came with it is revoked, in one commit, so neither the selection nor its decision stays. Only a manual
+// finding can be withdrawn; the history of the decision is kept.
+func (s *Service) WithdrawManual(ctx context.Context, request, job string, finding int64) error {
+	if !s.ok() || !validRequest(request) || job == "" || finding <= 0 {
+		return ErrInvalid
+	}
+	err := s.Commit(ctx, func(tx store.Tx) error {
+		t, _, err := scope(tx)
+		if err != nil {
+			return err
+		}
+		// the decisions in force on this finding, before it disappears from view
+		rows, err := t.Query(`SELECT d.id FROM review_decision d JOIN review_member m ON m.decision=d.id
+			WHERE m.finding=? AND m.job=? AND d.state='committed' AND d.revokes IS NULL
+			AND NOT EXISTS (SELECT 1 FROM review_decision r WHERE r.revokes=d.id AND r.state='committed') ORDER BY d.seq`, finding, job)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if _, err = s.Findings.WithdrawManual(tx, job, finding); err != nil {
+			return err
+		}
+		for i, id := range ids {
+			if err = revokeIn(tx, fmt.Sprintf("%s:%d", request, i), id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, findings.ErrInvalid), errors.Is(err, ErrInvalid):
+		return ErrInvalid
+	}
+	return wrap(err)
 }

@@ -190,3 +190,34 @@ func TestSupervisorCrashEndsStreamWithoutHanging(t *testing.T) {
 		t.Fatal("crash detection waited for the deadline")
 	}
 }
+
+// Signalled tells a worker that was killed from one that exited on its own (the reason code of a start
+// that failed during the handshake depends on it); it reports nothing before the worker has ended.
+func TestSignalledTellsAKilledWorkerFromOneThatExited(t *testing.T) {
+	for _, c := range []struct {
+		script string
+		want   bool
+	}{{"kill -9 $$", true}, {"exit 3", false}, {"exit 0", false}} {
+		w, err := Start(Spec{Path: "/bin/sh", Args: []string{"-c", c.script}, Env: []string{"PATH=/usr/bin:/bin"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-w.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatal("did not end")
+		}
+		if got := w.Signalled(); got != c.want {
+			t.Fatalf("%q: signalled=%v", c.script, got)
+		}
+		w.Terminate(100 * time.Millisecond)
+	}
+	w, err := Start(Spec{Path: "/bin/sh", Args: []string{"-c", "sleep 5"}, Env: []string{"PATH=/usr/bin:/bin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Terminate(100 * time.Millisecond)
+	if w.Signalled() {
+		t.Fatal("a running worker is not reported as signalled")
+	}
+}

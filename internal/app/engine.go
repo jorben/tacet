@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/lifecycle"
+	"github.com/jorben/tacet/internal/platform"
 	"os"
 	"path/filepath"
 	"sort"
@@ -82,6 +84,9 @@ type Options struct {
 	Now func() time.Time
 	// Trace, when set, is told how the start-up order and the exit order progress.
 	Trace func(lifecycle.Status)
+	// Activity declares to the platform that work runs (on) or no longer does (off); nil is
+	// platform.DeclareActivity.
+	Activity func(on bool) error
 }
 
 // Engine is the shared kernel of the desktop app and the CLI: the same
@@ -104,6 +109,7 @@ type Engine struct {
 	units  extract.Repository
 	pol    *policy.Service
 	pub    *publish.Service
+	act    *activity
 	exp    *export.Service
 	val    *validate.Service
 	pipe   *extract.Pipeline
@@ -125,6 +131,10 @@ type Engine struct {
 	// beforeConfirm, when set by a test, runs before a file that finished its inspection after
 	// the batch started joins the batch; it holds that window open.
 	beforeConfirm func()
+	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
+	afterReap func()
+	// deadline, in tests, replaces stageDeadline.
+	deadline func(kernel.StageKind, int64) time.Duration
 }
 
 type plugin struct {
@@ -154,6 +164,11 @@ func Open(ctx context.Context, opt Options) (*Engine, error) {
 		}
 	}
 	e := &Engine{opt: opt, gate: netgate.NewGate(), plugins: map[string]plugin{}, detect: map[string]*detectCache{}, secrets: map[string][]byte{}, listeners: map[int]func(string){}, done: make(chan struct{})}
+	declare := opt.Activity
+	if declare == nil {
+		declare = platform.DeclareActivity
+	}
+	e.act = newActivity(declare, activityLinger)
 	reg, err := store.NewRegistry(allModules()...)
 	if err != nil {
 		return nil, err

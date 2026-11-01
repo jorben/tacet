@@ -183,7 +183,7 @@ func OpenWith(ctx context.Context, c Config) (*Engine, error) {
 		if acct == "" {
 			acct = "workspace"
 		}
-		if o.UserKey, err = keys.NewOSUserKeyStore("com.tacet.workspace", acct+":"+c.Workspace); err != nil {
+		if o.UserKey, err = keys.NewOSUserKeyStore(credentialService, credentialAccount(acct, c.Workspace)); err != nil {
 			return nil, err
 		}
 	}
@@ -194,3 +194,12 @@ func OpenWith(ctx context.Context, c Config) (*Engine, error) {
 
 // Interrupts are the signals that stop a command-line run (platform dependent).
 func Interrupts() []os.Signal { return platform.TerminationSignals() }
+
+const credentialService = "com.tacet.workspace"
+
+// credentialAccount names a workspace's key in the credential store: the kind and a digest of the workspace
+// path. The store accepts only plain names (no ':' or path separators, Windows uses them in a file name),
+// and the path itself, which may name the person, stays out of it.
+func credentialAccount(kind, workspace string) string {
+	return kind + "-" + hexSum([]byte(workspace))[:32]
+}

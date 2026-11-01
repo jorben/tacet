@@ -142,3 +142,14 @@ func TestResolvedPresetUsesLatestReferencesButFrozenTaskKeepsContent(t *testing.
 		t.Fatal(err)
 	}
 }
+
+func TestRenderStyleFollowsTheApplicationUnlessThePresetNamesOne(t *testing.T) {
+	for _, c := range []struct{ preset, app, want string }{
+		{"default", "plaid", "plaid"}, {"", "heart", "heart"}, {"solid", "star", "star"}, {"diagonal", "gray", "gray"},
+		{"pattern", "dot", "dot"}, {"stripe", "plaid", "stripe"}, {"mosaic", "plaid", "mosaic"}, {"default", "", "black"},
+	} {
+		if got := renderStyle(c.preset, c.app); got != c.want {
+			t.Errorf("renderStyle(%q, %q) = %q, want %q", c.preset, c.app, got, c.want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package extract
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -25,6 +26,9 @@ func Module() store.Module {
 		`CREATE TABLE extract_unit(attempt TEXT NOT NULL REFERENCES extract_attempt(attempt), seq INTEGER NOT NULL, unit_id TEXT NOT NULL,
 			part TEXT NOT NULL, ordinal INTEGER NOT NULL, visibility TEXT NOT NULL, chars INTEGER NOT NULL, body TEXT NOT NULL,
 			PRIMARY KEY(attempt, seq))`,
+	}}, {Version: 2, SQL: []string{
+		// where the unit is (requirements 4.3): JSON of Location, numbers only; '' when the plugin gave none
+		`ALTER TABLE extract_unit ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
 	}}}}
 }
 
@@ -38,6 +42,31 @@ type Unit struct {
 	Visibility string
 	Chars      int
 	Body       string // resource id of the body
+	Location   Location
+}
+
+// Location is where a unit is for the person reviewing it (requirements 4.3): numbers only, never text.
+// PageHint is approximate (the page markers the document was saved with) and 0 when it has none; Section
+// is the paragraph ordinal of the nearest heading in the same part; Table is set for a unit in a table.
+type Location struct {
+	PageHint int        `json:"page_hint,omitempty"`
+	Section  int        `json:"section,omitempty"`
+	Table    *TableCell `json:"table,omitempty"`
+}
+
+// TableCell is a cell, 1-based; tables are numbered in document order.
+type TableCell struct {
+	Index int `json:"index"`
+	Row   int `json:"row"`
+	Col   int `json:"col"`
+}
+
+func (l Location) encode() string {
+	if l == (Location{}) {
+		return ""
+	}
+	b, _ := json.Marshal(l)
+	return string(b)
 }
 
 type Repository struct{}
@@ -75,8 +104,8 @@ func (Repository) Add(tx store.Tx, job string, u Unit) error {
 	case u.Seq != have+1:
 		return ErrUnits
 	}
-	if _, err = sc.Exec(`INSERT INTO extract_unit(attempt, seq, unit_id, part, ordinal, visibility, chars, body) VALUES(?,?,?,?,?,?,?,?)`,
-		u.Attempt, u.Seq, u.UnitID, u.Part, u.Ordinal, u.Visibility, u.Chars, u.Body); err != nil {
+	if _, err = sc.Exec(`INSERT INTO extract_unit(attempt, seq, unit_id, part, ordinal, visibility, chars, body, location) VALUES(?,?,?,?,?,?,?,?,?)`,
+		u.Attempt, u.Seq, u.UnitID, u.Part, u.Ordinal, u.Visibility, u.Chars, u.Body, u.Location.encode()); err != nil {
 		return err
 	}
 	_, err = sc.Exec("UPDATE extract_attempt SET units=? WHERE attempt=?", u.Seq, u.Attempt)
@@ -151,7 +180,7 @@ func (Repository) Units(tx store.Tx, attempt string, after, limit int) ([]Unit, 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := t.Query(`SELECT u.attempt, u.seq, u.unit_id, u.part, u.ordinal, u.visibility, u.chars, u.body FROM extract_unit u
+	rows, err := t.Query(`SELECT u.attempt, u.seq, u.unit_id, u.part, u.ordinal, u.visibility, u.chars, u.body, u.location FROM extract_unit u
 		JOIN extract_attempt a ON a.attempt=u.attempt WHERE a.sealed=1 AND u.attempt=? AND u.seq>? ORDER BY u.seq LIMIT ?`, attempt, after, limit)
 	if err != nil {
 		return nil, err
@@ -160,8 +189,12 @@ func (Repository) Units(tx store.Tx, attempt string, after, limit int) ([]Unit, 
 	var out []Unit
 	for rows.Next() {
 		var u Unit
-		if err = rows.Scan(&u.Attempt, &u.Seq, &u.UnitID, &u.Part, &u.Ordinal, &u.Visibility, &u.Chars, &u.Body); err != nil {
+		var loc string
+		if err = rows.Scan(&u.Attempt, &u.Seq, &u.UnitID, &u.Part, &u.Ordinal, &u.Visibility, &u.Chars, &u.Body, &loc); err != nil {
 			return nil, err
+		}
+		if loc != "" && json.Unmarshal([]byte(loc), &u.Location) != nil {
+			return nil, ErrUnits
 		}
 		out = append(out, u)
 	}

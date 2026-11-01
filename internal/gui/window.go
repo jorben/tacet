@@ -13,6 +13,16 @@ const EventCloseRequested = "tacet:close-requested"
 // InterceptClose hands user-initiated closes of win to the frontend once it has
 // announced itself with Service.CloseHandlerReady. The close is cancelled here;
 // the frontend ends the application through the runtime when it is done.
+// RequestQuit is the tray's "退出": once the window handles closes it decides (and asks when work is
+// unfinished); before that, nothing of the person's can be lost and the application quits.
+func RequestQuit(a *application.App, svc *Service) {
+	if svc.closeReady.Load() {
+		a.Event.Emit(EventQuitRequested)
+		return
+	}
+	a.Quit()
+}
+
 func InterceptClose(app *application.App, win *application.WebviewWindow, svc *Service) {
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if !svc.closeReady.Load() {

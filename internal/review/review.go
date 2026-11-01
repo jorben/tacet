@@ -228,45 +228,7 @@ func (s *Service) Revoke(ctx context.Context, request, decision string) error {
 	if !s.ok() || !validRequest(request) || decision == "" {
 		return ErrInvalid
 	}
-	err := s.Commit(ctx, func(tx store.Tx) error {
-		t, sc, err := scope(tx)
-		if err != nil {
-			return err
-		}
-		var kind, state string
-		var keep int
-		var revokes sql.NullString
-		if err = t.QueryRow("SELECT kind, keep, state, revokes FROM review_decision WHERE id=?", decision).Scan(&kind, &keep, &state, &revokes); err != nil {
-			return ErrNotFound
-		}
-		if state != "committed" || revokes.Valid {
-			return ErrInvalid // pending decisions are dropped, revocations are not revoked
-		}
-		var n int
-		if err = t.QueryRow("SELECT COUNT(*) FROM review_decision WHERE request=? OR (revokes=? AND state='committed')", request, decision).Scan(&n); err != nil {
-			return err
-		}
-		if n > 0 {
-			return nil
-		}
-		seq, err := nextSeq(t)
-		if err != nil {
-			return err
-		}
-		id, err := newID()
-		if err != nil {
-			return err
-		}
-		if _, err = sc.Exec(`INSERT INTO review_decision(id, request, batch, kind, keep, state, seq, revokes, members)
-			SELECT ?, ?, batch, kind, keep, 'committed', ?, id, 0 FROM review_decision WHERE id=?`, id, request, seq, decision); err != nil {
-			return err
-		}
-		jobs, err := jobsOf(t, decision)
-		if err != nil {
-			return err
-		}
-		return bump(tx, t, sc, jobs)
-	})
+	err := s.Commit(ctx, func(tx store.Tx) error { return revokeIn(tx, request, decision) })
 	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) {
 		return err
 	}
@@ -329,4 +291,45 @@ func Purge(tx store.Tx, job string) error {
 		}
 	}
 	return nil
+}
+
+// revokeIn is Revoke inside the caller's commit.
+func revokeIn(tx store.Tx, request, decision string) error {
+	t, sc, err := scope(tx)
+	if err != nil {
+		return err
+	}
+	var kind, state string
+	var keep int
+	var revokes sql.NullString
+	if err = t.QueryRow("SELECT kind, keep, state, revokes FROM review_decision WHERE id=?", decision).Scan(&kind, &keep, &state, &revokes); err != nil {
+		return ErrNotFound
+	}
+	if state != "committed" || revokes.Valid {
+		return ErrInvalid // pending decisions are dropped, revocations are not revoked
+	}
+	var n int
+	if err = t.QueryRow("SELECT COUNT(*) FROM review_decision WHERE request=? OR (revokes=? AND state='committed')", request, decision).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	seq, err := nextSeq(t)
+	if err != nil {
+		return err
+	}
+	id, err := newID()
+	if err != nil {
+		return err
+	}
+	if _, err = sc.Exec(`INSERT INTO review_decision(id, request, batch, kind, keep, state, seq, revokes, members)
+		SELECT ?, ?, batch, kind, keep, 'committed', ?, id, 0 FROM review_decision WHERE id=?`, id, request, seq, decision); err != nil {
+		return err
+	}
+	jobs, err := jobsOf(t, decision)
+	if err != nil {
+		return err
+	}
+	return bump(tx, t, sc, jobs)
 }

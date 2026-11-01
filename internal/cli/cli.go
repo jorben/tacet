@@ -34,6 +34,7 @@ var commands = []struct{ name, summary string }{
 	{"status", "Show batch status and the per-file report"},
 	{"resume", "Resume a batch with its original snapshot"},
 	{"retry", "Retry selected members"},
+	{"unlock", "Enter the passwords of a batch's files on this terminal"},
 	{"clean", "Clean up task data"},
 }
 
@@ -57,16 +58,28 @@ type env struct {
 	out    io.Writer
 	err    io.Writer
 	open   Opener
+	term   Terminal
 	asJSON bool
+}
+
+// Terminal is where a person types passwords: never echoed, never from arguments or the environment.
+type Terminal interface {
+	Interactive() bool
+	Password(ctx context.Context, prompt string) ([]byte, error)
 }
 
 // Run is Main with an explicit context (cancelled by the user's interrupt) and opener.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, open Opener) int {
+	return RunWith(ctx, args, stdout, stderr, open, app.StdinTerminal{})
+}
+
+// RunWith is Run with the terminal passwords are read from.
+func RunWith(ctx context.Context, args []string, stdout, stderr io.Writer, open Opener, term Terminal) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return ExitUsage
 	}
-	e := &env{ctx: ctx, out: stdout, err: stderr, open: open}
+	e := &env{ctx: ctx, out: stdout, err: stderr, open: open, term: term}
 	switch args[0] {
 	case "help", "-h", "--help":
 		usage(stdout)
@@ -86,6 +99,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, open Open
 		return e.retry(args[1:])
 	case "clean":
 		return e.clean(args[1:])
+	case "unlock":
+		return e.unlock(args[1:])
 	}
 	fmt.Fprintf(stderr, "tacet: unknown command %q\n", args[0])
 	usage(stderr)
@@ -102,7 +117,8 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, "  %-10s %s\n", "version", "Print the version")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Exit status: 0 all published, 1 usage error or cannot start, 2 something needs review/blocked/failed/partial/undelivered, 3 interrupted")
-	fmt.Fprintln(w, "Passwords are never taken from arguments or the environment; files that need one are reported as blocked.")
+	fmt.Fprintln(w, "Passwords are never taken from arguments or the environment; files that need one are reported as blocked")
+	fmt.Fprintln(w, "and can be unlocked with \"tacet unlock --batch <id>\" on an interactive terminal (input is not shown).")
 }
 
 // -- common options ----------------------------------------------------------
@@ -294,6 +310,9 @@ func (e *env) finish(core app.Core, batch string, st app.BatchStatus, err error)
 	switch {
 	case err == nil:
 		e.print(st)
+		if !e.asJSON && len(passwordWaiting(st.Files, nil)) > 0 {
+			fmt.Fprintf(e.err, "tacet: some files need a password; enter them with: tacet unlock --batch %s\n", batch)
+		}
 		return st.ExitCode
 	case errors.Is(err, context.Canceled):
 		core.Pause(context.Background(), batch)
@@ -521,4 +540,104 @@ func (e *env) clean(args []string) int {
 		fmt.Fprintf(e.out, "batch %s cleaned\n", c.batch)
 	}
 	return ExitOK
+}
+
+// passwordWaiting lists the files that wait for a password (optionally only those named, by id or name).
+func passwordWaiting(fs []app.FileStatus, only map[string]bool) []app.FileStatus {
+	var out []app.FileStatus
+	for _, f := range fs {
+		waits := f.State == "locked" || (f.State == "blocked" && (f.Detail == "password_required" || f.Detail == "PASSWORD_INCORRECT"))
+		if waits && (len(only) == 0 || only[f.ID] || only[f.Name]) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// maxUnlockRounds bounds how often a wrong password is asked for again.
+const maxUnlockRounds = 3
+
+// unlock asks, on an interactive terminal, for the password of each file of the batch that waits for one
+// (FR-09), then waits for the batch. Input is not echoed; an empty line leaves that file blocked. A wrong
+// password is asked for again, up to maxUnlockRounds. Without a terminal nothing is read: passwords are
+// never taken from a pipe, an argument or the environment.
+func (e *env) unlock(args []string) int {
+	var c common
+	var only multi
+	fs := e.flags("unlock", &c, true)
+	fs.Var(&only, "file", "file id or name (repeatable); default: every file that waits for a password")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	e.asJSON = c.json
+	if c.batch == "" {
+		return e.fail("BATCH_REQUIRED", "name the batch with --batch")
+	}
+	if e.term == nil || !e.term.Interactive() {
+		return e.fail("TERMINAL_REQUIRED", "passwords are entered on an interactive terminal only")
+	}
+	core, code := e.openCore(c)
+	if code != 0 {
+		return code
+	}
+	defer core.Close()
+	want := map[string]bool{}
+	for _, f := range only {
+		want[f] = true
+	}
+	// opening the workspace pauses what the last run left unfinished; the batch continues from here, so a
+	// file waiting for its password is waiting again
+	if err := core.Resume(e.ctx, c.batch); err != nil {
+		return e.fail(codeOf(err), "")
+	}
+	st, err := core.Status(e.ctx, c.batch, 200)
+	if err != nil {
+		return e.fail(codeOf(err), "")
+	}
+	left := map[string]bool{}
+	for round := 0; round < maxUnlockRounds; round++ {
+		var waiting []app.FileStatus
+		for _, f := range passwordWaiting(st.Files, want) {
+			if !left[f.ID] {
+				waiting = append(waiting, f)
+			}
+		}
+		if len(waiting) == 0 {
+			if round == 0 {
+				fmt.Fprintln(e.err, "tacet: no file of this batch waits for a password")
+			}
+			break
+		}
+		asked := 0
+		for _, f := range waiting {
+			if f.Detail == "PASSWORD_INCORRECT" {
+				fmt.Fprintf(e.err, "tacet: the password of %s was not accepted\n", f.Name)
+			}
+			pw, err := e.term.Password(e.ctx, fmt.Sprintf("Password for %s (not shown, empty to leave it): ", f.Name))
+			if err != nil {
+				clear(pw)
+				if e.ctx.Err() != nil {
+					return e.finish(core, c.batch, st, e.ctx.Err())
+				}
+				return e.fail(codeOf(err), "")
+			}
+			if len(pw) == 0 {
+				left[f.ID] = true // not asked again in this run
+				continue
+			}
+			err = core.Unlock(e.ctx, f.ID, pw)
+			clear(pw)
+			if err != nil {
+				return e.fail(codeOf(err), "")
+			}
+			asked++
+		}
+		if st, err = e.follow(core, c.batch); err != nil {
+			return e.finish(core, c.batch, st, err)
+		}
+		if asked == 0 {
+			break
+		}
+	}
+	return e.finish(core, c.batch, st, nil)
 }

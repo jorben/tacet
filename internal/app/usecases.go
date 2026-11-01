@@ -37,7 +37,15 @@ const exitGrace = 10 * time.Second
 // Close runs the exit order of architecture 6.2: stop dispatching, bring running stages to a boundary,
 // save where every file stands, reclaim the worker processes, wait for a publish in its commit section,
 // settle retention, and release the workspace last.
-func (e *Engine) Close() error {
+func (e *Engine) Close() error { return e.close(lifecycle.Normal) }
+
+// CloseForSystem is the exit when the system shuts down or the user logs out (architecture 6.2): the time
+// is short, so dispatch stops, the running stages are cancelled (their results are not recorded), the
+// plugin processes are reclaimed and the workspace is released, without waiting or cleaning. What was
+// committed and the publish intents carry the work over; the next start recovers it.
+func (e *Engine) CloseForSystem() error { return e.close(lifecycle.SystemShutdown) }
+
+func (e *Engine) close(mode lifecycle.ExitMode) error {
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
@@ -58,12 +66,27 @@ func (e *Engine) Close() error {
 		}
 	}
 	stopper, err := lifecycle.NewStopper([]lifecycle.Step{
-		{Name: lifecycle.ExitStopDispatch, Run: func(context.Context) error { e.queue.PauseDispatch(true); return nil }},
+		{Name: lifecycle.ExitStopDispatch, Run: func(context.Context) error {
+			e.queue.PauseDispatch(true)
+			if mode == lifecycle.SystemShutdown {
+				// cancelled before the workers are reclaimed: a stage whose worker dies then ends as
+				// cancelled, which is not recorded, instead of as failed, which would be
+				e.cancel()
+				e.act.stop()
+			}
+			return nil
+		}},
 		// the dispatcher's context ends the stages it runs; whatever is not at a boundary after the grace
 		// period is reclaimed by the next steps
-		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error { e.cancel(); waitDone(ctx); return nil }},
+		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error { e.cancel(); waitDone(ctx); e.act.stop(); return nil }},
 		{Name: lifecycle.ExitCheckpoint, Run: e.recoverJobs},
-		{Name: lifecycle.ExitReap, Run: e.reapPrevious},
+		{Name: lifecycle.ExitReap, Run: func(ctx context.Context) error {
+			err := e.reapPrevious(ctx)
+			if e.afterReap != nil {
+				e.afterReap()
+			}
+			return err
+		}},
 		{Name: lifecycle.ExitPublishWait, Run: func(ctx context.Context) error {
 			c, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -75,7 +98,7 @@ func (e *Engine) Close() error {
 	if err != nil {
 		return err
 	}
-	if err = stopper.Stop(context.Background(), lifecycle.Normal); err != nil {
+	if err = stopper.Stop(context.Background(), mode); err != nil {
 		var se *lifecycle.StepError
 		if errors.As(err, &se) {
 			return se.Err
@@ -254,6 +277,9 @@ func (e *Engine) Preflight(ctx context.Context, batch string) (BatchStatus, erro
 // Start freezes the snapshot and confirms the batch in one commit, then lets the
 // pipeline run. Authorize states the publish authorization up front (FR-37).
 func (e *Engine) Start(ctx context.Context, r StartRequest) error {
+	if r.Mode != "" && r.Mode != "guided" && r.Mode != "strict" {
+		return ErrInvalid
+	}
 	// The request is kept before the wait for the inspection: if the call ends first (an interrupt, a closed
 	// window), Resume carries the same start out, with the same authorization.
 	if err := e.recordStart(ctx, r); err != nil {
@@ -314,6 +340,9 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 		}
 		if len(report.Blocking) > 0 {
 			return fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
+		}
+		if r.Mode == "strict" { // chosen for this batch; frozen with it (dispose facet)
+			content.Dispose.Mode = "strict"
 		}
 		snap, err := snapshot.Freeze(content)
 		if err != nil {
@@ -384,6 +413,9 @@ func (e *Engine) fileStatus(tx store.Tx, j jobs.Job, run Run, pending int, s ver
 	n, _ := e.fr.Count(tx, findings.Filter{Job: j.ID})
 	cats, _ := e.fr.CountByCategory(tx, findings.Filter{Job: j.ID})
 	fs := FileStatus{ID: j.ID, Name: m.Name, State: string(j.Position.State), Status: string(s), Detail: m.Detail, Format: m.Format, Pending: pending, Findings: n, Categories: cats}
+	if pending > 0 {
+		fs.Confirm = awaitingConfirm(tx, j.ID)
+	}
 	if j.Position.State == jobs.Completed || j.Position.State == jobs.Partial {
 		fs.Output, fs.Digest = outputName(m, j.Position.State == jobs.Partial), m.Candidate
 	}
@@ -856,6 +888,10 @@ func (e *Engine) Document(ctx context.Context, job string, after, limit int) ([]
 				return err
 			}
 			d := DocUnit{Seq: u.Seq, Part: u.Part, Ordinal: u.Ordinal, Visibility: u.Visibility, Text: text, Findings: []DocFinding{}}
+			if u.Location != (extract.Location{}) {
+				loc := u.Location
+				d.Location = &loc
+			}
 			for _, f := range byUnit[u.UnitID] {
 				o := utf16Offsets(text, f.Start, f.End)
 				x := DocFinding{ID: f.ID, Start: o[0], End: o[1], Category: f.Category, Source: string(f.Source), Score: f.Score, Low: f.LowConf}
@@ -1085,4 +1121,89 @@ func (e *Engine) finishPendingStart(batch string) {
 			e.changed(batch)
 		}
 	}()
+}
+
+// strictItem is the one confirmation strict mode asks of each file (policy step 9).
+func strictItem(job string) string {
+	return exceptions.ItemIDFor(job, exceptions.StrictConfirm, "file")
+}
+
+func awaitingConfirm(tx store.Tx, job string) bool {
+	rows, err := (exceptions.Repository{}).Items(tx, exceptions.Filter{Jobs: []string{job}, Type: exceptions.StrictConfirm, OnlyUndecided: true}, "", 1)
+	return err == nil && len(rows) > 0
+}
+
+// ConfirmFile records the confirmation of one file of a strict batch: what was decided for it is to be
+// exported. A file that does not wait for one (not strict, not yet resolved, confirmed already) is refused.
+// Decisions taken on the file afterwards do not withdraw it; the plan follows them as usual.
+func (e *Engine) ConfirmFile(ctx context.Context, job string) error {
+	var n int
+	err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		if _, err := getMember(tx, job); err != nil {
+			return ErrNotFound
+		}
+		if !awaitingConfirm(tx, job) { // a decided item could be decided again; a confirmation is given once
+			return ErrNotAllowed
+		}
+		var err error
+		if n, err = next(tx, "decision"); err != nil {
+			return err
+		}
+		if _, err = (exceptions.Repository{}).Decide(tx, fmt.Sprintf("c%d", n), []string{job}, []string{strictItem(job)}, exceptions.ConfirmExport,
+			func(exceptions.Row) exceptions.Context { return exceptions.Context{} }); err != nil {
+			return ErrNotAllowed
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
+}
+
+// Skip leaves a waiting file out: one that failed, waits for review or confirmation, is blocked or waits for
+// its password. A file that is being worked on or has ended is refused. No password is kept for a file in
+// these states (Unlock hands it straight to the preflight that takes it). The batch ends when this was its
+// last unsettled file.
+func (e *Engine) Skip(ctx context.Context, job string) error {
+	var j jobs.Job
+	err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		cur, err := e.jobs.Get(tx, job)
+		if err != nil {
+			return ErrNotFound
+		}
+		if j, err = e.jobs.Apply(tx, job, cur.Version, jobs.Event{Kind: jobs.EvSkip}); errors.Is(err, jobs.ErrInvalidTransition) {
+			return ErrNotAllowed
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	e.afterState(ctx, j)
+	e.changed(j.Batch)
+	return nil
+}
+
+// WithdrawManual is Core: the manual finding and its decision are taken back in one commit, then the file
+// is redone from resolution, as after any change of decision.
+func (e *Engine) WithdrawManual(ctx context.Context, job string, finding int64) error {
+	var n int
+	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		if _, err := getMember(tx, job); err != nil {
+			return ErrNotFound
+		}
+		var err error
+		n, err = next(tx, "withdraw")
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := e.revs.WithdrawManual(ctx, fmt.Sprintf("w%d", n), job, finding); err != nil {
+		if errors.Is(err, review.ErrInvalid) {
+			return ErrNotAllowed
+		}
+		return err
+	}
+	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
 }

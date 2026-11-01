@@ -115,6 +115,17 @@ func Start(spec Spec) (*Worker, error) {
 // Done is closed when the direct child has exited.
 func (w *Worker) Done() <-chan struct{} { return w.done }
 
+// Signalled reports, once Done is closed, whether the direct child was ended by a signal (killed) rather
+// than by exiting on its own. It says nothing of why; only that, which carries no content.
+func (w *Worker) Signalled() bool {
+	select {
+	case <-w.done:
+	default:
+		return false
+	}
+	return w.cmd.ProcessState != nil && w.cmd.ProcessState.ExitCode() == -1
+}
+
 // StderrBytes is the volume of discarded diagnostics.
 func (w *Worker) StderrBytes() int64 { return w.stderr.Load() }
 

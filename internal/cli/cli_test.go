@@ -51,6 +51,9 @@ func (f *fake) Wait(ctx context.Context, _ string) (app.BatchStatus, error) {
 	return f.status, nil
 }
 func (f *fake) DecideFindings(context.Context, string, []app.FindingDecision) error { return nil }
+func (f *fake) ConfirmFile(context.Context, string) error                           { return nil }
+func (f *fake) Skip(context.Context, string) error                                  { return nil }
+func (f *fake) WithdrawManual(context.Context, string, int64) error                 { return nil }
 func (f *fake) AddManual(context.Context, string, int, int, int, string) (int64, error) {
 	return 0, nil
 }

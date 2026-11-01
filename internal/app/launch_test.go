@@ -17,6 +17,11 @@ func TestAWorkerThatCouldNotStartSaysHowAndAStoppedStageIsNotAFailure(t *testing
 	if o := launchFailed(live, fmt.Errorf("%w: timeout", errHandshake)); o.Kind != sched.Failed || o.Err.Code != "PLUGIN_HANDSHAKE_FAILED" {
 		t.Fatalf("%+v", o)
 	}
+	for err, code := range map[error]string{errKilledEarly: "PLUGIN_KILLED_EARLY", errExitedEarly: "PLUGIN_EXITED_EARLY", errHandshakeTimeout: "PLUGIN_HANDSHAKE_TIMEOUT"} {
+		if o := launchFailed(live, fmt.Errorf("%w: x", err)); o.Kind != sched.Failed || o.Err.Code != code {
+			t.Fatalf("%v: %+v", err, o)
+		}
+	}
 	if o := launchFailed(live, errors.New("anything else")); o.Err.Code != "PLUGIN_START_FAILED" {
 		t.Fatalf("%+v", o)
 	}

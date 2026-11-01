@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/jorben/tacet/internal/extract"
 )
 
 // Public error codes of the use cases (module design 4.1). Messages carry no
@@ -41,6 +42,8 @@ type FileStatus struct {
 	Categories map[string]int `json:"categories,omitempty"`
 	Output     string         `json:"output,omitempty"` // relative output name once published
 	Digest     string         `json:"digest,omitempty"` // sha256 of the published file
+	// Confirm is set while the file waits for its own confirmation (strict mode) before it is exported.
+	Confirm bool `json:"confirm,omitempty"`
 }
 
 // BatchStatus is what the CLI prints and the desktop shows; both come from
@@ -67,6 +70,10 @@ type StartRequest struct {
 	OutputDir    string
 	Authorize    bool // publish everything that is eligible, per policy (FR-37)
 	AllowPartial bool
+	// Mode is how the batch is reviewed: "" or "guided" (the default), or "strict", where every file waits
+	// for its own confirmation before it is exported (requirements 3.5.1). Unattended processing is not
+	// offered: no category has the qualification it needs.
+	Mode string `json:",omitempty"`
 }
 
 // Finding is one candidate, without its original value.
@@ -103,6 +110,8 @@ type DocUnit struct {
 	Visibility string       `json:"visibility"`
 	Text       string       `json:"text"`
 	Findings   []DocFinding `json:"findings"`
+	// Location is where the unit is (DOCX: approximate page, nearest heading, table cell); numbers only.
+	Location *extract.Location `json:"location,omitempty"`
 }
 
 // FindingDecision is one person's decision on one candidate.
@@ -200,9 +209,17 @@ type Core interface {
 	DecideFinding(ctx context.Context, job string, finding int64, keep bool) error
 	// DecideFindings records many decisions and redoes the file once.
 	DecideFindings(ctx context.Context, job string, decisions []FindingDecision) error
+	// ConfirmFile gives the per-file confirmation of strict mode; never for several files at once.
+	ConfirmFile(ctx context.Context, job string) error
+	// Skip leaves one file out of its batch: it is not exported (requirements 2.3, the one alternative to
+	// the unblocking action of a whole-file block). Only a file that waits for the person may be skipped.
+	Skip(ctx context.Context, job string) error
 	// AddManual makes the text between start and end (UTF-16 code units of the unit
 	// with sequence number seq) a candidate of the category and redacts it.
 	AddManual(ctx context.Context, job string, seq, start, end int, category string) (int64, error)
+	// WithdrawManual undoes a manual redaction (FR-22): the selection and its decision are taken back, and
+	// the file is resolved again without it. Only a finding AddManual returned can be withdrawn.
+	WithdrawManual(ctx context.Context, job string, finding int64) error
 	// Publish authorizes publishing every file that is ready and every file that
 	// becomes ready later (FR-37). partial also authorizes marked partial results.
 	// outputDir, when set, names the folder results are written to; the location is
@@ -234,6 +251,17 @@ type Core interface {
 // front end shows real progress without polling. The callback must not block.
 type Notifier interface {
 	Subscribe(fn func(batch string)) (cancel func())
+}
+
+// SystemCloser closes for a system shutdown or logout: no waiting, no cleaning (architecture 6.2).
+type SystemCloser interface {
+	CloseForSystem() error
+}
+
+// Waker is told that the system woke from sleep (architecture 6.2): the deadlines of the running plugin
+// calls take the moment of waking as their baseline, so the time asleep is not counted against them.
+type Waker interface {
+	Woke(ctx context.Context) error
 }
 
 // PreviewSource serves the rendered pages PagePreview announced.

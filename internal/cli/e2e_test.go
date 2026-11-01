@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -197,5 +198,99 @@ func TestCLIInterruptPausesAndResumeFinishes(t *testing.T) {
 	code, out, errOut = r.cli(context.Background(), "resume", "--batch", "b0001")
 	if code != ExitOK {
 		t.Fatalf("resume = %d\n%s\n%s", code, out, errOut)
+	}
+}
+
+// scripted is a terminal a test types on.
+type scripted struct {
+	interactive bool
+	answers     []string
+	prompts     []string
+}
+
+func (s *scripted) Interactive() bool { return s.interactive }
+func (s *scripted) Password(_ context.Context, prompt string) ([]byte, error) {
+	s.prompts = append(s.prompts, prompt)
+	if len(s.answers) == 0 {
+		return nil, nil
+	}
+	a := s.answers[0]
+	s.answers = s.answers[1:]
+	return []byte(a), nil
+}
+
+func (r *rig) cliOn(term Terminal, args ...string) (int, string, string) {
+	r.t.Helper()
+	var out, errOut bytes.Buffer
+	code := RunWith(context.Background(), append([]string{args[0], "--workspace", r.ws}, args[1:]...), &out, &errOut, r.opener, term)
+	return code, out.String(), errOut.String()
+}
+
+const encryptedDocx = `
+import sys
+sys.path.insert(0, sys.argv[1])
+from test_docx_extract import package
+from test_docx_unlock import encrypted, sized
+open(sys.argv[2], 'wb').write(encrypted(sized(package('<w:p><w:r><w:t>电话 13812345678</w:t></w:r></w:p>')), 'correct horse'))
+`
+
+// FR-09 and 3.6: a file that needs a password is reported as blocked by a non-interactive run, with the way
+// to unlock it; "unlock" reads the password on an interactive terminal only, asks again after a wrong one,
+// leaves a file for which nothing was typed, and never shows a password.
+func TestCLIUnlockReadsPasswordsOnATerminalOnly(t *testing.T) {
+	r := newRig(t)
+	root, _ := filepath.Abs(filepath.Join("..", ".."))
+	py := filepath.Join(root, "python", ".venv", "bin", "python")
+	locked := filepath.Join(t.TempDir(), "enc.docx")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(root, "python", "tests"), locked).CombinedOutput(); err != nil {
+		t.Skipf("cannot build the fixture: %v %s", err, o)
+	}
+	plain := r.file("a.txt", "电话 13812345678\n")
+	code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, plain, locked)
+	if code != ExitIncomplete || !strings.Contains(errOut, "tacet unlock --batch b0001") {
+		t.Fatalf("run = %d\n%s\n%s", code, out, errOut)
+	}
+	// not a terminal: nothing is read
+	pipe := &scripted{answers: []string{"correct horse"}}
+	if code, _, errOut = r.cliOn(pipe, "unlock", "--batch", "b0001"); code != ExitUsage || !strings.Contains(errOut, "TERMINAL_REQUIRED") || len(pipe.prompts) != 0 {
+		t.Fatalf("unlock without a terminal = %d %q %v", code, errOut, pipe.prompts)
+	}
+	// an empty line leaves the file, and it is not asked for again in this run
+	skip := &scripted{interactive: true, answers: []string{""}}
+	if code, _, _ = r.cliOn(skip, "unlock", "--batch", "b0001"); code != ExitIncomplete || len(skip.prompts) != 1 {
+		t.Fatalf("left = %d %v", code, skip.prompts)
+	}
+	// a wrong password is asked for again; the right one unlocks and the batch finishes
+	term := &scripted{interactive: true, answers: []string{"wrong horse", "correct horse"}}
+	code, out, errOut = r.cliOn(term, "unlock", "--batch", "b0001")
+	if code != ExitOK || len(term.prompts) != 2 || !strings.Contains(errOut, "was not accepted") {
+		t.Fatalf("unlock = %d %v\n%s\n%s", code, term.prompts, out, errOut)
+	}
+	if !strings.Contains(term.prompts[0], "f0002") || strings.Contains(term.prompts[0], "enc.docx") {
+		t.Fatalf("the prompt names the file by its neutral name only: %q", term.prompts[0])
+	}
+	if strings.Contains(out+errOut, "horse") {
+		t.Fatalf("a password was shown:\n%s\n%s", out, errOut)
+	}
+	if !strings.Contains(out, "2 delivered") {
+		t.Fatalf("%s", out)
+	}
+	// two locked files: the one left with an empty line is not asked for again when the other one's
+	// wrong password is asked for again
+	r2 := newRig(t)
+	other := filepath.Join(t.TempDir(), "enc2.docx")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(root, "python", "tests"), other).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, o)
+	}
+	if code, out, errOut = r2.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r2.out, locked, other); code != ExitIncomplete {
+		t.Fatalf("run = %d\n%s\n%s", code, out, errOut)
+	}
+	two := &scripted{interactive: true, answers: []string{"", "wrong horse", "correct horse"}}
+	code, out, _ = r2.cliOn(two, "unlock", "--batch", "b0001")
+	if len(two.prompts) != 3 || !strings.Contains(two.prompts[0], "f0001") || !strings.Contains(two.prompts[1], "f0002") || !strings.Contains(two.prompts[2], "f0002") {
+		t.Fatalf("asked %v", two.prompts)
+	}
+	if code != ExitIncomplete || !strings.Contains(out, "1 delivered") {
+		t.Fatalf("unlock = %d\n%s", code, out)
 	}
 }

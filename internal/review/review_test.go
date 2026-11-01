@@ -697,3 +697,46 @@ func TestADecisionDroppedBetweenThePhasesCannotBeCommitted(t *testing.T) {
 		t.Fatal("a dropped decision took effect")
 	}
 }
+
+// FR-22 undo of a manual redaction: the selection and its decision go together, in one commit; a finding
+// that is not manual is refused and nothing changes; the decision's history stays.
+func TestWithdrawingAManualRedactionTakesTheFindingAndItsDecisionBack(t *testing.T) {
+	f := setup(t)
+	f.detect("j1", nf("u1", 0, "phone"))
+	rule := f.page("j1")[0].ID
+	fid, did, err := f.svc.AddManual(ctx(), ManualRequest{Request: "m1", Batch: "b1", Job: "j1", Unit: "u2", Version: 1, Start: 5, End: 9, Category: "custom", Value: []byte("abcd")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.svc.DecideItem(ctx(), ItemRequest{Request: "d1", Batch: "b1", Job: "j1", Finding: rule, Keep: true}); err != nil {
+		t.Fatal(err)
+	}
+	before := f.version("j1")
+	if err = f.svc.WithdrawManual(ctx(), "w0", "j1", rule); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a detected finding is not withdrawn: %v", err)
+	}
+	if len(f.page("j1")) != 2 || f.version("j1") != before || len(f.eff("j1")) != 2 {
+		t.Fatal("a refused withdrawal changed something")
+	}
+	if err = f.svc.WithdrawManual(ctx(), "w1", "j1", fid); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.page("j1"); len(got) != 1 || got[0].ID != rule {
+		t.Fatalf("%+v", got)
+	}
+	e := f.eff("j1")
+	if _, ok := e[fid]; ok || !e[rule].Keep || f.version("j1") <= before {
+		t.Fatalf("the manual decision is revoked, the other one stays: %+v v%d", e, f.version("j1"))
+	}
+	var revoked int
+	f.do(func(tx store.Tx) error {
+		t, _, _ := scope(tx)
+		return t.QueryRow("SELECT COUNT(*) FROM review_decision WHERE revokes=? AND state='committed'", did).Scan(&revoked)
+	})
+	if revoked != 1 {
+		t.Fatalf("the decision's history is kept as a revocation: %d", revoked)
+	}
+	if err = f.svc.WithdrawManual(ctx(), "w2", "j1", fid); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("withdrawn twice: %v", err)
+	}
+}

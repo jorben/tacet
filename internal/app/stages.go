@@ -46,7 +46,17 @@ func (r runner) Kind() kernel.StageKind { return r.kind }
 func (r runner) Claim(sched.JobView) kernel.ResourceClaim {
 	return kernel.ResourceClaim{MemoryBytes: 256 << 20, CPUSlots: 1, WorkerKind: "format", ScratchBytes: 64 << 20, CandidateBytes: 64 << 20, QueueBytes: 1 << 20}
 }
-func (r runner) Run(ctx sched.StageContext) sched.StageOutcome { return r.run(ctx) }
+func (r runner) Run(ctx sched.StageContext) sched.StageOutcome {
+	r.e.act.begin()
+	defer r.e.act.end()
+	bctx, exceeded := r.e.withDeadline(ctx, r.kind)
+	out := r.run(bctx)
+	if out.Kind == sched.Failed && exceeded() {
+		// whatever the module made of the ended call, the reason is the deadline (requirements 5.4)
+		out.Err = &kernel.ErrorCode{Code: "STAGE_DEADLINE_EXCEEDED"}
+	}
+	return out
+}
 
 func (e *Engine) runners() []sched.StageRunner {
 	return []sched.StageRunner{

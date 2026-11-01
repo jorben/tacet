@@ -61,10 +61,41 @@ func (r *Repository) ByIDs(tx store.Tx, job string, ids []int64) ([]Finding, err
 	rows, err := t.Query(`SELECT f.id, a.job, f.attempt, a.stage, a.version, f.unit, f.text_version, f.start, f.stop, f.category, f.source, f.score,
 		f.low_conf, f.mismatch, f.rule_id, f.field, f.template, f.hmac
 		FROM findings_finding f JOIN findings_attempt a ON a.attempt=f.attempt
-		WHERE a.sealed=1 AND a.job=? AND f.id IN (?`+repeat(len(ids)-1)+`) ORDER BY f.id`, args...)
+		WHERE a.sealed=1 AND a.withdrawn=0 AND a.job=? AND f.id IN (?`+repeat(len(ids)-1)+`) ORDER BY f.id`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanFindings(rows)
+}
+
+// WithdrawManual takes back a manual finding of job (FR-22 undo): it is no longer visible to any reading
+// (review, resolution, plan, counts), and the job's result version rises, so what was built on the finding
+// is built again. Only a visible manual finding can be withdrawn; anything else is ErrInvalid.
+func (r *Repository) WithdrawManual(tx store.Tx, job string, id int64) (uint64, error) {
+	if job == "" || id <= 0 {
+		return 0, ErrInvalid
+	}
+	t, sc, err := scope(tx)
+	if err != nil {
+		return 0, err
+	}
+	var attempt, owner, stage string
+	var sealed, withdrawn int
+	if err = t.QueryRow(`SELECT a.attempt, a.job, a.stage, a.sealed, a.withdrawn FROM findings_finding f JOIN findings_attempt a ON a.attempt=f.attempt
+		WHERE f.id=?`, id).Scan(&attempt, &owner, &stage, &sealed, &withdrawn); err != nil {
+		return 0, ErrInvalid
+	}
+	if owner != job || stage != StageManual || sealed == 0 || withdrawn != 0 {
+		return 0, ErrInvalid
+	}
+	current := r.version(t, job) + 1
+	if _, err = sc.Exec(`INSERT INTO findings_result(job, version) VALUES(?,?) ON CONFLICT(job) DO UPDATE SET version=excluded.version`, job, current); err != nil {
+		return 0, err
+	}
+	if _, err = sc.Exec("UPDATE findings_attempt SET withdrawn=1 WHERE attempt=?", attempt); err != nil {
+		return 0, err
+	}
+	tx.Emit(store.Event{Type: "FindingsChanged", Subject: kernel.ArtifactRef{Kind: "findings", ID: job, Version: current}})
+	return current, nil
 }

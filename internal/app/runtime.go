@@ -102,6 +102,13 @@ var launchSeq atomic.Uint64
 var (
 	errSpawn     = errors.New("PLUGIN_START_FAILED")
 	errHandshake = errors.New("PLUGIN_HANDSHAKE_FAILED")
+	// errHandshakeTimeout: the worker did not answer the handshake in time; errExitedEarly: it ended during it
+	errHandshakeTimeout = errors.New("PLUGIN_HANDSHAKE_TIMEOUT")
+	errExitedEarly      = errors.New("PLUGIN_EXITED_EARLY")
+	errKilledEarly      = errors.New("PLUGIN_KILLED_EARLY")
+
+	// handshakeTimeout bounds the start of a worker; tests shorten it.
+	handshakeTimeout = 60 * time.Second
 )
 
 // launchFailed is the outcome of a stage whose worker could not be started. A stage that was told to stop
@@ -111,6 +118,12 @@ func launchFailed(ctx context.Context, err error) sched.StageOutcome {
 	switch {
 	case ctx.Err() != nil:
 		return sched.StageOutcome{Kind: sched.Cancelled}
+	case errors.Is(err, errHandshakeTimeout):
+		return failed("PLUGIN_HANDSHAKE_TIMEOUT")
+	case errors.Is(err, errKilledEarly):
+		return failed("PLUGIN_KILLED_EARLY")
+	case errors.Is(err, errExitedEarly):
+		return failed("PLUGIN_EXITED_EARLY")
 	case errors.Is(err, errHandshake):
 		return failed("PLUGIN_HANDSHAKE_FAILED")
 	}
@@ -143,11 +156,29 @@ func (e *Engine) launchWith(ctx context.Context, p plugin, args []string, files 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errSpawn, err)
 	}
-	ictx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ictx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 	if err = w.Session.Initialize(ictx, p.id.ID, p.id.Version, e.ws.Generation()); err != nil {
+		// which of the three it was is all that is said: the worker's diagnostics are discarded (they may
+		// hold document values), so the reason code is what makes an occasional failure traceable
+		cause := errHandshake
+		switch {
+		case errors.Is(err, host.ErrHandshakeMismatch):
+			// it answered, as something else; it ends because the host closed the session
+		case ictx.Err() != nil && ctx.Err() == nil:
+			cause = errHandshakeTimeout
+		default:
+			select {
+			case <-w.Done(): // its pipe closed because it ended
+				cause = errExitedEarly
+				if w.Signalled() {
+					cause = errKilledEarly // something ended it: the system, or a reclaim
+				}
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
 		w.Terminate(time.Second)
-		return nil, fmt.Errorf("%w: %v", errHandshake, err)
+		return nil, fmt.Errorf("%w: %v", cause, err)
 	}
 	return w, nil
 }

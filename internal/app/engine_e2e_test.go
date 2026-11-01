@@ -11,14 +11,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jorben/tacet/internal/extract"
+	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/lifecycle"
 	"github.com/jorben/tacet/internal/platform"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -1526,5 +1531,844 @@ func TestResumeJoinsAnInspectedFileToItsStartedBatch(t *testing.T) {
 	}
 	if now.Files[0].State != "completed" {
 		t.Fatalf("the file must be moved on by Resume: %+v", now.Files)
+	}
+}
+
+// countColours reports how many pixels of the first page of a PDF hold each of the given colours.
+const countColours = `
+import sys, pypdfium2 as pdfium
+d = pdfium.PdfDocument(sys.argv[1])
+img = d[0].render(scale=200 / 72).to_pil().convert('RGB')
+want = [tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)) for c in sys.argv[2:]]
+counts = dict.fromkeys(want, 0)
+for p in (img.get_flattened_data() if hasattr(img, 'get_flattened_data') else img.getdata()):
+    if p in counts:
+        counts[p] += 1
+print(' '.join(str(counts[w]) for w in want))
+`
+
+// The redaction style chosen in the settings is frozen when the batch starts (FR-29, INV-03): the written
+// PDF and its validation use it, and a change of the setting afterwards does not reach the running batch.
+func TestThePDFIsPaintedInTheStyleFrozenAtStart(t *testing.T) {
+	r, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	pdf := filepath.Join(in, "a.pdf")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", pdfFixture, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
+		t.Skipf("cannot build the fixture: %v %s", err, o)
+	}
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	s := settingsWith(7, "comfort")
+	s.RedactStyle = "plaid"
+	if _, err := e.SettingsSave(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{pdf}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	s.RedactStyle = "rainbow" // too late for this batch
+	if _, err = e.SettingsSave(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" {
+		t.Fatalf("%+v %v", st, err)
+	}
+	// plaid base and rainbow red; black is not counted, the rest of the page is black text
+	o, err := exec.Command(py, "-X", "utf8", "-c", countColours, filepath.Join(out, st.Files[0].Output), "8fd3bc", "ff6b6b").Output()
+	if err != nil {
+		t.Fatalf("%v %s", err, o)
+	}
+	var plaid, rainbow int
+	if _, err = fmt.Sscan(string(o), &plaid, &rainbow); err != nil {
+		t.Fatalf("%q", o)
+	}
+	if plaid < 100 || rainbow != 0 {
+		t.Fatalf("plaid=%d rainbow=%d: the region must hold the style frozen at start", plaid, rainbow)
+	}
+	// the next batch starts after the change, so it is painted in the new style
+	next, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{pdf}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: next.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if next, err = e.Wait(ctx, next.ID); err != nil || next.Files[0].State != "completed" {
+		t.Fatalf("%+v %v", next, err)
+	}
+	if o, err = exec.Command(py, "-X", "utf8", "-c", countColours, filepath.Join(out, next.Files[0].Output), "8fd3bc", "ff6b6b").Output(); err != nil {
+		t.Fatalf("%v %s", err, o)
+	}
+	if _, err = fmt.Sscan(string(o), &plaid, &rainbow); err != nil || plaid != 0 || rainbow < 100 {
+		t.Fatalf("plaid=%d rainbow=%d %v: a batch started after the change uses the new style", plaid, rainbow, err)
+	}
+}
+
+// Strict mode (requirements 3.5.1): every file of the batch waits for its own confirmation, even one with
+// nothing to decide, and is exported and delivered only after it; a guided batch does not wait.
+func TestAStrictBatchDeliversAFileOnlyAfterItsOwnConfirmation(t *testing.T) {
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	a, b := filepath.Join(in, "a.txt"), filepath.Join(in, "b.txt")
+	os.WriteFile(a, []byte("电话 13812345678\n"), 0o600)
+	os.WriteFile(b, []byte("没有敏感内容\n"), 0o600)
+	if err := e.Start(ctx, StartRequest{Batch: "b0001", Mode: "unattended"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unattended is not offered: %v", err)
+	}
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{a, b}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.ConfirmFile(ctx, st.Files[0].ID); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("nothing to confirm before the batch started: %v", err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true, Mode: "strict"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range st.Files {
+		if f.State != "awaiting_review" || !f.Confirm || f.Pending != 1 {
+			t.Fatalf("every file waits for its confirmation: %+v", st.Files)
+		}
+	}
+	if st.Delivered != 0 || dirEntries(out) != 0 {
+		t.Fatalf("nothing is delivered before a confirmation: %+v", st)
+	}
+	if err = e.ConfirmFile(ctx, st.Files[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.ConfirmFile(ctx, st.Files[1].ID); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("a file is confirmed once: %v", err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st.Files[1].State != "completed" || st.Files[1].Confirm || st.Files[0].State != "awaiting_review" || !st.Files[0].Confirm || st.Delivered != 1 {
+		t.Fatalf("only the confirmed file is delivered: %+v", st.Files)
+	}
+	if err = e.ConfirmFile(ctx, st.Files[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Delivered != 2 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
+	if strings.Contains(string(raw), "13812345678") {
+		t.Fatalf("not redacted: %q", raw)
+	}
+	// a guided batch of the same files does not wait
+	g, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{a, b}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: g.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if g, err = e.Wait(ctx, g.ID); err != nil || g.Delivered != 2 || g.Files[0].Confirm {
+		t.Fatalf("%+v %v", g, err)
+	}
+}
+
+// fileKey keeps the workspace key in a file, so that a second process opens the same workspace.
+type fileKey struct{ path string }
+
+func (k fileKey) Load() ([]byte, error) {
+	b, err := os.ReadFile(k.path)
+	if err != nil {
+		return nil, keys.ErrKeyNotFound
+	}
+	return b, nil
+}
+func (k fileKey) Save(b []byte) error { return os.WriteFile(k.path, b, 0o600) }
+func (k fileKey) Delete() error       { return os.Remove(k.path) }
+
+const crashEnv = "TACET_APP_TEST_PUBLISH_CRASH"
+
+// TestPublishCrashHelper runs a batch in its own process and stops it where publishing has put the file in
+// place but not yet recorded the delivery; the parent kills it there.
+func TestPublishCrashHelper(t *testing.T) {
+	dir := os.Getenv(crashEnv)
+	if dir == "" {
+		t.Skip("helper process only")
+	}
+	r, py := root(t)
+	pack, _ := os.ReadFile(filepath.Join(r, "resources", "rules", "cn-office-v1.json"))
+	e, err := Open(context.Background(), Options{Dir: filepath.Join(dir, "ws"), UserKey: fileKey{filepath.Join(dir, "key")}, Python: py,
+		EnvDigest: "sha256:" + strings.Repeat("e", 64), RulePack: pack, Create: true, Platform: "darwin-arm64",
+		Plugins: []Builtin{builtin(t, r, "format-text", "tacet_format_text", "txt")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.pub.Placed = func() {
+		os.WriteFile(filepath.Join(dir, "placed"), nil, 0o600)
+		select {} // killed here
+	}
+	ctx := context.Background()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{filepath.Join(dir, "in", "a.txt")}, OutputDir: filepath.Join(dir, "out")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Minute)
+}
+
+// A crash after the file was put in place and before its delivery was recorded (architecture 6.1): the next
+// start records the delivery from the file found there, and resuming the batch finishes it without
+// publishing the file a second time, which would be refused as a name conflict.
+func TestAPublishInterruptedByACrashIsSettledAndNotRepeated(t *testing.T) {
+	r, py := root(t)
+	dir := t.TempDir()
+	in, out := filepath.Join(dir, "in"), filepath.Join(dir, "out")
+	os.MkdirAll(in, 0o700)
+	os.MkdirAll(out, 0o700)
+	os.WriteFile(filepath.Join(in, "a.txt"), []byte("电话 13812345678\n"), 0o600)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPublishCrashHelper$", "-test.timeout=4m")
+	cmd.Env = append(os.Environ(), crashEnv+"="+dir)
+	var log strings.Builder
+	cmd.Stdout, cmd.Stderr = &log, &log
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	gone := make(chan struct{})
+	go func() { cmd.Wait(); close(gone) }()
+	defer func() { cmd.Process.Kill(); <-gone }()
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "placed")); err == nil {
+			break
+		}
+		select {
+		case <-gone:
+			t.Fatalf("the helper ended before publishing:\n%s", log.String())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	cmd.Process.Signal(syscall.SIGKILL) // the crash
+	<-gone
+	placed, _ := os.ReadDir(out)
+	if len(placed) != 1 {
+		t.Fatalf("the file is in place before the crash: %v", placed)
+	}
+	before, _ := os.ReadFile(filepath.Join(out, placed[0].Name()))
+
+	pack, _ := os.ReadFile(filepath.Join(r, "resources", "rules", "cn-office-v1.json"))
+	e, err := Open(ctx, Options{Dir: filepath.Join(dir, "ws"), UserKey: fileKey{filepath.Join(dir, "key")}, Python: py,
+		EnvDigest: "sha256:" + strings.Repeat("e", 64), RulePack: pack, Platform: "darwin-arm64",
+		Plugins: []Builtin{builtin(t, r, "format-text", "tacet_format_text", "txt")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if err = e.Resume(ctx, "b0001"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Wait(ctx, "b0001")
+	if err != nil || st.Files[0].State != "completed" || st.Delivered != 1 || st.ExitCode != 0 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if st.Files[0].Output != placed[0].Name() {
+		t.Fatalf("delivered %q, placed %q", st.Files[0].Output, placed[0].Name())
+	}
+	after, _ := os.ReadFile(filepath.Join(out, placed[0].Name()))
+	if string(after) != string(before) || strings.Contains(string(after), "13812345678") {
+		t.Fatalf("the delivered file changed or is not redacted: %q", after)
+	}
+	entries, _ := os.ReadDir(out)
+	for _, x := range entries {
+		if x.Name() != placed[0].Name() && !strings.Contains(x.Name(), "report") {
+			t.Fatalf("a second copy or a leftover appeared: %v", entries)
+		}
+	}
+}
+
+// While stages run the platform is told that work the person started is going on, and told it no longer is
+// once nothing has run for a moment; closing revokes it at once (architecture 6.2).
+func TestActivityIsDeclaredWhileWorkRunsAndRevokedAfter(t *testing.T) {
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	var mu sync.Mutex
+	var calls []bool
+	e := openEngineWith(t, ws, &memKey{}, true, func(o *Options) {
+		o.Activity = func(on bool) error { mu.Lock(); calls = append(calls, on); mu.Unlock(); return nil }
+	})
+	seen := func() []bool { mu.Lock(); defer mu.Unlock(); return append([]bool(nil), calls...) }
+	defer e.Close() // a failure before the explicit Close below must not leave the engine and its workers running
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	var paths []string
+	for i := 0; i < 3; i++ {
+		p := filepath.Join(in, fmt.Sprintf("f%d.txt", i))
+		os.WriteFile(p, []byte("电话 13812345678\n"), 0o600)
+		paths = append(paths, p)
+	}
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: paths, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Delivered != 3 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if got := seen(); len(got) != 1 || !got[0] {
+		t.Fatalf("declared once while the batch ran, not flipped between its stages: %v", got)
+	}
+	time.Sleep(activityLinger + time.Second)
+	if got := seen(); !reflect.DeepEqual(got, []bool{true, false}) {
+		t.Fatalf("revoked once nothing runs: %v", got)
+	}
+	// work again, then close while it may still be declared: closing revokes it
+	again, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: paths[:1], OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: again.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Wait(ctx, again.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.Close()
+	if got := seen(); !reflect.DeepEqual(got, []bool{true, false, true, false}) {
+		t.Fatalf("closing revokes the declaration at once: %v", got)
+	}
+}
+
+// A system shutdown or logout in the middle of a batch (architecture 6.2): only stop, reclaim, release —
+// quickly; the stages that were stopped are not recorded as failed, nothing of this workspace keeps
+// running, and the next start resumes the batch to the end.
+func TestASystemShutdownStopsAtOnceAndTheBatchResumesAfterwards(t *testing.T) {
+	ws, in, out, key := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir(), &memKey{}
+	var mu sync.Mutex
+	var steps []string
+	e := openEngineWith(t, ws, key, true, func(o *Options) {
+		o.Trace = func(s lifecycle.Status) {
+			if s.Done {
+				mu.Lock()
+				steps = append(steps, s.Step)
+				mu.Unlock()
+			}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	var paths []string
+	for i := 0; i < 6; i++ {
+		var b strings.Builder
+		for j := 0; j < 800; j++ {
+			fmt.Fprintf(&b, "第%d行 联系 138%08d\n", j, (i*7+j)%100000000)
+		}
+		p := filepath.Join(in, fmt.Sprintf("f%d.txt", i))
+		os.WriteFile(p, []byte(b.String()), 0o600)
+		paths = append(paths, p)
+	}
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: paths, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	working := false
+	for deadline := time.Now().Add(time.Minute); !working && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		fs, _ := e.Files(ctx, st.ID, 0, 10)
+		for _, f := range fs {
+			working = working || f.State == "extracting_detecting" || f.State == "exporting" || f.State == "validating"
+		}
+	}
+	if !working {
+		t.Skip("setup: no stage was running")
+	}
+	mu.Lock()
+	steps = nil
+	mu.Unlock()
+	// the stages of the reclaimed workers get to report before the workspace is released, as they may
+	e.afterReap = func() { time.Sleep(time.Second) }
+	started := time.Now()
+	if err = e.CloseForSystem(); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(started); took > 4*time.Second {
+		t.Fatalf("a shutdown exit took %v", took)
+	}
+	mu.Lock()
+	got := append([]string(nil), steps...)
+	mu.Unlock()
+	if want := []string{lifecycle.ExitStopDispatch, lifecycle.ExitReap, lifecycle.ExitRelease}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shutdown order %v, want %v", got, want)
+	}
+	if n, err := platform.ReapMarkedPrefix(workspacePrefix(ws)); err != nil || n != 0 {
+		t.Fatalf("workers of this workspace still running after the shutdown exit: %d %v", n, err)
+	}
+	e = openEngine(t, ws, key, false)
+	defer e.Close()
+	after, err := e.Status(ctx, st.ID, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range after.Files {
+		if f.State == "failed" || f.State == "unprocessable" || f.State == "blocked" {
+			t.Fatalf("a stage stopped by the shutdown was recorded against the file: %+v", f)
+		}
+	}
+	if err = e.Resume(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if after, err = e.Wait(ctx, st.ID); err != nil || after.Delivered != 6 || after.ExitCode != 0 {
+		now, _ := e.Status(context.Background(), st.ID, 200)
+		t.Fatalf("%+v %v\nnow: %+v", after, err, now.Files)
+	}
+}
+
+// A plugin call that outlives its stage's deadline (requirements 5.4) fails the file with that reason, not
+// with what the module made of the ended stream, and the file can be processed again.
+func TestAStageThatOutlivesItsDeadlineFailsTheFileAndCanBeRetried(t *testing.T) {
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	var short atomic.Bool
+	short.Store(true)
+	e.deadline = func(k kernel.StageKind, size int64) time.Duration {
+		if k == kernel.StageExtractDetect && short.Load() {
+			return 20 * time.Millisecond
+		}
+		return stageDeadline(k, size)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	var b strings.Builder
+	for j := 0; j < 800; j++ {
+		fmt.Fprintf(&b, "第%d行 联系 138%08d\n", j, j)
+	}
+	p := filepath.Join(in, "big.txt")
+	os.WriteFile(p, []byte(b.String()), 0o600)
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "failed" || st.Files[0].Detail != "STAGE_DEADLINE_EXCEEDED" {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+	short.Store(false)
+	if err = e.Retry(ctx, st.ID, []string{st.Files[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Delivered != 1 {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+}
+
+// "跳过此文件" (requirements 2.3): a file that waits for the person (its confirmation, its password) can be
+// left out; it is not exported, the batch ends without it, and a file that is not waiting is refused.
+func TestAWaitingFileCanBeSkippedAndIsNotExported(t *testing.T) {
+	r, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	locked := filepath.Join(in, "enc.docx")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(r, "python", "tests"), locked).CombinedOutput(); err != nil {
+		t.Skipf("cannot build the fixture: %v %s", err, o)
+	}
+	a, b := filepath.Join(in, "a.txt"), filepath.Join(in, "b.txt")
+	os.WriteFile(a, []byte("电话 13812345678\n"), 0o600)
+	os.WriteFile(b, []byte("电话 13900001111\n"), 0o600)
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{a, b, locked}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Skip(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("%v", err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true, Mode: "strict"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st.Files[0].State != "awaiting_review" || st.Files[2].Status != "blocked" {
+		t.Fatalf("%+v", st.Files)
+	}
+	// one file is confirmed and delivered first, so that skipping is what ends the batch
+	if err = e.ConfirmFile(ctx, st.Files[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[1].State != "completed" {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+	if err = e.Skip(ctx, st.Files[0].ID); err != nil { // waits for its confirmation
+		t.Fatal(err)
+	}
+	if err = e.Skip(ctx, st.Files[2].ID); err != nil { // waits for its password
+		t.Fatal(err)
+	}
+	if err = e.Skip(ctx, st.Files[0].ID); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("a skipped file is not skipped again: %v", err)
+	}
+	// read before Wait, which settles a batch itself: the window never calls it, so Skip must end the batch
+	unf, err := e.Unfinished(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range unf {
+		if u.ID == st.ID {
+			t.Fatalf("the batch ends once its last waiting file is skipped: %+v", u)
+		}
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st.Files[0].State != "skipped" || st.Files[2].State != "skipped" || st.Files[1].State != "completed" || st.Delivered != 1 {
+		t.Fatalf("%+v", st.Files)
+	}
+	entries, _ := os.ReadDir(out)
+	for _, x := range entries {
+		if x.Name() != st.Files[1].Output && !strings.Contains(x.Name(), "report") {
+			t.Fatalf("a skipped file was exported: %v", entries)
+		}
+	}
+	t.Logf("phase=%s exit=%d counts=%v", st.Phase, st.ExitCode, st.Counts)
+	// a file being worked on is not skipped
+	c := filepath.Join(in, "c.txt")
+	os.WriteFile(c, []byte("电话 13700002222\n"), 0o600)
+	g, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{c}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Skip(ctx, g.Files[0].ID); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("a file still being inspected is not skipped: %v", err)
+	}
+}
+
+// FR-22 undo of a manual redaction, through the real engine: the selection made by hand is taken back with
+// its decision, the file is resolved again, and the exported text keeps what was selected while the rest
+// is redacted as before. A detected finding cannot be withdrawn.
+func TestAManualRedactionCanBeTakenBack(t *testing.T) {
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	p := filepath.Join(in, "m.txt")
+	os.WriteFile(p, []byte("王小明 电话 13812345678\n"), 0o600)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "quick", Files: []string{p}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	job := st.Files[0].ID
+	doc, err := e.Document(ctx, job, 0, 10)
+	if err != nil || len(doc) != 1 {
+		t.Fatal(doc, err)
+	}
+	manual, err := e.AddManual(ctx, job, doc[0].Seq, 0, 3, "person")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	fs, _ := e.Findings(ctx, job, 0, 50)
+	if len(fs) != 2 {
+		t.Fatalf("%+v", fs)
+	}
+	var detected int64
+	for _, f := range fs {
+		if f.ID != manual {
+			detected = f.ID
+		}
+	}
+	if err = e.WithdrawManual(ctx, job, detected); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("a detected finding is not withdrawn: %v", err)
+	}
+	if err = e.WithdrawManual(ctx, "j999999", manual); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("%v", err)
+	}
+	if err = e.WithdrawManual(ctx, job, manual); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.WithdrawManual(ctx, job, manual); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("taken back twice: %v", err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fs, _ = e.Findings(ctx, job, 0, 50); len(fs) != 1 || fs[0].ID != detected {
+		t.Fatalf("%+v", fs)
+	}
+	if err = e.Publish(ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" {
+		t.Fatalf("%+v %v", st, err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
+	if s := string(raw); !strings.Contains(s, "王小明") || strings.Contains(s, "13812345678") {
+		t.Fatalf("the name is kept once the selection was taken back, the number is still redacted: %q", s)
+	}
+}
+
+// a text PDF whose page also draws a gray image (50x50 pt at 100,100 of a 300x200 page)
+const imagePDF = `
+import sys
+sys.path.insert(0, sys.argv[1])
+from test_pdf_probe_unlock import image_pdf
+open(sys.argv[2], 'wb').write(image_pdf('13812345678'))
+`
+
+// countGray counts the pixels of the gray of the image, on the first page at 200 dpi
+const countGray = `
+import sys, pypdfium2 as pdfium
+d = pdfium.PdfDocument(sys.argv[1])
+img = d[0].render(scale=200 / 72).to_pil().convert('RGB')
+px = img.get_flattened_data() if hasattr(img, 'get_flattened_data') else img.getdata()
+print(sum(1 for p in px if p == (128, 128, 128)))
+`
+
+// Requirements 4.2: by default the images on a text PDF page are painted over ("已移除") and the file is
+// delivered in full; the number in the text is redacted as before.
+func TestImagesOnAPDFPageArePaintedOverByDefault(t *testing.T) {
+	r, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	pdf := filepath.Join(in, "a.pdf")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", imagePDF, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
+		t.Skipf("cannot build the fixture: %v %s", err, o)
+	}
+	if o, err := exec.Command(py, "-X", "utf8", "-c", countGray, pdf).Output(); err != nil || strings.TrimSpace(string(o)) == "0" {
+		t.Fatalf("setup: the input shows its image: %q %v", o, err)
+	}
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{pdf}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.ExitCode != 0 {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+	got := filepath.Join(out, st.Files[0].Output)
+	o, err := exec.Command(py, "-X", "utf8", "-c", countGray, got).Output()
+	if err != nil || strings.TrimSpace(string(o)) != "0" {
+		t.Fatalf("the image is painted over in the output: %q %v", o, err)
+	}
+	raw, _ := os.ReadFile(got)
+	if bytes.Contains(raw, []byte("13812345678")) {
+		t.Fatal("the number reached the output")
+	}
+}
+
+// a text PDF laid out as a table: rules, a frame and cell shading around a number
+const tablePDF = `
+import sys
+sys.path.insert(0, sys.argv[1])
+from pdf_fixtures import build
+body = b'0.9 g 10 95 280 20 re f 0 g 0.5 w 10 80 280 50 re S 10 95 m 290 95 l 150 80 m 150 130 l S BT /F1 12 Tf 20 100 Td (13812345678) Tj ET'
+open(sys.argv[2], 'wb').write(build(['13812345678'], extra={11: ('<< ', body)}))
+`
+
+// Table rules and shading do not keep a text PDF from being delivered; the number in the cell is redacted.
+func TestATextPDFLaidOutAsATableIsDelivered(t *testing.T) {
+	r, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	pdf := filepath.Join(in, "t.pdf")
+	if o, err := exec.Command(py, "-X", "utf8", "-c", tablePDF, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
+		t.Skipf("cannot build the fixture: %v %s", err, o)
+	}
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{pdf}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Findings != 1 {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+}
+
+// locatedDocx writes a DOCX whose body is argv[2] (WordprocessingML of the body).
+const locatedDocx = `
+import sys, zipfile
+NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+with zipfile.ZipFile(sys.argv[1], 'w') as z:
+    z.writestr('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+    z.writestr('_rels/.rels', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+    z.writestr('word/document.xml', '<w:document xmlns:w="%s"><w:body>%s</w:body></w:document>' % (NS, sys.argv[2]))
+`
+
+// Requirements 4.3 and the "DOCX 定位" acceptance: each unit of a DOCX comes with where it is — the page its
+// saved markers put it on (approximate), the nearest heading and, in a table, its cell — and a DOCX that
+// is all table still goes through to delivery with its cells located.
+func TestDOCXUnitsAreLocatedByPageSectionAndCell(t *testing.T) {
+	_, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	marked := filepath.Join(in, "marked.docx")
+	body := `<w:p><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:r><w:t>第一章</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>电话 13812345678</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:lastRenderedPageBreak/><w:t>邮箱 a@b.cn</w:t></w:r></w:p>`
+	table := filepath.Join(in, "table.docx")
+	cells := `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>姓名</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>13900001111</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`
+	for _, f := range [][2]string{{marked, body}, {table, cells}} {
+		if o, err := exec.Command(py, "-X", "utf8", "-c", locatedDocx, f[0], f[1]).CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, o)
+		}
+	}
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{marked, table}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := e.Document(ctx, st.Files[0].ID, 0, 10)
+	if err != nil || len(doc) != 3 {
+		t.Fatalf("%+v %v", doc, err)
+	}
+	type want struct{ page, section int }
+	for i, w := range []want{{1, 1}, {1, 1}, {2, 1}} {
+		if l := doc[i].Location; l == nil || l.PageHint != w.page || l.Section != w.section || l.Table != nil {
+			t.Fatalf("unit %d: %+v", i, doc[i].Location)
+		}
+	}
+	tdoc, err := e.Document(ctx, st.Files[1].ID, 0, 10)
+	if err != nil || len(tdoc) != 2 {
+		t.Fatalf("%+v %v", tdoc, err)
+	}
+	if l := tdoc[1].Location; l == nil || l.PageHint != 0 || l.Table == nil || *l.Table != (extract.TableCell{Index: 1, Row: 1, Col: 2}) {
+		t.Fatalf("the cell of the number: %+v", tdoc[1].Location)
+	}
+	if st.Files[1].State != "completed" || st.Files[0].State != "completed" {
+		t.Fatalf("both are delivered, page markers and headings included: %+v", st.Files)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
+	if text := docxText(t, filepath.Join(out, st.Files[0].Output)); strings.Contains(text, "13812345678") || !strings.Contains(text, "lastRenderedPageBreak") || !strings.Contains(text, "outlineLvl") {
+		t.Fatalf("redacted, markers kept: %d bytes", len(raw))
+	}
+}
+
+// A DOCX shaped like one Word saves (styles, settings, font table, web settings, theme) is delivered in
+// full: those parts are inspected as structure and kept as they were; one holding a document variable stays
+// a gap, which the default policy removes, and its removal is what the report says.
+func TestADOCXAsWordSavesItIsDeliveredWithItsStructureKept(t *testing.T) {
+	r, py := root(t)
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	gen := filepath.Join(r, "python", "tests", "docx_wordlike.py")
+	plain, withVar := filepath.Join(in, "w.docx"), filepath.Join(in, "v.docx")
+	for _, c := range [][]string{{plain}, {withVar, "", `<w:docVars><w:docVar w:name="client" w:val="13812345678"/></w:docVars>`}} {
+		if o, err := exec.Command(py, append([]string{"-X", "utf8", "-I", gen}, c...)...).CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, o)
+		}
+	}
+	e := openEngine(t, ws, &memKey{}, true)
+	defer e.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{plain, withVar}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" {
+		t.Fatalf("%+v %v", st.Files, err)
+	}
+	zr, err := zip.OpenReader(filepath.Join(out, st.Files[0].Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	src, _ := zip.OpenReader(plain)
+	defer src.Close()
+	read := func(z *zip.ReadCloser, name string) string {
+		for _, f := range z.File {
+			if f.Name == name {
+				rc, _ := f.Open()
+				b, _ := io.ReadAll(rc)
+				rc.Close()
+				return string(b)
+			}
+		}
+		return ""
+	}
+	for _, name := range []string{"word/styles.xml", "word/settings.xml", "word/fontTable.xml", "word/webSettings.xml", "word/theme/theme1.xml", "word/numbering.xml"} {
+		if got := read(zr, name); got == "" || got != read(src, name) {
+			t.Fatalf("%s is kept as it was", name)
+		}
+	}
+	if strings.Contains(read(zr, "word/document.xml"), "13812345678") {
+		t.Fatal("the number reached the output")
+	}
+	// the document properties name the author and the company: not inspected, removed by default, and
+	// nothing in the package refers to them any more
+	if read(src, "docProps/core.xml") == "" {
+		t.Fatal("setup: the input has its document properties")
+	}
+	for _, name := range []string{"docProps/core.xml", "docProps/app.xml"} {
+		if read(zr, name) != "" {
+			t.Fatalf("%s is removed", name)
+		}
+	}
+	if rels, types := read(zr, "_rels/.rels"), read(zr, "[Content_Types].xml"); strings.Contains(rels, "docProps") || strings.Contains(types, "docProps") || !strings.Contains(rels, "word/document.xml") {
+		t.Fatalf("references to the removed parts stay: %s %s", rels, types)
+	}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		if strings.Contains(string(b), "王小明") || strings.Contains(string(b), "示例科技") {
+			t.Fatalf("the author or the company reached %s", f.Name)
+		}
+	}
+	// the document variable keeps settings.xml a gap: by default it is removed, never copied with the number
+	if st.Files[1].State != "completed" {
+		t.Fatalf("%+v", st.Files[1])
+	}
+	v, err := zip.OpenReader(filepath.Join(out, st.Files[1].Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	if read(v, "word/settings.xml") != "" || read(v, "word/styles.xml") == "" {
+		t.Fatal("only the part with the document variable is removed")
 	}
 }

@@ -174,8 +174,13 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 
 // renderStyle is the concrete style a task is frozen with: the preset's, or for "default" the application's
 // at the moment the task starts (requirements FR-29, INV-03), or black when neither names one.
+//
+// solid, diagonal and pattern are values presets were written with before the styles could be chosen (no
+// screen offered them); they follow the application's style too. mosaic is a style of its own in both.
 func renderStyle(preset, application string) string {
-	if preset != "default" && preset != "" {
+	switch preset {
+	case "", "default", "solid", "diagonal", "pattern":
+	default:
 		return preset
 	}
 	if application != "" {

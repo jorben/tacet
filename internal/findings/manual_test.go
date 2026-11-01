@@ -226,3 +226,50 @@ func TestFilteredPagesAreServedInIdOrderWithoutSorting(t *testing.T) {
 		}
 	}
 }
+
+// FR-22 undo: a withdrawn manual finding disappears from every reading and the result version rises; it
+// is withdrawn once, and only manual findings of the same job can be withdrawn.
+func TestAWithdrawnManualFindingIsNoLongerVisible(t *testing.T) {
+	f := setup(t)
+	f.add("j1", "a1", "b1", item("u1", 0, "phone", kernel.SourceRule, "13812345678"))
+	f.seal("j1", "a1", "b1")
+	var id int64
+	if err := f.do(func(tx store.Tx) (err error) {
+		id, _, err = f.repo.AddManual(tx, "j1", "b1", "req1", manual("u2", 5))
+		return
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rule := f.page(Filter{Job: "j1", Sources: []kernel.FindingSource{kernel.SourceRule}}, 0, 10)[0].ID
+	for name, try := range map[string]func(tx store.Tx) error{
+		"a rule finding": func(tx store.Tx) error { _, err := f.repo.WithdrawManual(tx, "j1", rule); return err },
+		"another job":    func(tx store.Tx) error { _, err := f.repo.WithdrawManual(tx, "j2", id); return err },
+		"no such id":     func(tx store.Tx) error { _, err := f.repo.WithdrawManual(tx, "j1", id+100); return err },
+	} {
+		if err := f.do(try); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	var v uint64
+	if err := f.do(func(tx store.Tx) (err error) { v, err = f.repo.WithdrawManual(tx, "j1", id); return }); err != nil || v != 3 {
+		t.Fatalf("%v v%d", err, v)
+	}
+	if got := f.page(Filter{Job: "j1"}, 0, 10); len(got) != 1 || got[0].ID != rule {
+		t.Fatalf("%+v", got)
+	}
+	var byID []Finding
+	var n int
+	var rv uint64
+	f.do(func(tx store.Tx) (err error) {
+		byID, _ = f.repo.ByIDs(tx, "j1", []int64{id})
+		n, _ = f.repo.Count(tx, Filter{Job: "j1"})
+		rv, err = f.repo.ResultVersion(tx, "j1")
+		return
+	})
+	if len(byID) != 0 || n != 1 || rv != 3 {
+		t.Fatalf("byID=%v count=%d version=%d", byID, n, rv)
+	}
+	if err := f.do(func(tx store.Tx) error { _, err := f.repo.WithdrawManual(tx, "j1", id); return err }); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("withdrawn twice: %v", err)
+	}
+}

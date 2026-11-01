@@ -48,6 +48,7 @@ type Opener func(ctx context.Context) (app.Core, error)
 // and verdicts come from the same core the CLI uses.
 type Service struct {
 	closeReady atomic.Bool
+	ending     atomic.Bool // the system is logging out or shutting down
 
 	open Opener
 	host Host
@@ -132,6 +133,7 @@ func (s *Service) engine() (app.Core, error) {
 	if n, ok := core.(app.Notifier); ok && s.host != nil {
 		s.unsub = n.Subscribe(s.changed)
 	}
+	go s.refreshTray() // what survived the last run shows in the tray at once
 	return core, nil
 }
 
@@ -145,10 +147,13 @@ func (s *Service) close() error {
 	if unsub != nil {
 		unsub()
 	}
-	if core != nil {
-		return core.Close()
+	if core == nil {
+		return nil
 	}
-	return nil
+	if sc, ok := core.(app.SystemCloser); ok && s.ending.Load() {
+		return sc.CloseForSystem()
+	}
+	return core.Close()
 }
 
 // changed coalesces change notifications: at most one status read per batch is
@@ -185,6 +190,7 @@ func (s *Service) flushDirty() {
 		}
 		cancel()
 	}
+	s.refreshTray()
 	s.mu.Lock()
 	s.lastDur = time.Since(start)
 	again := len(s.dirty) > 0
@@ -244,6 +250,7 @@ type StartArgs struct {
 	OutputDir    string `json:"outputDir"`
 	Authorize    bool   `json:"authorize"`
 	AllowPartial bool   `json:"allowPartial"`
+	Mode         string `json:"mode,omitempty"` // "guided" (default) or "strict"
 }
 
 // ImportFiles creates a draft batch and starts the read-only inspection.
@@ -275,7 +282,7 @@ func (s *Service) Start(a StartArgs) error {
 	if err != nil {
 		return publicError(err)
 	}
-	return publicError(core.Start(context.Background(), app.StartRequest{Batch: a.Batch, Preset: a.Preset, OutputDir: a.OutputDir, Authorize: a.Authorize, AllowPartial: a.AllowPartial}))
+	return publicError(core.Start(context.Background(), app.StartRequest{Batch: a.Batch, Preset: a.Preset, OutputDir: a.OutputDir, Authorize: a.Authorize, AllowPartial: a.AllowPartial, Mode: a.Mode}))
 }
 
 // Preflight returns once every file of a draft batch has been inspected.
@@ -391,12 +398,39 @@ func (s *Service) DecideFinding(job string, finding int64, keep bool) error {
 }
 
 // DecideFindings records many decisions at once (a review's keep/redact choices).
+// SkipFile leaves one waiting file out of its batch; it is not exported.
+func (s *Service) SkipFile(job string) error {
+	core, err := s.engine()
+	if err != nil {
+		return publicError(err)
+	}
+	return publicError(core.Skip(context.Background(), job))
+}
+
+// ConfirmFile confirms one file of a strict batch for export.
+func (s *Service) ConfirmFile(job string) error {
+	core, err := s.engine()
+	if err != nil {
+		return publicError(err)
+	}
+	return publicError(core.ConfirmFile(context.Background(), job))
+}
+
 func (s *Service) DecideFindings(job string, decisions []app.FindingDecision) error {
 	core, err := s.engine()
 	if err != nil {
 		return publicError(err)
 	}
 	return publicError(core.DecideFindings(context.Background(), job, decisions))
+}
+
+// WithdrawManualRedaction undoes a manual redaction: the selection and its decision are taken back.
+func (s *Service) WithdrawManualRedaction(job string, finding int64) error {
+	core, err := s.engine()
+	if err != nil {
+		return publicError(err)
+	}
+	return publicError(core.WithdrawManual(context.Background(), job, finding))
 }
 
 // AddManualRedaction turns a selection of the document into a redacted candidate.
@@ -412,6 +446,10 @@ func (s *Service) AddManualRedaction(job string, seq, start, end int, category s
 // Shutdown ends the engine of svc. It is a function, not a method, so that Wails
 // does not bind it to the frontend.
 func Shutdown(svc *Service) error { return svc.close() }
+
+// SystemEnding records that the system is logging out, restarting or shutting down: the exit that follows
+// (Shutdown) takes the short order (architecture 6.2). Not bound: the frontend cannot call it.
+func SystemEnding(svc *Service) { svc.ending.Store(true) }
 
 // UnfinishedBatches lists what a restart left behind, so the window can offer to continue it.
 func (s *Service) UnfinishedBatches() ([]app.BatchStatus, error) {

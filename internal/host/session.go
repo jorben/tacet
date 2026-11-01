@@ -5,14 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jorben/tacet/internal/kernel"
 )
 
 var ErrProtocolSession = errors.New("PROTOCOL_SESSION_INVALID")
+
+// ErrHandshakeMismatch: the worker answered the handshake, but not as the plugin, protocol or version
+// expected. It is an ErrProtocolSession too.
+var ErrHandshakeMismatch = fmt.Errorf("%w: handshake answer does not match", ErrProtocolSession)
 
 // Transport is supplied by the supervisor. Closing must unblock reads and writes.
 // Session never starts a process, resolves a path or creates a publish grant.
@@ -21,6 +27,9 @@ type Transport interface {
 	io.Writer
 	io.Closer
 }
+
+// defaultDeadlineMS is the deadline of a call whose context has none.
+var defaultDeadlineMS = int64(600000)
 
 type Session struct {
 	transport  Transport
@@ -33,6 +42,7 @@ type Session struct {
 	next       uint64
 	generation uint64
 	ready      bool
+	stalled    atomic.Bool
 }
 
 type sessionMessage struct {
@@ -167,7 +177,7 @@ func (s *Session) Initialize(ctx context.Context, pluginID, version string, gene
 	}
 	if message.ID != id || len(message.Error) > 0 || s.schemas.Validate("initialize.schema.json", "Result", message.Result) != nil {
 		s.Close()
-		return ErrProtocolSession
+		return ErrHandshakeMismatch
 	}
 	var result struct {
 		Protocol string `json:"protocol"`
@@ -178,7 +188,7 @@ func (s *Session) Initialize(ctx context.Context, pluginID, version string, gene
 	}
 	if err = json.Unmarshal(message.Result, &result); err != nil || result.Protocol != "1.0" || result.Plugin.ID != pluginID || result.Plugin.Version != version {
 		s.Close()
-		return ErrProtocolSession
+		return ErrHandshakeMismatch
 	}
 	s.generation = generation
 	s.ready = true
@@ -232,9 +242,13 @@ func (s *Session) stream(ctx context.Context, method string, attempt kernel.Atte
 	for key, value := range params {
 		payload[key] = value
 	}
-	deadline := int64(600000)
-	if until, ok := ctx.Deadline(); ok {
-		deadline = time.Until(until).Milliseconds()
+	deadline := defaultDeadlineMS
+	b := budgetOf(ctx)
+	if b != nil {
+		deadline = b.d.Milliseconds()
+	}
+	if until, ok := ctx.Deadline(); ok && time.Until(until).Milliseconds() < deadline {
+		deadline = time.Until(until).Milliseconds() // a caller's own deadline that is shorter wins
 	}
 	if deadline <= 0 || deadline > 86400000 {
 		return StreamOutcome{}, ErrProtocolSession
@@ -259,9 +273,20 @@ func (s *Session) stream(ctx context.Context, method string, attempt kernel.Atte
 		s.Close()
 		return StreamOutcome{}, err
 	}
+	// The deadline the plugin was given is kept here too: past it and a grace the session is closed,
+	// which ends the call (and the stage) and lets the supervisor reclaim the process.
+	unwatch := startWatch(time.Duration(deadline)*time.Millisecond+stallGrace, func() { s.stalled.Store(true); s.Close() })
+	defer unwatch()
 	flow, _ := NewFlow(1024*1024, 1)
 	for {
 		message, err := s.receive(ctx)
+		if err != nil && s.stalled.Load() {
+			s.Close()
+			if b != nil {
+				b.hit.Store(true)
+			}
+			return StreamOutcome{}, ErrStalled
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				// The task context is already cancelled. Give the control write a
@@ -337,6 +362,9 @@ func (s *Session) stream(ctx context.Context, method string, attempt kernel.Atte
 		out := StreamOutcome{Status: end.Status, LastSequence: end.Last}
 		if end.Error != nil {
 			out.Code = end.Error.Code
+		}
+		if b != nil && out.Code == "DEADLINE_EXCEEDED" {
+			b.hit.Store(true)
 		}
 		return out, nil
 	}

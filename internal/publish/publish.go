@@ -70,6 +70,9 @@ type Service struct {
 	// CurrentKey returns the job's current disposition key inside tx.
 	CurrentKey func(tx store.Tx, job string) (string, error)
 	Now        func() time.Time
+	// Placed, when set, is called once the file is in place and before its delivery is recorded: the
+	// window a crash leaves for Recover. Only tests set it; it must not block in production.
+	Placed func()
 
 	rename func(temporary, destination string) error // platform.PublishExclusive; replaceable in tests
 }
@@ -338,6 +341,9 @@ func (s *Service) Publish(ctx context.Context, r Request) (Delivery, error) {
 		return zero, ErrIO
 	}
 	syncDir(r.Dir)
+	if s.Placed != nil {
+		s.Placed()
+	}
 	d := Delivery{Job: job, Version: version, Dir: r.Dir, Name: r.Name, Digest: r.Digest, Partial: partial, Atomic: atomic}
 	if err = s.Commit(bg, func(tx store.Tx) error { return s.markPublished(tx, id, d) }); err != nil {
 		// The file is in place and the intent is still "prepared": Recover finishes it.
