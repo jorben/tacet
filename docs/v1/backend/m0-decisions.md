@@ -67,3 +67,81 @@ Jorben 决定先进入 task-3，M0 中依赖外部环境或授权的证据挂账
 9. 首版不开放自动更新。
 10. 首版随包提供固定模型，不提供下载。
 延期不取消 CORE-01 至 CORE-07 与 INV 约束；延期项在界面、报告与追踪表中显式标注，不以模拟结果代替。注意：目标原文的成功标准仍包含 Windows x64 与上述各项，范围调整本身不修改目标文本。
+
+## 可选 GPU 加速后端（2026-11-01，用户决定）
+
+Jorben 发现 Apple Silicon 上推理始终是 CPU，要求检查。原因：INT8 清单固定 `CPUExecutionProvider`；而 INT8 图的主体算子（`MatMulInteger`、`QAttention`、`DynamicQuantizeLinear`、`SkipLayerNormalization`）Core ML 都不支持，强行启用时 273 个节点只接管 90 个、切成 51 段，每窗口反而从 55 ms 变为 84–90 ms，logit 最大偏差 0.42。上游同一 revision 的 `fp16/model_fp16_static512.onnx`（静态 512 长度）可被 Core ML 整图接管（496/496 节点、1 段）。本机实测（Apple M4，ONNX Runtime 1.31.1，2 线程，512 token 窗口，合成文本，单次运行而非分布）：
+
+| 构建 · 后端 | 每窗口中位 | 加载 | 峰值 RSS |
+| --- | --- | --- | --- |
+| INT8 · CPU（基线） | 52.7 ms | 0.03 s | 115 MiB |
+| FP16 · CPU | 168 ms | 0.04 s | — |
+| FP16 · Core ML `CPUAndGPU` | 10.3 ms | 首次 15.8 s（编译），缓存后 0.05 s | 首次 1837 MiB，之后 310 MiB |
+| FP16 · Core ML `ALL` | 12.6 ms | 首次 22.9 s | — |
+| FP16 · Core ML `CPUAndNeuralEngine` | 25.2 ms | 首次 14.6 s | — |
+
+FP16 与 INT8 在该文本上的逐 token 标签一致率 99.89%；Core ML 与 FP16 CPU 的 logit 最大差 0.007。这不是质量评测或校准。
+
+决定（用户选择）：作为**可选加速后端**接入，CPU INT8 仍是基线与默认。
+
+- 设置页开关“GPU 加速”，仅当安装包含 FP16 构建（`resources/models/astrlink-guard-fp16.json` + 模型目录，darwin-arm64）时出现；默认关闭。
+- 开启时先在后台加载 FP16 构建（首次编译 Core ML 并缓存）并用内置固定样例试运行，必须以推荐分数找到样例中的人名、电话与邮箱，通过后才写入设置；失败保持关闭并给出原因码（`ACCEL_PREPARE_FAILED` / `ACCEL_TRIAL_FAILED`）。与文档处理互斥：模型 worker 槽位被占用时拒绝（`MODEL_BUSY`），界面在文档处理时也不发起。
+- 批次开始时把实际执行的构建（模型 ID、清单摘要、执行提供器）冻结进快照 `detect.execution`；检测阶段按冻结值启动，构建缺失或摘要不符则该文件失败（`ACCEL_UNAVAILABLE`），不回退到 CPU、不静默替换。设置变化只影响之后开始的批次。
+- 检测插件按清单的 `backend` 选择执行提供器，加载后核对实际生效的提供器（ONNX Runtime 会静默丢弃不可用的提供器），不符即拒绝加载。
+- Core ML 编译缓存位于工作区 `cache/coreml/<清单摘要前 16 位>/ort-<版本>`，权限 0700，非符号链接；按摘要与运行时版本分目录，构建变化不会命中旧缓存。
+
+局限与未做：编译缓存本身不做摘要校验——缓存在用户私有工作区内，与工作区同信任级别，架构 8 节所述面向不受信任模型的“编译缓存隔离”仍延后；首次编译峰值约 1.8 GiB，在 8 GiB R1 设备上超出 2 GiB 预算，靠与文档处理互斥规避，未在 R1 上实测；FP16 构建未做逐类别评测与校准（沿用上游推荐 0.8 作为试运行门限）；FP16 资源（约 74 MB）尚未进入发布打包（INT8 同样未打包）；Intel Mac 与 Windows 不提供该开关。
+
+## 模型按需下载与 OpenAI Privacy Filter（2026-11-01，用户决定）
+
+Jorben 决定：模型不进发布包，由用户安装应用后在插件页手动下载；新增 `openai/privacy-filter` 作为可选模型。本节**取代**上文“范围决定（2026-11-01）”第 10 项“首版随包提供固定模型，不提供下载”。
+
+**下载**
+
+- 来源：Hugging Face，按完整性清单固定的 revision 拼地址 `https://huggingface.co/<repository>/resolve/<revision>/<path>`。清单（`resources/models/*.json`，随应用签名）列出每个文件的大小与 SHA256；`internal/models` 的状态机负责暂存、断点续传（强 ETag + If-Range）、逐文件校验、整包校验后原子安装、试运行。校验失败的半成品不保留。
+- 网络只经 netgate，在用户点击“下载模型”后发起，与文档处理互斥（处理中拒绝，`MODEL_BUSY`）。允许的主机为 `huggingface.co` 与 `.hf.co` 的子域（解析后跳转到按地区变化的 CDN，如 `us.aws.cdn.hf.co`）；netgate 为此新增“`.域名` 匹配子域、不含域名本身、至少两级”的写法。
+- 安装位置：每个用户一个共享目录（macOS `~/Library/Application Support/Tacet/models`），桌面端与命令行各自的工作区共用，只下载一次；另一工作区启动时发现已安装的目录即登记为“已安装”，使用前仍按清单校验。
+- 状态显示：待下载 / 下载中（进度）/ 已暂停 / 校验中 / 准备中 / 已就绪 / 需处理（网络、空间、校验、试运行）。“已安装、本次会话未试运行”在界面上显示为已就绪：下载时已试运行，每次运行插件加载前都会完整校验文件。
+- 方案绑定：每个模型有自己的内建画像、方案与预设；所选方案的模型未下载时开始批次被拒绝（`MODEL_NOT_INSTALLED`），界面先引导下载、就绪后继续。默认方案在 AstrLink 下载前为“仅规则”。
+- GPU 加速的 FP16 构建（约 74 MB）在打开“GPU 加速”开关时下载并试运行。
+- 开发与测试：`TACET_PREINSTALLED_MODELS` 指向含 `<id>-<variant>` 子目录的文件夹即视为已安装（取代 `TACET_MODEL_DIR` / `TACET_MODEL_ACCEL_DIR`）；不设置时开发版同样走真实下载。
+
+**OpenAI Privacy Filter**
+
+- 构建：上游 revision `7ffa9a043d54d1be65afb281eddf0ffbe629385b` 的 `onnx/model_quantized.onnx`（int8，权重约 1.6 GB，用户选择）。模型文件的 SHA256 与 Hugging Face 的 LFS 记录一致；`config.json`、`tokenizer_config.json`、`viterbi_calibration.json` 为非 LFS 文件，摘要取自该 revision 的下载。上游没有版本号，界面版本显示为 revision 前 7 位。
+- 解码：新内建插件 `tacet.privacy-filter`（`python/plugins/detect-privacy-filter`）移植上游 `openai/privacy-filter@f7f00ca7` 的约束 Viterbi（BIOES 合法转移 + 校准文件的 6 个偏置）、标签转片段、按 token 的 UTF-8 字节换算字符区间、首尾空白裁剪与重叠丢弃；文档中的 `<|endoftext|>` 按普通文本编码。上游不给片段分数，Tacet 以片段内各 token 在所选路径上标签概率的最小值作为分数，**未经校准**；适配器下限 0.2，默认最低置信度 0.5。
+- 窗口：上游在 CPU 上用 4096 token 不重叠窗口，本机实测峰值 5.2–6.7 GiB；改为 512 token、重叠 128（等于模型注意力带宽），重叠部分按上游的方式对概率取平均后整段做一次 Viterbi。合成文本（每句 5 个实体）上 4096 窗口找到 1998/2000，512+128 找到 2000/2000、12000/12000（103k token）。
+- 实测（Apple M4，ONNX Runtime 1.31.1，2 线程，合成文本，单次运行）：
+
+| 构建 · 窗口 | 加载 | 54 token 中文样例 | 峰值 RSS | 吞吐 |
+| --- | --- | --- | --- | --- |
+| q4 · 整段 | 0.24 s | 64.7 ms | 1038 MiB | — |
+| int8 · 整段 | 0.50 s | 24.6 ms | 1811 MiB | — |
+| int8 · 4096 不重叠（17k / 34k / 103k token） | — | — | 5359 / 6849 / 6602 MiB | 约 0.9–1.0k token/s |
+| int8 · 512 不重叠（17k token） | — | — | 2226 MiB | 3.3k token/s |
+| int8 · 512 重叠 128（17k / 103k token） | — | — | 2225 / 2323 MiB | 约 2.5k token/s |
+
+  Core ML 对两个构建都没有加速（整图未被接管），只用 CPU。预设为模型预留 3 GiB、整个运行预算 4 GiB。
+- 定位：以英文为主（模型卡），中文样例上人名、电话、邮箱、地址、日期均能找到，但未做逐类别评测；界面标注“以英文为主，阈值未经校准；中文文档的结果需人工复核”。无人值守资格关闭。
+- 内存门槛：设备内存 ≥ 16 GiB 才能下载（`min_memory_bytes`），否则下载按钮不可用并说明原因（`MODEL_MEMORY_INSUFFICIENT`）。
+
+局限与未做：完整性清单尚未由发布签名覆盖（与 AstrLink 现状相同）；每个检测阶段启动 worker 时插件完整校验文件，Privacy Filter 约 1.6 GB 每次需数秒；中国大陆网络下 Hugging Face 可达性未验证，未提供镜像；下载的断点续传只在本地测试服务器上验证过，未对真实 CDN 做中断恢复实测；Privacy Filter 未做逐类别评测与校准，内存只测了合成文本；Windows 的内存与磁盘空间查询只做了交叉编译检查。
+
+## GPU 加速与 GPU 版本解耦，默认关闭（2026-11-01，用户决定）
+
+Jorben 指出：下载模型应归模型管理，“启用 GPU 加速”只表示“条件允许时使用 GPU”，两者应各自内聚。本节**取代**上文“可选 GPU 加速后端”中“开启时先下载并试运行、通过后才写入设置”的做法。
+
+- GPU 版本（AstrLink FP16，约 75 MB）是模型目录中的一个构建，在插件页 AstrLink 卡片的“GPU 版本”一行下载、暂停、重试；下载后与其他模型一样校验、安装，并编译 Core ML、用内置样例试运行。
+- “GPU 加速”是普通设置（`gpu_acceleration`），随其他设置保存，**默认关闭**；切换它不下载、不编译、不试运行。批次开始时，开关打开且 GPU 版本已下载才冻结 GPU 构建，否则用 CPU。
+- 设置说明随状态变化：未开启 / 已开启但 GPU 版本未下载（附“前往下载”）/ 已生效。
+
+**补测（短文本）推翻了“GPU 快约 5 倍”的普遍性**：该数字只对 512 token 满窗口成立。FP16 构建是静态 512 长度，短文本也补满 512 计算，Core ML 每次调用还有约 10 ms 固定开销；INT8 按实际长度计算。Apple M4、ONNX Runtime 1.31.1、2 线程，每段中位耗时：
+
+| 每段文本 | INT8 · CPU | FP16 · CPU | FP16 · GPU（Core ML） |
+| --- | --- | --- | --- |
+| 表格单元格（约 8 字） | 1.1 ms | 172 ms | 10.6 ms |
+| 短段落（约 30 字） | 2.5 ms | 172 ms | 10.6 ms |
+| 长段落（约 500 字） | 32.5 ms | 172 ms | 12.2 ms |
+| 峰值 RSS | 139 MiB | 289 MiB | 1880 MiB（含首次编译） |
+
+结论：GPU 只在单段超过约 150 字时更快，短段落与表格单元格上反而更慢、内存更高，因此默认关闭；“只用 FP16 替代 INT8”不可取（CPU 上慢 70–150 倍、文件大一倍）。真实文档的段落长度分布未测量。
