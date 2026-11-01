@@ -284,7 +284,7 @@ go test -race -count=1 -timeout=40s ./internal/jobs ./internal/query ./internal/
 **局限与挂账**：
 - **没有真实的第三方插件环境部署**：`Deploy`/`Probe`/`Git`/`Cleanup`/`Prepare`（模型加载与固定样例）是注入的函数，测试用替身；`envs` 的 `uv` 离线部署、沙箱内就绪检查、git 检出的真实进程尚未接线，需 app 装配（task-10）与 M0 的环境验证（task-2）；
 - 离线插件安装只覆盖“本地路径复制”；依赖 wheel 默认需要联网下载，`Inspection.NeedsNetwork` 会提示，无网时部署会失败并回滚。随包携带 wheel 被 SEC-14 的规则拒绝，离线 wheel 仓库方案未设计；
-- 真实 Wails 更新器、签名、公证、托盘与睡眠/唤醒的 OS 事件、系统关机通知均未做；
+- 真实 Wails 更新器、签名、公证均未做；系统关机/注销已接线（PF-15 证据），未经真实关机验证；托盘与睡眠/唤醒已接线（PF-15 证据），未经真实窗口验证；
 - retention 的期限与单任务密钥擦除沿用 task-3 的实现与测试，本任务未新增，仅需在 app 装配时注册 review/policy/exceptions/export/validate/publish 的清除步骤（均已提供 Purge）；
 - 未在 Windows 上执行。
 
@@ -307,9 +307,9 @@ go test -race -count=1 -timeout=40s ./internal/jobs ./internal/query ./internal/
 
 **尚未完成（task-10 因此保持未完成）**
 - **预览栅格（已做 PDF 页面）**：协议新增 `format.preview`（`PreviewParams/PreviewMark/PreviewRect/PreviewItem`），PDF 插件渲染一页 PNG 并按与回写相同的几何返回候选的像素框，无法定位的标记列为 unmapped；`refs.Grant.ReadBack` 读回瞬时写入；`preview.Pager` 严格校验；`app.PagePreview` 经 `versions` 包装让预览在无阶段运行时通过准入，任何阶段开始或任务变化即失效；`gui.AssetHandler` 提供 `no-store` 的 `/tacet-preview/` 资源；前端 `RasterPage` 以框标出候选、点击可保留/涂抹。**未做**：框选补充涂抹（只有文本视图支持选文）、DOCX 页面预览（无分页）、页内图像处置与 PDF 含图像/批注页的导出（仍按原因码拒绝）、涂抹样式在预览中的呈现（预览按固定样式）；
-- 重启恢复已做（`Unfinished`，快捷任务自动回窗口、批次进“最近”）；`lifecycle.Starter/Stopper` 与托盘/睡眠事件仍未接入 app（引擎 Open/Close 自带等价的恢复与关闭步骤，但不经 lifecycle 的固定顺序）；恢复后的文件名为中性名；
+- 重启恢复已做（`Unfinished`，快捷任务自动回窗口、批次进“最近”）；`lifecycle.Starter/Stopper`、托盘与唤醒事件后来已接入（见下文与 PF-15 证据）；恢复后的文件名为中性名；
 - 配置/规则集/预设、模型资源、插件与规则包、设置、更新等页面仍是演示数据，未接 Wails 命令（`config`/`models`/`pluginmgr`/`update` 后端已有）；
-- “严格”方式的逐份确认在真实批次中被拒绝并提示；撤销单次人工涂抹未提供；
+- “严格”方式的逐份确认已接通（见 BUX-08 证据：`StartRequest.Mode`、`Engine.ConfirmFile`、`FileStatus.Confirm`、前端“逐份确认”分组）；撤销人工涂抹已做（见 FR-22 证据）；
 - 没有在真实桌面窗口里人工操作验证；Windows 仅交叉编译；
 - 间歇性：前端整套测试曾出现一次 `window is not defined`（Wails 运行时 `drag.js` 定时器在 jsdom 拆除后触发），重跑 3 次未复现。
 
@@ -319,4 +319,6 @@ go test -race -count=1 -timeout=40s ./internal/jobs ./internal/query ./internal/
 
 **设置与启动诊断（task-10 追加）**：`config.Settings` 增加 `redact_style`、`resource_tier`、`retention_days`；`Core.SettingsGet/SettingsSave`、`gui.Service.Settings/SaveSettings`；前端 `loadSettings/saveSettingsSoon`。worker 启动失败码拆分并把“被停止”与“失败”分开。测试环境：Wails 运行时在导入后用 `window.setInterval` 轮询至多 5 秒，短测试文件结束后 jsdom 已拆除会报 `window is not defined`（约每十余轮一次）；setup 现在在每个文件结束时清除这些定时器，之后连续 33 轮未再出现（概率性结论，不是确定性证明）。
 
-**生命周期、保留与恢复（task-10 追加）**：见 PF-15 与 INV-07 证据。`app.Open` = `lifecycle.Starter`，`Close` = `lifecycle.Stopper`（`archtest` 允许 `app` 依赖 `lifecycle`、`retention`）；`retention` 接入引擎（导入授予、启动清扫、Clean 共用）；`app_member.purged`、`app_run.pending` 两次迁移；Start 先记录请求。**仍未做/未验证**：发布崩溃恢复的端到端路径、托盘与睡眠事件、模型经 `models.Service` 下载登记、“严格”逐份确认、涂抹样式在预览/回写中生效、第三方插件与更新的真实接线（缺沙箱与发布源）、真实桌面窗口的人工验证。
+**生命周期、保留与恢复（task-10 追加）**：见 PF-15 与 INV-07 证据。`app.Open` = `lifecycle.Starter`，`Close` = `lifecycle.Stopper`（`archtest` 允许 `app` 依赖 `lifecycle`、`retention`）；`retention` 接入引擎（导入授予、启动清扫、Clean 共用）；`app_member.purged`、`app_run.pending` 两次迁移；Start 先记录请求。**仍未做/未验证**：托盘与睡眠事件、模型经 `models.Service` 下载登记、第三方插件与更新的真实接线（缺沙箱与发布源）、真实桌面窗口的人工验证。
+
+**涂抹样式（task-10 追加）**：见 FR-29 证据。`plan.Look`（dpi + 样式）经 `export.Staged.Look`、`validate.Staged.Look` 进入 `format.write`/`format.validate`；`snapshot.Bindings.Style` 在启动时把预设的 `default` 解析为应用设置。
