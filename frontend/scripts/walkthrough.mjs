@@ -1,12 +1,15 @@
 // Needs a build that includes the scene navigator: VITE_SCENES=1 npm run build && npx vite preview --port 4173
 // Headless-browser walkthrough: visits every prototype scene and the main flows, fails on page errors,
-// and writes screenshots plus docs/walkthrough.md. Usage: npm run build:scenes, then npm run preview -- --port 4173, then npm run walkthrough
+// and writes screenshots plus a per-run report to artifacts/walkthrough/ (gitignored).
+// Usage: npm run build:scenes, then npm run preview -- --port 4173, then npm run walkthrough
+// Set WALKTHROUGH_OUT to export the artifacts elsewhere, e.g. for a CI upload.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { launch } from "./walk-lib.mjs";
 import { resolve, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE_URL || "http://127.0.0.1:4173/";
-const OUT = process.env.WALKTHROUGH_OUT ? resolve(process.env.WALKTHROUGH_OUT) : new URL("../docs/walkthrough/", import.meta.url).pathname;
+const OUT = process.env.WALKTHROUGH_OUT ? resolve(process.env.WALKTHROUGH_OUT) : fileURLToPath(new URL("../artifacts/walkthrough/", import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
 const browser = await launch();
@@ -114,8 +117,8 @@ if (await page.getByRole('button', { name: '开始复核', exact: true }).count(
 }
 
 writeFileSync(
-  process.env.WALKTHROUGH_OUT ? join(OUT, "walkthrough.md") : new URL("../docs/walkthrough.md", import.meta.url).pathname,
-  "# 无头浏览器走查记录\n\n由 `scripts/walkthrough.mjs` 生成（Playwright + Chromium，1440×920）。每行对应一张截图（`docs/walkthrough/`），并断言关键中文文案存在、页面无脚本错误。\n\n| # | 页面 / 流程 | 结果 | 截图 |\n| --- | --- | --- | --- |\n" +
+  join(OUT, "walkthrough.md"),
+  "# 无头浏览器走查记录\n\n由 `scripts/walkthrough.mjs` 生成（Playwright + Chromium，1440×920）。每行对应同目录的一张截图，并断言关键中文文案存在、页面无脚本错误。\n\n| # | 页面 / 流程 | 结果 | 截图 |\n| --- | --- | --- | --- |\n" +
     rows.map((r, i) => "| " + (i + 1) + " | " + r.name + " | " + (r.ok ? "通过" : "缺失：" + r.miss.join("、")) + " | `" + r.file + "` |").join("\n") +
     "\n\n页面错误：" + (errors.length ? "\n\n" + errors.map((e) => "- " + e).join("\n") : "无") + "\n",
 );

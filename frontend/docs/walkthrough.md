@@ -1,6 +1,8 @@
 # 无头浏览器走查记录
 
-由 `scripts/walkthrough.mjs` 生成（Playwright + Chromium，1440×920）。每行对应一张截图（`docs/walkthrough/`），并断言关键中文文案存在、页面无脚本错误。
+以下保留历史走查的文字记录，由 `scripts/walkthrough.mjs` 生成（Playwright + Chromium，1440×920），断言关键中文文案存在、页面无脚本错误。表中截图文件名属于该次历史运行；截图已移出版本控制，已有本地副本保留在 `frontend/docs/walkthrough/`。
+
+后续运行：在 `frontend/` 执行 `npm run build:scenes`，启动 `npm run preview -- --port 4173`，再执行 `npm run walkthrough`。新截图与 `walkthrough.md` 统一输出到已忽略的 `frontend/artifacts/walkthrough/`，不覆盖本文。设置 `WALKTHROUGH_OUT` 可指定导出目录，供验收归档或 CI artifacts 上传。
 
 | # | 页面 / 流程 | 结果 | 截图 |
 | --- | --- | --- | --- |

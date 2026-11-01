@@ -22,6 +22,10 @@ build/windows/icon.ico
 frontend/node_modules/
 frontend/dist/
 frontend/bindings/
+# Browser walkthrough screenshots and per-run reports
+frontend/artifacts/
+# Historical walkthrough screenshots (kept locally, no longer versioned)
+frontend/docs/walkthrough/
 
 # Python
 python/.venv/
