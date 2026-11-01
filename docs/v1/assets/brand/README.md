@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿；也是桌面应用图标的来源：`build/icons/make_masters.py` 由它生成 macOS 与 Windows 两张圆角图标母版，构建时再转为 `.icns` 与 `.ico` |
+| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿；也是桌面应用图标的来源：构建先通过 `build/icons/make_masters.py` 自动生成 macOS 与 Windows 两张圆角图标母版，再转为 `.icns` 与 `.ico`；母版 PNG 与最终图标均不纳入版本控制 |
 | [tacet-seedling-logo.webp](tacet-seedling-logo.webp) | 256 × 256 WebP 界面素材，内嵌于原型的 `HOME_ICON` 及标签页图标 |
 
 首页与标题栏使用相同比例的圆角处理。首页 Logo 显示为 80 × 80 CSS px。
@@ -36,5 +36,6 @@ Jorben 提供的 2048 × 1152 宣传图：左侧为 Logo、Tacet 字标、标语
 ## 维护约定
 
 - PNG 原稿用于后续导出与调整，WebP 用于界面展示。
+- 应用图标由 `common:generate:icons` 任务自动生成，需安装 uv；生成脚本通过隔离环境使用 Python 3.13 与固定版本 Pillow，不依赖插件虚拟环境。
 - 原型保持单 HTML 离线可用，图片以内嵌副本使用，无外部图片依赖。
 - 替换素材时，同步更新对应 WebP 文件及 HTML 中的全部内嵌副本。

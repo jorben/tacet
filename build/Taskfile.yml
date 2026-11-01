@@ -153,9 +153,24 @@ tasks:
     cmds:
       - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i {{.MAIN_PKG}}
 
-  generate:icons:
-    summary: Generates the macOS `.icns` and Windows `.ico` from the icon masters in build/icons (made from the brand logo by build/icons/make_masters.py). The outputs are not committed; every build regenerates them.
+  generate:icon-masters:
+    summary: Generates the platform icon PNGs from the checked-in brand original
     run: once
+    dir: build/icons
+    sources:
+      - "../../docs/v1/assets/brand/tacet-seedling-logo.png"
+      - "make_masters.py"
+    generates:
+      - "macos.png"
+      - "windows.png"
+    cmds:
+      - uv run --no-project --python 3.13 --with pillow==12.1.1 python make_masters.py
+
+  generate:icons:
+    summary: Generates the macOS `.icns` and Windows `.ico` from the brand original; intermediate PNGs and final icons are not committed
+    run: once
+    deps:
+      - task: generate:icon-masters
     dir: build
     sources:
       - "icons/macos.png"

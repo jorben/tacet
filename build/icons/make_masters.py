@@ -1,8 +1,9 @@
 """Builds the app icon masters from the brand logo.
 
-Run from the repository root when the brand logo changes:
+The build runs this automatically through common:generate:icon-masters.
+To regenerate manually from the repository root:
 
-    uv run --with pillow==12.1.1 python build/icons/make_masters.py
+    uv run --no-project --python 3.13 --with pillow==12.1.1 python build/icons/make_masters.py
 
 The brand original (docs/v1/assets/brand/tacet-seedling-logo.png) is an
 opaque square. The prototype shows it with 22% rounded corners, and the
@@ -15,7 +16,8 @@ masters keep that shape:
   because the taskbar and Start menu show icons at 16 to 48 px.
 
 The build turns these masters into darwin/icons.icns and windows/icon.ico
-(build/Taskfile.yml, generate:icons); those outputs are not committed.
+(build/Taskfile.yml, generate:icons). Both the masters and final icons are
+ignored; only the brand original and this script are committed.
 """
 
 from pathlib import Path
