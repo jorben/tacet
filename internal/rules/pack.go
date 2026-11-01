@@ -17,6 +17,7 @@ func ParsePack(data []byte) (id string, out []Rule, err error) {
 		Description string `json:"description"`
 		Rules       []struct {
 			ID        string   `json:"id"`
+			Name      string   `json:"name"` // display name only; detection does not use it
 			Category  string   `json:"category"`
 			Pattern   string   `json:"pattern"`
 			Terms     []string `json:"terms"`

@@ -40,7 +40,11 @@ export function selectPreset(id: string): void {
 export function newPreset(): void {
   const id = nextId("p");
   store.update((d) => {
-    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: d.models[0]?.id ?? "astr", conf: 0.5, rules: ["cn"], cats: allCategories<PresetTreatment>("mask"), img: "remove", edited: "刚刚" });
+    // Start from the built-in scheme's rule sets: stored rule set ids differ from the demo's "cn".
+    const rules = (d.presets.find((p) => p.builtin)?.rules ?? []).filter((r) => d.rulesets.some((x) => x.id === r));
+    const fallback = d.rulesets.find((r) => r.builtin && !r.plugin) ?? d.rulesets[0];
+    if (!rules.length && fallback) rules.push(fallback.id);
+    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: d.models[0]?.id ?? "astr", conf: 0.5, rules, cats: allCategories<PresetTreatment>("mask"), img: "remove", edited: "刚刚" });
     d.presetSel = id;
   });
 }

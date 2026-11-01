@@ -13,16 +13,31 @@ const EXTRA_LABELS: Record<string, string> = { account: "账号", ip_address: "I
 export const presetCategoryLabel = (id: string): string => CATEGORIES[id as keyof typeof CATEGORIES]?.l ?? EXTRA_LABELS[id] ?? id;
 export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
 
+/** What detects a category in a scheme: the selected model, its active rules, or both. */
+export interface CategorySource { model: boolean; rules: boolean }
+
+export function presetCategorySources(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): Map<string, CategorySource> {
+  const out = new Map<string, CategorySource>();
+  const mark = (id: string, k: keyof CategorySource) => {
+    if (id === "org") return;
+    const s = out.get(id) ?? { model: false, rules: false };
+    s[k] = true;
+    out.set(id, s);
+  };
+  if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => mark(presetCategoryId(c), "model"));
+  rulesets.filter((r) => p.rules.includes(r.id)).forEach((s) => s.rules.forEach((r) => {
+    if (r.on) mark(presetCategoryId(r.ecat ?? engineCategory(r.cat)), "rules");
+  }));
+  return out;
+}
+
+export const categorySourceLabel = (s: CategorySource | undefined): string => (s?.model ? (s.rules ? "模型 + 规则" : "模型") : s?.rules ? "规则" : "");
+
 /** Only categories detected by the selected model or active rules are offered. */
 export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): string[] {
-  const covered = new Set<string>();
-  if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => covered.add(presetCategoryId(c)));
-  rulesets.filter((r) => p.rules.includes(r.id)).forEach((s) => s.rules.forEach((r) => {
-    if (r.on) covered.add(presetCategoryId(r.ecat ?? engineCategory(r.cat)));
-  }));
-  covered.delete("org");
+  const covered = presetCategorySources(p, models, rulesets);
   const order: string[] = [...PRESET_CATEGORIES, "account", "ip_address", "url", "secret"];
-  return [...covered].sort((a, b) => {
+  return [...covered.keys()].sort((a, b) => {
     const rank = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
     return rank(a) - rank(b) || a.localeCompare(b);
   });

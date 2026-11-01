@@ -83,3 +83,54 @@ func TestOneOfficePresetWithAndWithoutModelResources(t *testing.T) {
 		})
 	}
 }
+
+func TestBuiltinRuleSetFollowsShippedRuleNames(t *testing.T) {
+	ws, key := filepath.Join(t.TempDir(), "ws"), &memKey{}
+	e := openEngineWith(t, ws, key, true, nil)
+	ctx := context.Background()
+	// A workspace seeded before the pack named its rules holds the same rules without names.
+	err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		o, err := e.cfg.Get(tx, RuleSetID)
+		if err != nil {
+			return err
+		}
+		var rs config.RulesContent
+		if err := json.Unmarshal(o.Content, &rs); err != nil {
+			return err
+		}
+		for i := range rs.Rules {
+			rs.Rules[i].Name = ""
+		}
+		old, _ := json.Marshal(rs)
+		return e.cfg.RefreshBuiltin(tx, RuleSetID, old)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Close()
+	e = openEngineWith(t, ws, key, false, nil)
+	defer e.Close()
+	list, err := e.ConfigList(ctx, "ruleset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range list {
+		if o.ID != RuleSetID {
+			continue
+		}
+		var rs config.RulesContent
+		if err := json.Unmarshal([]byte(o.Content), &rs); err != nil || len(rs.Rules) == 0 {
+			t.Fatalf("%s %v", o.Content, err)
+		}
+		for _, r := range rs.Rules {
+			if r.Name == "" {
+				t.Fatalf("rule %s has no name after reopening", r.ID)
+			}
+		}
+		if rs.Rules[0].ID != "cn_mobile" || rs.Rules[0].Name != "手机号" || !o.ReadOnly {
+			t.Fatalf("%+v", rs.Rules[0])
+		}
+		return
+	}
+	t.Fatal("built-in rule set missing")
+}

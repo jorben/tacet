@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
+import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
 
 describe("置信度", () => {
@@ -31,6 +31,19 @@ describe("方案", () => {
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual(["phone"]);
     minimal[0]!.rules.forEach((r) => { r.on = false; });
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual([]);
+  });
+
+  it("类别的检测来源：模型、规则或两者", () => {
+    const p = seedPresets()[0]!;
+    const models = [...seedModels(), { ...seedModels()[0]!, id: "pf", categories: ["person", "phone"] }];
+    const rules = seedRulesets();
+    const astr = presetCategorySources(p, models, rules);
+    expect(categorySourceLabel(astr.get("card"))).toBe("模型 + 规则");
+    expect(categorySourceLabel(astr.get("name"))).toBe("模型");
+    expect(categorySourceLabel(astr.get("id"))).toBe("规则");
+    expect(astr.has("org")).toBe(false);
+    expect(categorySourceLabel(presetCategorySources({ ...p, model: "pf" }, models, rules).get("card"))).toBe("规则");
+    expect(categorySourceLabel(presetCategorySources({ ...p, det: "rules" }, models, rules).get("phone"))).toBe("规则");
   });
 
   it("仅规则的方案不需要模型", () => {

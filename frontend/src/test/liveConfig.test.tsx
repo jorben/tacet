@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import { copyPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
+import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -73,6 +73,14 @@ describe("方案与规则集的存储同步", () => {
     const sch = fake.items.find((i) => i.id === JSON.parse(stored.content).scheme_id)!;
     expect(JSON.parse(sch.content).category_actions.phone).toBe("mask");
     expect(sch.version).toBe(2);
+  });
+
+  it("新建方案：沿用内建方案的规则集存储编号，存为新的方案对象和预设对象", async () => {
+    act(() => newPreset());
+    await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));
+    const p = getState().presets.find((x) => x.name === "新方案")!;
+    expect(p.stored?.id).toMatch(/^cfg_/);
+    expect(JSON.parse(fake.items.find((i) => i.id === p.stored!.id)!.content)).toMatchObject({ ruleset_id: "builtin-cn-office", model_profile_id: "builtin-model-astrlink", rules_only: false });
   });
 
   it("新规则集与引用它的方案：先存规则集，方案里的编号换成存储编号", async () => {

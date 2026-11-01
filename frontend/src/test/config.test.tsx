@@ -64,6 +64,24 @@ describe("方案", () => {
     expect(preset().cats.account).toBe("off");
   });
 
+  it("每个类别标出检测来源；规则覆盖的类别换模型后仍在，来源随之变化", () => {
+    go("presets");
+    press("复制");
+    act(() => store.update((d) => {
+      d.models.push({ ...d.models[0]!, id: "privacy", name: "Privacy Filter", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
+    }));
+    const source = (label: string) => $$(".row").find((r) => r.querySelector(".rl")?.textContent === label)?.querySelector("[data-source]")?.textContent;
+    expect(source("人名")).toBe("模型");
+    expect(source("银行卡")).toBe("模型 + 规则");
+    expect(source("身份证")).toBe("规则");
+    click(rowControl("模型"));
+    pick("Privacy Filter");
+    expect(source("银行卡")).toBe("规则");
+    expect(source("人名")).toBe("模型");
+    press("仅规则");
+    expect(source("电话")).toBe("规则");
+  });
+
   it("选择同一模型保持已设置的置信度", () => {
     go("presets");
     press("复制");

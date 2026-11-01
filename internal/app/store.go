@@ -203,7 +203,8 @@ func seedConfig(tx store.Tx, repo *config.Repository, rulePack []byte, models []
 			o.name = "办公外发"
 		}
 		if _, err := repo.Get(tx, o.id); err == nil {
-			if o.kind == config.ModelProfile || o.id == officeID {
+			// the rule set follows the shipped pack (e.g. rule names added later); task snapshots keep their copy
+			if o.kind == config.ModelProfile || o.id == officeID || o.id == RuleSetID {
 				if err := repo.RefreshBuiltin(tx, o.id, o.data, o.name); err != nil {
 					return err
 				}
