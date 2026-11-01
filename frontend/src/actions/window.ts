@@ -26,10 +26,17 @@ export function quitApp(): void {
 export function requestClose(): void {
   const s = getState();
   if (s.settings.closeAct === "tray") {
-    minimiseWindow();
+    // a browser has no tray: there the window is only minimised
+    if (getService().host === "browser") minimiseWindow(); else void getService().hideWindow().catch(() => {});
     toast("已最小化到托盘" + (s.batch || s.single ? "，任务继续" : ""));
     return;
   }
+  requestQuit();
+}
+
+/** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once. */
+export function requestQuit(): void {
+  const s = getState();
   if (!slotBusy(s, "single") && !slotBusy(s, "batch") && !s.history.some((h) => h.park)) { quitApp(); return; }
   openModal({ type: "closeWindow" });
 }

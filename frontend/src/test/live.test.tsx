@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { cleanBatchStub } from "./liveFake";
-import { addManualRedaction, clickHit, exportSingle } from "../actions/single";
-import { openBatchFile, startBatch, togglePause } from "../actions/batch";
+import { addManualRedaction, clickHit, exportSingle, setViewMode, undoSingle } from "../actions/single";
+import { openBatchFile, setBatchMode, startBatch, togglePause } from "../actions/batch";
 import { openLiveGroup, restoreUnfinished, startLive, takePaths, unlockLive } from "../actions/live";
 import { resumeBatch } from "../actions/batch";
 import { overlayStore } from "../overlay/store";
@@ -141,6 +141,32 @@ describe("真实引擎：单文件", () => {
     expect(fake.manual).toEqual({ job: "j1", seq: 1, start: 2, end: 4, category: "person" });
     await waitFor(() => expect(single().hits).toHaveLength(2));
     expect(single().hits.map((h) => [h.type, h.state, !!h.manual])).toEqual([["name", "redact", true], ["phone", "keep", false]]);
+    // what can be undone now is the selection itself (earlier snapshots no longer match the document)
+    expect(getState().undo.map((u) => u.manual)).toEqual([12]);
+  });
+
+  it("撤销人工涂抹：引擎撤回该选区，文档重新读取且保留其他选择；引擎拒绝时撤销项保留", async () => {
+    fake.units = [unit(1, "😀张三 电话 13812345678", [{ id: 11, start: 8, end: 19, category: "phone" }])];
+    takePaths(["/docs/a.txt"]);
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    await fake.emit("ready_to_publish");
+    await waitFor(() => expect(single().phase).toBe("review"));
+    fake.afterManual = [unit(1, "😀张三 电话 13812345678", [{ id: 11, start: 8, end: 19, category: "phone" }, { id: 12, start: 2, end: 4, category: "person", source: "manual" }])];
+    addManualRedaction("name", { k: "0.0.0", st: 2, en: 4, text: "张三" });
+    await waitFor(() => expect(single().hits).toHaveLength(2));
+    act(() => store.update((d) => { d.single!.hits.find((h) => h.type === "phone")!.state = "keep"; }));
+    fake.withdrawFails = new Error("ACTION_NOT_ALLOWED");
+    act(() => undoSingle());
+    await waitFor(() => expect(fake.calls).toContain("withdraw:12"));
+    await waitFor(() => expect(overlayStore.get().toast).toBeTruthy());
+    expect(single().hits).toHaveLength(2);
+    expect(getState().undo.map((u) => u.manual)).toEqual([12]); // refused: still there to try again
+    fake.withdrawFails = null;
+    fake.afterWithdraw = [unit(1, "😀张三 电话 13812345678", [{ id: 11, start: 8, end: 19, category: "phone" }])];
+    act(() => undoSingle());
+    await waitFor(() => expect(fake.withdrawn).toEqual([12]));
+    await waitFor(() => expect(single().hits).toHaveLength(1));
+    expect(single().hits.map((h) => [h.type, h.state])).toEqual([["phone", "keep"]]);
     expect(getState().undo).toEqual([]);
   });
 });
@@ -173,6 +199,15 @@ describe("真实引擎：PDF 页面预览", () => {
     act(() => boxes[0]!.click());
     expect(single().focus).toBe(0);
     expect(overlayStore.get().pop).toBeTruthy();
+  });
+
+  it("PDF 效果预览中已涂抹的区域使用设置里的涂抹样式，而不是固定颜色", async () => {
+    await openPdf();
+    await waitFor(() => expect(document.querySelectorAll("button.rbox").length).toBeGreaterThan(0));
+    act(() => setViewMode("fx"));
+    const covered = [...document.querySelectorAll<HTMLElement>(".paper.raster button.rbox")].filter((b) => !b.classList.contains("keep"));
+    expect(covered.length).toBeGreaterThan(0);
+    for (const b of covered) expect(b.getAttribute("style")).toContain("var(--rdx)");
   });
 
   it("长文档按可见性懒加载：页面不在视口附近就不渲染", async () => {
@@ -342,6 +377,99 @@ describe("真实引擎：批次", () => {
     await waitFor(() => expect(fake.decisions).toEqual([{ id: 31, keep: true }]));
     expect(getState().view).toBe("batch");
     expect(getState().single).toBeNull();
+  });
+
+  it("严格方式：开始时交给引擎；每份文件单独确认，确认前先送出选择，不能批量确认", async () => {
+    fake.rows = rows([["preflighted"], ["preflighted"]]);
+    takePaths(paths.slice(0, 2));
+    await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
+    setBatchMode("strict");
+    expect(batch().mode).toBe("strict");
+    startBatch();
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    expect(fake.started).toMatchObject({ mode: "strict" });
+    fake.rows = rows([["awaiting_review", { pending: 1, confirm: true }], ["awaiting_review", { pending: 3, confirm: true }]]);
+    fake.units = [unit(1, "电话 13812345678", [{ id: 31, start: 3, end: 14, category: "phone" }])];
+    await fake.emitBatch();
+    await waitFor(() => expect(batch().groups[0]?.id).toBe("live-strict"));
+    expect(batch().groups.map((g) => [g.id, g.per])).toEqual([["live-strict", { 0: 1, 1: 1 }], ["live-review", { 1: 2 }]]);
+    expect(batch().groups.every((g) => g.noBulk)).toBe(true);
+    openLiveGroup("live-strict");
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    const btn = [...document.querySelectorAll<HTMLButtonElement>(".side-foot button")].find((b) => b.textContent === "确认导出");
+    expect(btn).toBeTruthy();
+    act(() => store.update((d) => { d.single!.hits[0]!.state = "keep"; }));
+    act(() => btn!.click());
+    await waitFor(() => expect(fake.confirmed).toEqual(["j1"]));
+    expect(fake.calls.indexOf("decide")).toBeLessThan(fake.calls.indexOf("confirm")); // the choices first
+    expect(fake.decisions).toEqual([{ id: 31, keep: true }]);
+    expect(getState().view).toBe("batch");
+    expect(getState().single).toBeNull();
+  });
+
+  it("严格方式：引擎拒绝确认时说明原因", async () => {
+    fake.rows = rows([["preflighted"], ["preflighted"]]);
+    takePaths(paths.slice(0, 2));
+    await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
+    setBatchMode("strict");
+    startBatch();
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    fake.rows = rows([["awaiting_review", { pending: 1, confirm: true }], ["completed"]]);
+    fake.units = [unit(1, "x", [])];
+    await fake.emitBatch();
+    await waitFor(() => expect(batch().groups[0]?.id).toBe("live-strict"));
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    fake.confirmFails = new Error("ACTION_NOT_ALLOWED");
+    const btn = [...document.querySelectorAll<HTMLButtonElement>(".side-foot button")].find((b) => b.textContent === "确认导出")!;
+    act(() => btn.click());
+    await waitFor(() => expect(overlayStore.get().toast).toBeTruthy());
+    expect(fake.confirmed).toEqual([]);
+  });
+
+  it("跳过此文件：严格方式在复核页跳过；受阻文件在对话框里重新处理或逐个跳过；密码文件可跳过", async () => {
+    fake.rows = rows([["preflighted"], ["preflighted"], ["preflighted"], ["preflighted"]]);
+    takePaths(paths.slice(0, 4));
+    await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
+    setBatchMode("strict");
+    startBatch();
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    fake.rows = rows([["awaiting_review", { pending: 1, confirm: true }], ["failed", { detail: "EXTRACT_FAILED" }], ["failed", { detail: "STAGE_DEADLINE_EXCEEDED" }], ["locked"]]);
+    fake.units = [unit(1, "x", [])];
+    await fake.emitBatch();
+    await waitFor(() => expect(batch().groups.map((g) => g.id).sort()).toEqual(["live-blocked", "live-password", "live-strict"]));
+    // strict: from the file's review
+    openLiveGroup("live-strict");
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    const skipBtn = [...document.querySelectorAll<HTMLButtonElement>(".side-foot button")].find((b) => b.textContent === "跳过此文件")!;
+    act(() => skipBtn.click());
+    await waitFor(() => expect(fake.skipped).toEqual(["j1"]));
+    expect(fake.confirmed).toEqual([]);
+    expect(getState().view).toBe("batch");
+    // blocked: the dialog lists both, skips one, retries the rest
+    act(() => openLiveGroup("live-blocked"));
+    await waitFor(() => expect(overlayStore.get().modal).toMatchObject({ type: "liveBlocked" }));
+    expect(fake.calls).not.toContain("retry"); // opening the group retries nothing by itself
+    const rowsOf = () => [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === "跳过此文件");
+    expect(rowsOf()).toHaveLength(2);
+    act(() => rowsOf()[0]!.click());
+    await waitFor(() => expect(fake.skipped).toEqual(["j1", "j2"]));
+    await waitFor(() => expect(rowsOf()).toHaveLength(1));
+    const retry = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "重新处理")!;
+    act(() => retry.click());
+    await waitFor(() => expect(fake.calls).toContain("retry"));
+    await waitFor(() => expect(overlayStore.get().modal).toBeNull());
+    // a file waiting for its password
+    act(() => openLiveGroup("live-password"));
+    await waitFor(() => expect(rowsOf()).toHaveLength(1));
+    fake.skipFails = new Error("ACTION_NOT_ALLOWED");
+    act(() => rowsOf()[0]!.click());
+    await waitFor(() => expect(fake.calls).toContain("skip:j4"));
+    expect(overlayStore.get().modal).toMatchObject({ type: "livePassword" }); // refused: the dialog stays
+    fake.skipFails = null;
+    act(() => rowsOf()[0]!.click());
+    await waitFor(() => expect(fake.skipped).toEqual(["j1", "j2", "j4"]));
+    await waitFor(() => expect(overlayStore.get().modal).toBeNull());
   });
 
   it("没有改动就离开：不向引擎发送决定", async () => {

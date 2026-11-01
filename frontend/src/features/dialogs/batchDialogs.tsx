@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
-import { unlockLive } from "../../actions/live";
+import { retryLive, skipLive, unlockLive } from "../../actions/live";
 import { publishValidated, resolveException } from "../../actions/batch";
 import { enterBatchReview } from "../../actions/review";
 import { countFiles, groupMembers, groupTotal } from "../../domain/batch";
 import { fmt } from "../../domain/format";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
-import { closeModal } from "../../overlay/store";
+import { closeModal, toast } from "../../overlay/store";
 import { useAppState } from "../../store";
 import { Button, Field, KeyValue, pushLeft } from "../../ui";
 
@@ -126,9 +126,19 @@ export function ExportReadyDialog() {
 }
 
 /** Asks for the password of each locked file. A password is handed to the kernel once and forgotten here. */
-export function LivePasswordDialog({ targets }: { targets: { job: string; name: string }[] }) {
+export function LivePasswordDialog({ targets: initial }: { targets: { job: string; name: string }[] }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [targets, setTargets] = useState(initial);
+  // only files of the batch can be skipped; a quick task is stopped from its own window instead
+  const inBatch = useAppState((s) => s.batch?.live?.jobs) ?? [];
+  const skip = async (job: string) => {
+    if (!(await skipLive(job))) return;
+    const rest = targets.filter((t) => t.job !== job);
+    setValues(({ [job]: _, ...v }) => v);
+    if (!rest.length) closeModal();
+    else setTargets(rest);
+  };
   const submit = async () => {
     setBusy(true);
     const entries = Object.entries(values).filter(([, v]) => v);
@@ -143,8 +153,13 @@ export function LivePasswordDialog({ targets }: { targets: { job: string; name: 
       <ModalBody>
         {targets.map((t) => (
           <div key={t.job}>
-            <div className="sm" style={{ marginTop: 12, color: "var(--ink-2)" }}>
+            <div className="sm" style={{ marginTop: 12, color: "var(--ink-2)", display: "flex", alignItems: "center" }}>
               {t.name}
+              {inBatch.includes(t.job) && (
+                <Button variant="ghost" style={{ marginLeft: "auto" }} disabled={busy} onClick={() => void skip(t.job)}>
+                  跳过此文件
+                </Button>
+              )}
             </div>
             <Field
               icon="lock"
@@ -163,6 +178,52 @@ export function LivePasswordDialog({ targets }: { targets: { job: string; name: 
         </Button>
         <Button variant="primary" disabled={busy || !Object.values(values).some(Boolean)} onClick={() => void submit()}>
           解锁
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** The files of a batch whose processing is blocked: process them again, or leave one out (requirements 2.3). */
+export function LiveBlockedDialog({ targets: initial }: { targets: { job: string; name: string; reason: string }[] }) {
+  const [targets, setTargets] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const skip = async (job: string) => {
+    setBusy(true);
+    const ok = await skipLive(job);
+    setBusy(false);
+    if (!ok) return;
+    const rest = targets.filter((t) => t.job !== job);
+    if (!rest.length) closeModal();
+    else setTargets(rest);
+  };
+  const retry = async () => {
+    setBusy(true);
+    await retryLive();
+    setBusy(false);
+    closeModal();
+    toast("已重新排队");
+  };
+  return (
+    <Modal>
+      <ModalHeader title="处理受阻" subtitle="重新处理，或跳过不导出" />
+      <ModalBody>
+        {targets.map((t) => (
+          <div key={t.job} className="sm" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--ink-2)" }}>{t.name}</span>
+            <span className="muted">{t.reason}</span>
+            <Button variant="ghost" style={{ marginLeft: "auto" }} disabled={busy} onClick={() => void skip(t.job)}>
+              跳过此文件
+            </Button>
+          </div>
+        ))}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={closeModal}>
+          取消
+        </Button>
+        <Button variant="primary" disabled={busy} onClick={() => void retry()}>
+          重新处理
         </Button>
       </ModalFooter>
     </Modal>

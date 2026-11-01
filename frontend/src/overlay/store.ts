@@ -59,6 +59,7 @@ export type ModalSpec =
   | { type: "password"; gid: string; members: number[] | undefined }
   | { type: "exportReady" }
   | { type: "livePassword"; targets: { job: string; name: string }[] }
+  | { type: "liveBlocked"; targets: { job: string; name: string; reason: string }[] }
   | { type: "ruleEditor"; rulesetId: string; index: number | null }
   | { type: "versions"; kind: "preset" | "ruleset" }
   | { type: "importConflict"; kind: "preset" | "ruleset"; name: string }

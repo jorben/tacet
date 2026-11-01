@@ -1,11 +1,12 @@
 import type { ReactNode, MouseEvent } from "react";
 import { returnToBatch, exportSingle, focusHit, focusNextOfType, openAllImagesMenu, openCategoryMenu, openOutputMenu, openSingleSchemeMenu, reviewBatchFileExceptions } from "../../actions/single";
 import { REVIEW_CATEGORY_ORDER, CATEGORIES } from "../../domain/catalog";
-import { locStr, outputKind } from "../../domain/format";
+import { locAt, outputKind } from "../../domain/format";
 import { findPresetByName, formatConfidence, presetConfidence } from "../../domain/presets";
 import { categoryStats, imageSummary, isPartialResult, orderedHitIds, treatmentOf, unseenLowHits } from "../../domain/single";
 import type { Batch, Single } from "../../domain/types";
 import { useAppState } from "../../store";
+import { confirmLiveBatchFile, GROUP_STRICT, skipLiveBatchFile } from "../../actions/live";
 import { Button, FileIcon, Icon, Pill, categoryColor, tip } from "../../ui";
 
 interface SummaryRowProps {
@@ -125,7 +126,7 @@ function Categories({ single }: { single: Single }) {
               <button key={i} type="button" className={h.seen ? "lowrow seen" : "lowrow"} style={categoryColor(h.type)} onClick={() => focusHit(i)}>
                 <span className="sw" />
                 <span className="v">{h.text}</span>
-                <span className="muted sm">{h.seen ? (h.state === "keep" ? "保留" : "涂抹") : locStr(single.ext, h.page + 1, h.sec, h.para, true)}</span>
+                <span className="muted sm">{h.seen ? (h.state === "keep" ? "保留" : "涂抹") : locAt(single.ext, h, true)}</span>
                 {h.seen && <Icon name="check" size={13} strokeWidth={2.4} />}
               </button>
             );
@@ -171,6 +172,25 @@ function Footer({ single, batch, undoCount }: { single: Single; batch: Batch | n
   const inBatch = single.from === "batch";
   const file = inBatch && batch ? batch.files[single.bfi!] : null;
   const exported = !!file && ["done", "partial"].includes(file.st);
+  if (inBatch && single.live && file?.g.includes(GROUP_STRICT)) {
+    return (
+      <div className="side-foot">
+        <div className="side-note">
+          <Icon name="info" size={13} />
+          严格方式 · 这份文件由你确认后才导出
+        </div>
+        <Button variant="primary" large wide onClick={() => void confirmLiveBatchFile()}>
+          确认导出
+        </Button>
+        <Button large wide onClick={returnToBatch}>
+          稍后确认
+        </Button>
+        <Button variant="ghost" large wide onClick={() => void skipLiveBatchFile()}>
+          跳过此文件
+        </Button>
+      </div>
+    );
+  }
   if (inBatch) {
     return (
       <div className="side-foot">

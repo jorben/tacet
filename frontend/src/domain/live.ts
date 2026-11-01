@@ -1,7 +1,7 @@
 // Mapping between what the real engine reports and the shapes the screens draw. Pure: no store, no service.
 import type { EngineFile, EngineFinding, EngineUnit } from "../services/types";
 import { CATEGORY_IDS } from "./catalog";
-import type {
+import type { DocLocation,
   Block, BatchFile, CategoryId, DocContent, ExceptionGroup, FileStatus, Hit, LiveSingle, OfficeCategoryId,
 } from "./types";
 
@@ -53,6 +53,8 @@ export const reasonLabel = (code: string | undefined): string | null => (code ? 
 export const GROUP_REVIEW = "live-review";
 export const GROUP_PASSWORD = "live-password";
 export const GROUP_BLOCKED = "live-blocked";
+/** Strict mode: each file waits for its own confirmation (never several at once). */
+export const GROUP_STRICT = "live-strict";
 
 const PROCESSING = new Set(["preflighting", "queued", "extracting_detecting", "resolving", "exporting", "validating", "publishing", "cancelling", "paused"]);
 
@@ -71,9 +73,19 @@ export function fileStatus(f: EngineFile): FileStatus {
 
 const passwordWait = (f: EngineFile): boolean => f.state === "locked" || (f.state === "blocked" && (f.detail === "password_required" || f.detail === "PASSWORD_INCORRECT"));
 
+/** Exceptions of a file other than its strict-mode confirmation. */
+const reviewCount = (f: EngineFile): number => f.pending - (f.confirm ? 1 : 0);
+
+/** The exception groups a file waits in: its confirmation (strict mode) and what else it holds. */
+export function groupsOf(f: EngineFile): string[] {
+  const g = groupOf(f);
+  if (!f.confirm || f.state !== "awaiting_review") return g ? [g] : [];
+  return reviewCount(f) > 0 ? [GROUP_STRICT, GROUP_REVIEW] : [GROUP_STRICT];
+}
+
 /** Which exception group a file waits in (empty: none). */
 export function groupOf(f: EngineFile): string | null {
-  if (f.state === "awaiting_review") return GROUP_REVIEW;
+  if (f.state === "awaiting_review") return f.confirm && reviewCount(f) <= 0 ? GROUP_STRICT : GROUP_REVIEW;
   if (passwordWait(f)) return GROUP_PASSWORD;
   if (f.state === "blocked" || f.state === "failed") return GROUP_BLOCKED;
   return null;
@@ -90,14 +102,15 @@ export function toBatchFile(prev: BatchFile, f: EngineFile): BatchFile {
   }
   const st = fileStatus(f);
   const group = groupOf(f);
+  const groups = groupsOf(f);
   const reason = st === "bad" || st === "held" ? reasonLabel(f.detail) : null;
   return {
     ...prev,
     h,
     st,
     det: hits > 0 || !["preflighting", "preflighted", "queued", "extracting_detecting"].includes(f.state),
-    g: group ? [group] : [],
-    reason: group === GROUP_REVIEW ? null : reason,
+    g: groups,
+    reason: group === GROUP_REVIEW || group === GROUP_STRICT ? null : reason,
     outputName: f.output || undefined,
     sha: f.digest ?? "",
     partial: f.state === "partial",
@@ -107,15 +120,15 @@ export function toBatchFile(prev: BatchFile, f: EngineFile): BatchFile {
 /** The exception groups a batch's files wait in. Rows are fixed by the files; `noBulk` because decisions are per file. */
 export function liveGroups(files: BatchFile[], rows: EngineFile[]): ExceptionGroup[] {
   const defs: Record<string, Omit<ExceptionGroup, "per" | "done">> = {
+    [GROUP_STRICT]: { id: GROUP_STRICT, ic: "eye", t: "逐份确认", unit: "份", noBulk: true, acts: [{ l: "去确认", k: "open" }] },
     [GROUP_REVIEW]: { id: GROUP_REVIEW, ic: "eye", t: "需要复核", unit: "处", noBulk: true, acts: [{ l: "去复核", k: "open" }] },
     [GROUP_PASSWORD]: { id: GROUP_PASSWORD, ic: "lock", t: "需要密码", unit: "份", noBulk: true, acts: [{ l: "输入密码", k: "pwd" }] },
     [GROUP_BLOCKED]: { id: GROUP_BLOCKED, ic: "retry", t: "处理受阻", unit: "份", block: true, noBulk: true, acts: [{ l: "重新处理", k: "retry" }] },
   };
   const per: Record<string, Record<number, number>> = {};
   rows.forEach((r, i) => {
-    const g = groupOf(r);
-    if (!g || !files[i]) return;
-    (per[g] ||= {})[i] = g === GROUP_REVIEW ? Math.max(1, r.pending) : 1;
+    if (!files[i]) return;
+    for (const g of groupsOf(r)) (per[g] ||= {})[i] = g === GROUP_REVIEW ? Math.max(1, reviewCount(r)) : 1;
   });
   return Object.keys(defs).filter((id) => per[id]).map((id) => ({ ...defs[id]!, per: per[id]!, done: [] }));
 }
@@ -145,11 +158,13 @@ export function buildLiveDocument(units: EngineUnit[], ext: string, previous?: {
   const hits: Hit[] = [];
   const findingOf: number[] = [];
   let para = 0;
+  const texts = new Map<string, string>(); // part#ordinal -> text, to name a section by its heading
   for (const u of units) {
     const page = pageOf(u.part);
     while (pages.length <= page) { pages.push([]); seqOf.push([]); }
     para++;
-    const at = { page, para, sec: "" };
+    texts.set(u.part + "#" + u.ordinal, u.text);
+    const at: DocLocation = ext === "docx" ? docxAt(u, page, texts) : { page, para, sec: "" };
     const segs: NonNullable<Block["segs"]> = [];
     let last = 0;
     const fs = [...(u.findings ?? [])].sort((a, b) => a.start - b.start || b.end - a.end);
@@ -170,7 +185,20 @@ export function buildLiveDocument(units: EngineUnit[], ext: string, previous?: {
   return { pages, hits, imgs: [], findingOf, seqOf };
 }
 
-function hitOf(f: EngineFinding, text: string, at: { page: number; para: number; sec: string }, id: number, prev?: Hit): Hit {
+const AREA: [RegExp, string][] = [[/header\d*\.xml$/, "页眉"], [/footer\d*\.xml$/, "页脚"], [/footnotes\.xml$/, "脚注"], [/endnotes\.xml$/, "尾注"]];
+
+/** A DOCX unit's place (requirements 4.3): approximate page when the file was saved with page markers, the
+ *  nearest heading, the paragraph's own ordinal, a table cell, and the area (header, footnote…) it is in. */
+function docxAt(u: EngineUnit, page: number, texts: Map<string, string>): DocLocation {
+  const l = u.location ?? {};
+  const area = AREA.find(([re]) => re.test(u.part))?.[1] ?? "";
+  const heading = l.section ? (texts.get(u.part + "#" + l.section) ?? "").trim().slice(0, 24) : "";
+  const at: DocLocation = { page, para: u.ordinal, sec: [area, heading].filter(Boolean).join(" "), hint: l.page_hint ?? 0 };
+  if (l.table) at.cell = "表 " + l.table.index + " 第 " + l.table.row + " 行第 " + l.table.col + " 列";
+  return at;
+}
+
+function hitOf(f: EngineFinding, text: string, at: DocLocation, id: number, prev?: Hit): Hit {
   const type = uiCategory(f.category);
   const manual = f.source === "manual";
   const src = f.low ? (SOURCE_LABEL[f.source] ?? f.source) + " · 低置信" : (SOURCE_LABEL[f.source] ?? f.source);

@@ -1,6 +1,6 @@
 import { addManualRedaction, setHitState, setSameAll } from "../../actions/single";
 import { CATEGORIES, MANUAL_CATEGORIES } from "../../domain/catalog";
-import { locStr } from "../../domain/format";
+import { locAt } from "../../domain/format";
 import { sameValueHits, type ManualSelection } from "../../domain/single";
 import { useAppState } from "../../store";
 import { Segmented, Swatch } from "../../ui";
@@ -22,7 +22,7 @@ export function HitPopover({ hitId }: { hitId: number }) {
       </div>
       <div className="hp-v">{hit.text}</div>
       <div className="muted sm" style={{ margin: "-6px 0 12px" }}>
-        {locStr(single.ext, hit.page + 1, hit.sec, hit.para)}
+        {locAt(single.ext, hit)}
       </div>
       <Segmented full value={hit.state} onChange={setHitState} options={[{ value: "keep", label: "保留" }, { value: "redact", label: "涂抹" }]} />
       {same.length > 1 && (

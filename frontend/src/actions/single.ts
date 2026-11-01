@@ -1,7 +1,7 @@
 // The single-file task: detection, review decisions, undo and export.
 import { current, isDraft, type Draft } from "immer";
 import { CATEGORIES } from "../domain/catalog";
-import { extOf, locStr, outputKind } from "../domain/format";
+import { extOf, locAt, outputKind } from "../domain/format";
 import { presetModelId } from "../domain/presets";
 import { buildDocument } from "../domain/sampleDocument";
 import {
@@ -15,7 +15,7 @@ import { leaveBatchFile, reportLeftBatchFile } from "./batch";
 import { enterBatchReview } from "./review";
 import { needModel } from "./models";
 import { openSubpage } from "./navigation";
-import { addLiveManual, cancelLiveSingle, chooseOutputFolder, exportLiveSingle } from "./live";
+import { addLiveManual, cancelLiveSingle, chooseOutputFolder, exportLiveSingle, withdrawLiveManual } from "./live";
 
 const plain = <T,>(v: T): T => (isDraft(v) ? (current(v as Draft<T>) as T) : v);
 
@@ -107,6 +107,11 @@ export function pushUndo(d: Draft<AppState>): void {
 export function undoSingle(): void {
   const u = getState().undo.at(-1);
   if (!u) return;
+  if (u.manual != null && getState().single?.live) {
+    closePop();
+    void withdrawLiveManual(u.manual).then((ok) => { if (ok) toast("已撤销"); });
+    return;
+  }
   store.update((d) => {
     d.undo.pop();
     Object.assign(d.single!, u);
@@ -216,7 +221,7 @@ export function setSameAll(on: boolean): void {
 /** Mask the selected text by hand. */
 export function addManualRedaction(type: CategoryId, sel: ManualSelection): void {
   if (getState().single?.live) {
-    void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + CATEGORIES[type].l); });
+    void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + CATEGORIES[type].l, undoSingle); });
     window.getSelection()?.removeAllRanges();
     closePop();
     return;
@@ -288,7 +293,7 @@ export function openImageMenu(anchor: PopAnchor, index: number): void {
   const im = s.imgs[index]!;
   const verb = outputKind(s.ext).verb;
   openMenu(anchor, [
-    { h: im.label + " · " + locStr(s.ext, im.page + 1, im.sec, im.para) },
+    { h: im.label + " · " + locAt(s.ext, im) },
     { l: verb, k: "remove", on: im.act !== "keep" },
     { l: "保留", s: "部分结果", k: "keep", on: im.act === "keep" },
   ], (it) => {

@@ -4,7 +4,7 @@ import { isDraft, current } from "immer";
 import { isSettled } from "../domain/batch";
 import { extOf } from "../domain/format";
 import {
-  buildLiveDocument, decisionsOf, engineCategory, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, liveGroups, reasonLabel, toBatchFile,
+  buildLiveDocument, decisionsOf, engineCategory, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, reasonLabel, toBatchFile,
   unitOffsets, zeroHits,
 } from "../domain/live";
 import { createSingle } from "../domain/single";
@@ -315,7 +315,7 @@ export async function addLiveManual(type: CategoryId, sel: ManualSelection): Pro
   const [start, end] = unitOffsets(block, s.hits, si, sel.st, sel.en);
   const runId = s.runId;
   try {
-    await e.addManual(s.live.job, seq, start, end, engineCategory(type));
+    const finding = await e.addManual(s.live.job, seq, start, end, engineCategory(type));
     const { units, truncated } = await loadUnits(s.live.job);
     store.update((d) => {
       const x = d.single;
@@ -323,7 +323,34 @@ export async function addLiveManual(type: CategoryId, sel: ManualSelection): Pro
       const doc = buildLiveDocument(units, x.ext, { findingOf: plain(x.live!.findingOf), hits: plain(x.hits) });
       Object.assign(x, { pages: doc.pages, hits: doc.hits });
       x.live = { ...x.live!, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated };
-      d.undo = []; // the kernel keeps a manual candidate; it cannot be taken back from here
+      // The document was read again, so earlier snapshots no longer match its hits; what can be undone
+      // from here on is this selection, which the kernel takes back (FR-22).
+      d.undo = [{ hits: plain(x.hits), pages: plain(x.pages), imgs: plain(x.imgs), catAct: plain(x.catAct), manual: finding }];
+    });
+    return true;
+  } catch (err) {
+    toast(errorText(err));
+    return false;
+  }
+}
+
+/** Undo of a manual redaction: the kernel takes the selection back and the document is read again, keeping
+ *  the choices made on the other candidates. The undo entry goes only once the kernel agreed. */
+export async function withdrawLiveManual(finding: number): Promise<boolean> {
+  const e = liveEngine();
+  const s = getState().single;
+  if (!e || !s?.live) return false;
+  const runId = s.runId;
+  try {
+    await e.withdrawManual(s.live.job, finding);
+    const { units, truncated } = await loadUnits(s.live.job);
+    store.update((d) => {
+      const x = d.single;
+      if (!x || x.runId !== runId) return;
+      const doc = buildLiveDocument(units, x.ext, { findingOf: plain(x.live!.findingOf), hits: plain(x.hits) });
+      Object.assign(x, { pages: doc.pages, hits: doc.hits });
+      x.live = { ...x.live!, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated };
+      d.undo = [];
     });
     return true;
   } catch (err) {
@@ -338,6 +365,58 @@ export function flushLiveDecisions(job: string, hits: Single["hits"], findingOf:
   if (!e) return;
   const ds = decisionsOf(hits, { findingOf });
   if (ds.length) void e.decide(job, ds).catch((err) => toast(errorText(err)));
+}
+
+/** “跳过此文件”: the file is left out of the batch and not exported. False when the kernel refused. */
+export async function skipLive(job: string): Promise<boolean> {
+  const e = liveEngine();
+  if (!e) return false;
+  try {
+    await e.skip(job);
+    toast("已跳过 · 不会导出");
+    return true;
+  } catch (err) {
+    toast(errorText(err));
+    return false;
+  }
+}
+
+/** Strict mode, from the file's review: skips this file instead of confirming it. */
+export async function skipLiveBatchFile(): Promise<void> {
+  const s = getState().single;
+  if (!s?.live || s.from !== "batch") return;
+  const { job } = s.live;
+  closePop();
+  store.update((d) => {
+    const behind = d.behind;
+    d.single = behind ? behind.single : null;
+    d.undo = behind ? behind.undo : [];
+    d.behind = null;
+    d.view = "batch";
+  });
+  await skipLive(job);
+}
+
+/** Strict mode, from the file's review: sends the choices, then confirms this one file for export. */
+export async function confirmLiveBatchFile(): Promise<void> {
+  const e = liveEngine();
+  const s = getState().single;
+  if (!e || !s?.live || s.from !== "batch") return;
+  const { job } = s.live;
+  const ds = decisionsOf(s.hits, s.live);
+  closePop();
+  store.update((d) => {
+    const behind = d.behind;
+    d.single = behind ? behind.single : null;
+    d.undo = behind ? behind.undo : [];
+    d.behind = null;
+    d.view = "batch";
+  });
+  try {
+    if (ds.length) await e.decide(job, ds);
+    await e.confirm(job);
+    toast("已确认 · 该文件将导出");
+  } catch (err) { toast(errorText(err)); }
 }
 
 export async function chooseOutputFolder(apply: (dir: string) => void): Promise<void> {
@@ -454,7 +533,7 @@ export async function runLiveBatch(): Promise<void> {
   store.update((d) => { d.batch!.phase = "run"; d.batch!.tab = "todo"; });
   try {
     await flushConfig();
-    await e.start({ batch: id, preset: presetEngineId(b.preset), outputDir: b.live.outputDir, authorize: b.autoPub, allowPartial: b.imgAct === "keep" });
+    await e.start({ batch: id, preset: presetEngineId(b.preset), outputDir: b.live.outputDir, authorize: b.autoPub, allowPartial: b.imgAct === "keep", mode: b.mode === "strict" ? "strict" : undefined });
     await syncBatch(await e.status(id, PAGE));
   } catch (err) {
     store.update((d) => { if (d.batch?.live?.id === id) d.batch.phase = "precheck"; });
@@ -566,7 +645,7 @@ export async function openLiveFile(fi: number): Promise<void> {
   if (f.g.includes(GROUP_BLOCKED) || f.st === "bad") { toast((f.reason ?? "无法处理") + " · " + f.name); return; }
   if (f.st === "skipped") { toast("已跳过 · 不会导出"); return; }
   if (f.st === "done" || f.st === "partial") { toast("已导出为 " + (f.outputName ?? f.id)); return; }
-  if (!(f.g.includes(GROUP_REVIEW) || f.st === "ready")) { toast("尚未检测完成"); return; }
+  if (!(f.g.includes(GROUP_REVIEW) || f.g.includes(GROUP_STRICT) || f.st === "ready")) { toast("尚未检测完成"); return; }
   const runId = nextRunId();
   try {
     const { units, truncated } = await loadUnits(job);
@@ -595,7 +674,8 @@ export function openLiveGroup(gid: string | null): void {
   if (g.id === GROUP_PASSWORD) {
     openModal({ type: "livePassword", targets: members.map((fi) => ({ job: b.live!.jobs[fi]!, name: b.files[fi]!.name })) });
   } else if (g.id === GROUP_BLOCKED) {
-    void retryLive().then(() => toast("已重新排队"));
+    // a whole-file block offers its one unblocking action (重新处理) and “跳过此文件” (requirements 2.3)
+    openModal({ type: "liveBlocked", targets: members.map((fi) => ({ job: b.live!.jobs[fi]!, name: b.files[fi]!.name, reason: b.files[fi]!.reason ?? "无法处理" })) });
   } else {
     void openLiveFile(members[0]!);
   }
@@ -603,7 +683,7 @@ export function openLiveGroup(gid: string | null): void {
 
 export const liveIdle = (): boolean => !!(getState().batch?.live);
 
-export { GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW };
+export { GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT };
 
 /* ── After a restart ──────────────────────────────────────────────────────── */
 

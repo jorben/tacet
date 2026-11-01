@@ -215,7 +215,7 @@ export function presetContents(p: Preset, rulesets: Ruleset[], model: Model | nu
   const preset = (schemeId: string, schemeRev?: number): string => {
     const out: PresetJSON = {
       ruleset_id: primary ?? "", scheme_id: schemeId, mode: prevPreset.mode ?? "guided", rules_only: !useModel,
-      memory_bytes: prevPreset.memory_bytes ?? 1 << 30, dpi: prevPreset.dpi ?? 200, style: prevPreset.style ?? "solid", retention_days: prevPreset.retention_days ?? 0,
+      memory_bytes: prevPreset.memory_bytes ?? 1 << 30, dpi: prevPreset.dpi ?? 200, style: prevPreset.style ?? "default", retention_days: prevPreset.retention_days ?? 0,
     };
     if (extra.length) out.extra_ruleset_ids = extra;
     if (schemeRev) out.scheme_rev = schemeRev;
@@ -277,7 +277,7 @@ export function importPackage(text: string, want: "ruleset" | "preset", rulesets
   const s = (p.settings ?? {}) as Partial<PresetJSON>;
   const useModel = p.detection === "model" && !!model;
   const presetJSON: PresetJSON = {
-    ruleset_id: ids[0]!, scheme_id: "", mode: "guided", rules_only: !useModel, memory_bytes: s.memory_bytes ?? 1 << 30, dpi: s.dpi ?? 200, style: s.style ?? "solid",
+    ruleset_id: ids[0]!, scheme_id: "", mode: "guided", rules_only: !useModel, memory_bytes: s.memory_bytes ?? 1 << 30, dpi: s.dpi ?? 200, style: s.style ?? "default",
     retention_days: s.retention_days ?? 0, ...(ids.length > 1 ? { extra_ruleset_ids: ids.slice(1) } : {}),
     ...(useModel ? { model_profile_id: model!.profile, min_confidence: typeof p.confidence === "number" ? p.confidence : model!.calibrated } : {}),
   };

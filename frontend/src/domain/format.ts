@@ -1,3 +1,4 @@
+import type { DocLocation } from "./types";
 // Small formatting helpers for numbers, file names and document locations.
 
 export const fmt = (n: unknown): string => Number(n).toLocaleString("zh-CN");
@@ -24,6 +25,16 @@ export function locStr(ext: string, page: number | null, sec: string, para: numb
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** locStr for a located hit or block: a live DOCX shows its approximate page only when it has one. */
+export function locAt(ext: string, at: DocLocation, short = false): string {
+  const page = at.hint !== undefined ? at.hint || null : at.page + 1;
+  const where = locStr(ext, page, at.sec, at.para, short);
+  if (!at.cell || ext !== "docx") return where;
+  const parts = where.split(" · ");
+  parts.splice(parts.length - 1, 0, at.cell);
+  return parts.join(" · ");
 }
 
 export interface OutputKind {

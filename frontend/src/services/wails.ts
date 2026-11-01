@@ -4,6 +4,8 @@ import type { EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBat
 
 /** Must match internal/gui/window.go EventCloseRequested. */
 export const EVENT_CLOSE_REQUESTED = "tacet:close-requested";
+/** Must match internal/gui/tray.go EventQuitRequested. */
+export const EVENT_QUIT_REQUESTED = "tacet:quit-requested";
 /** Must match internal/gui/service.go EventBatchChanged and EventFilesDropped. */
 export const EVENT_BATCH_CHANGED = "tacet:batch-changed";
 export const EVENT_FILES_DROPPED = "tacet:files-dropped";
@@ -28,7 +30,7 @@ const engine: EngineService = {
   importFiles: (a) => G.ImportFiles({ files: a.files, quick: a.quick, preset: a.preset ?? "", outputDir: a.outputDir ?? "" }) as Promise<EngineBatch>,
   async unfinished() { return ((await G.UnfinishedBatches()) ?? []) as EngineBatch[]; },
   preflight: (b) => G.Preflight(b) as Promise<EngineBatch>,
-  start: (a) => G.Start({ batch: a.batch, preset: a.preset ?? "", outputDir: a.outputDir ?? "", authorize: a.authorize, allowPartial: a.allowPartial }),
+  start: (a) => G.Start({ batch: a.batch, preset: a.preset ?? "", outputDir: a.outputDir ?? "", authorize: a.authorize, allowPartial: a.allowPartial, mode: a.mode ?? "" }),
   async files(b, offset, limit) { return ((await G.BatchFiles(b, offset, limit)) ?? []) as EngineFile[]; },
   status: (b, limit) => G.BatchStatus(b, limit) as Promise<EngineBatch>,
   publish: (b, partial, dir) => G.PublishBatch(b, partial, dir ?? ""),
@@ -53,7 +55,10 @@ const engine: EngineService = {
   async configHistory(id) { return ((await G.ConfigHistory(id)) ?? []) as ConfigVersion[]; },
   configRollback: (id, v, r) => G.ConfigRollback(id, v, r) as Promise<ConfigItem>,
   decide: (job, ds) => G.DecideFindings(job, ds as any),
+  confirm: (job) => G.ConfirmFile(job),
+  skip: (job) => G.SkipFile(job),
   addManual: (job, seq, start, end, category) => G.AddManualRedaction(job, seq, start, end, category),
+  withdrawManual: (job, finding) => G.WithdrawManualRedaction(job, finding),
   onBatchChanged(handler) { return Events.On(EVENT_BATCH_CHANGED, (e) => handler(payload<EngineBatch>(e))); },
   onFilesDropped(handler) { return Events.On(EVENT_FILES_DROPPED, (e) => handler(payload<string[]>(e))); },
 };
@@ -71,8 +76,14 @@ export const wailsService: TacetService = {
   async minimiseWindow() {
     await Window.Minimise();
   },
+  async hideWindow() {
+    await Window.Hide();
+  },
   async quitApp() {
     await Application.Quit();
+  },
+  onQuitRequested(handler) {
+    return Events.On(EVENT_QUIT_REQUESTED, () => handler());
   },
   onCloseRequested(handler) {
     const off = Events.On(EVENT_CLOSE_REQUESTED, () => handler());

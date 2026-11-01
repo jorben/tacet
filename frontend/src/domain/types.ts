@@ -15,6 +15,10 @@ export interface DocLocation {
   page: number;
   para: number;
   sec: string;
+  /** Live DOCX: the approximate page the saved page markers give (0: none, no page is shown). */
+  hint?: number;
+  /** In a table: “表 k 第 r 行第 c 列”. */
+  cell?: string;
 }
 
 export interface Hit extends DocLocation {
@@ -55,6 +59,8 @@ export interface DocContent {
 /** The part of a single document that user decisions change; the undo stack stores these. */
 export interface DecisionSnapshot extends DocContent {
   catAct: CategoryTreatments;
+  /** Live documents: undoing this entry takes back the manual redaction with this engine finding id. */
+  manual?: number;
 }
 export type CategoryTreatments = Partial<Record<CategoryId, Treatment>>;
 

@@ -1,3 +1,4 @@
+import { locAt } from "../format";
 import { describe, expect, it } from "vitest";
 import type { EngineFile, EngineUnit } from "../../services/types";
 import { buildLiveDocument, decisionsOf, engineCategory, groupOf, liveGroups, reasonLabel, toBatchFile, uiCategory, unitOffsets, zeroHits } from "../live";
@@ -112,5 +113,41 @@ describe("批次行与例外组", () => {
     expect(g.map((x) => x.id)).toEqual(["live-review", "live-password"]);
     expect(g[0]!.per).toEqual({ 0: 3, 3: 1 });
     expect(g.every((x) => x.noBulk)).toBe(true);
+  });
+
+  it("严格方式：确认单独成组，其余例外仍在复核组；确认后（不再标记）回到原来的分组", () => {
+    expect(groupOf(row("awaiting_review", { pending: 1, confirm: true }))).toBe("live-strict");
+    expect(groupOf(row("awaiting_review", { pending: 3, confirm: true }))).toBe("live-review");
+    expect(toBatchFile(base(0), row("awaiting_review", { pending: 3, confirm: true })).g).toEqual(["live-strict", "live-review"]);
+    expect(toBatchFile(base(0), row("awaiting_review", { pending: 1, confirm: true })).g).toEqual(["live-strict"]);
+    expect(toBatchFile(base(0), row("awaiting_review", { pending: 2 })).g).toEqual(["live-review"]);
+    const rows = [row("awaiting_review", { pending: 1, confirm: true }), row("awaiting_review", { pending: 4, confirm: true }), row("completed")];
+    const g = liveGroups(rows.map((_, i) => base(i)), rows);
+    expect(g.map((x) => [x.id, x.per])).toEqual([["live-strict", { 0: 1, 1: 1 }], ["live-review", { 1: 3 }]]);
+  });
+});
+
+describe("DOCX 定位（需求 4.3）", () => {
+  const u = (seq: number, ordinal: number, text: string, location?: EngineUnit["location"], part = "word/document.xml"): EngineUnit =>
+    ({ seq, part, ordinal, visibility: "visible", text, findings: [{ id: seq, start: 0, end: 1, category: "phone", source: "rule", score: 1, low: false } as never], location });
+
+  it("约第 n 页只在有分页标记时显示；章节取最近标题；表格给出单元格；段落号是文档自身的序号", () => {
+    const doc = buildLiveDocument([
+      u(1, 1, "第一章 总则", { page_hint: 1, section: 1 }),
+      u(2, 4, "联系人 13812345678", { page_hint: 2, section: 1 }),
+      u(3, 6, "13900001111", { page_hint: 2, section: 1, table: { index: 1, row: 2, col: 3 } }),
+      u(4, 2, "页眉文字", undefined, "word/header1.xml"),
+    ], "docx");
+    expect(doc.hits.map((h) => locAt("docx", h))).toEqual([
+      "约第 1 页 · 第一章 总则 · 第 1 段",
+      "约第 2 页 · 第一章 总则 · 第 4 段",
+      "约第 2 页 · 第一章 总则 · 表 1 第 2 行第 3 列 · 第 6 段",
+      "页眉 · 第 2 段",
+    ]);
+    // without page markers: no page at all, never “约第 1 页”
+    const plain = buildLiveDocument([u(1, 3, "13812345678")], "docx");
+    expect(locAt("docx", plain.hits[0]!)).toBe("第 3 段");
+    // other formats are unchanged
+    expect(locAt("pdf", { page: 1, para: 2, sec: "" })).toBe("第 2 页");
   });
 });

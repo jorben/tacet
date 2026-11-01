@@ -81,7 +81,7 @@ export const RasterPage = memo(function RasterPage({ single, pageIndex, revealed
                   height: ((bt - t) / page.height) * 100 + "%",
                   padding: 0,
                   border: hit.state === "keep" ? "1.5px dotted #6b7280" : "1.5px solid var(--c)",
-                  background: covered ? "#111" : hit.state === "keep" ? "none" : "color-mix(in srgb,var(--c) 16%,transparent)",
+                  background: covered ? "var(--rdx)" : hit.state === "keep" ? "none" : "color-mix(in srgb,var(--c) 16%,transparent)",
                   boxShadow: "none",
                   cursor: "pointer",
                 }}

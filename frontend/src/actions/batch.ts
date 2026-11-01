@@ -84,7 +84,6 @@ const guarded = (what: string): boolean => {
 
 export function setBatchMode(mode: BatchMode): void {
   if (guarded("设置")) return;
-  if (mode === "strict" && getState().batch?.live) { toast("当前版本暂不支持“严格”方式的逐份确认"); return; }
   store.update((d) => { d.batch!.mode = mode; });
 }
 

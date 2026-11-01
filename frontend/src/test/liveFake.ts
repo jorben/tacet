@@ -151,6 +151,29 @@ export class FakeEngine implements EngineService {
     // the kernel redoes the file from resolution as soon as a decision is stored
     this.rows = this.rows.map((r) => (r.state === "awaiting_review" || r.state === "ready_to_publish" ? { ...r, state: "resolving", pending: 0 } : r));
   }
+  skipped: string[] = [];
+  skipFails: Error | null = null;
+  async skip(job: string) {
+    this.calls.push("skip:" + job);
+    if (this.skipFails) throw this.skipFails;
+    this.skipped.push(job);
+  }
+  confirmed: string[] = [];
+  confirmFails: Error | null = null;
+  async confirm(job: string) {
+    this.calls.push("confirm");
+    if (this.confirmFails) throw this.confirmFails;
+    this.confirmed.push(job);
+  }
+  withdrawn: number[] = [];
+  withdrawFails: Error | null = null;
+  afterWithdraw: EngineUnit[] | null = null;
+  async withdrawManual(_job: string, finding: number) {
+    this.calls.push("withdraw:" + finding);
+    if (this.withdrawFails) throw this.withdrawFails;
+    this.withdrawn.push(finding);
+    if (this.afterWithdraw) this.units = this.afterWithdraw;
+  }
   async addManual(job: string, seq: number, start: number, end: number, category: string) {
     this.calls.push("manual");
     this.manual = { job, seq, start, end, category };

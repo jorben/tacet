@@ -23,6 +23,8 @@ export interface EngineFile {
   output?: string;
   /** sha256 of the published file. */
   digest?: string;
+  /** Waits for its own confirmation before it is exported (strict mode). */
+  confirm?: boolean;
 }
 
 export interface EngineBatch {
@@ -61,6 +63,8 @@ export interface EngineUnit {
   visibility: string;
   text: string;
   findings: EngineFinding[] | null;
+  /** DOCX: where the unit is; numbers only (approximate page, ordinal of the nearest heading, table cell). */
+  location?: { page_hint?: number; section?: number; table?: { index: number; row: number; col: number } } | null;
 }
 
 export interface EnginePagePreview {
@@ -128,7 +132,7 @@ export interface EngineService {
   preflight(batch: string): Promise<EngineBatch>;
   /** What a restart left behind: at most one quick task and one batch, paused where they stopped. */
   unfinished(): Promise<EngineBatch[]>;
-  start(a: { batch: string; preset?: string; outputDir?: string; authorize: boolean; allowPartial: boolean }): Promise<void>;
+  start(a: { batch: string; preset?: string; outputDir?: string; authorize: boolean; allowPartial: boolean; mode?: "guided" | "strict" }): Promise<void>;
   status(batch: string, limit: number): Promise<EngineBatch>;
   /** Rows [offset, offset+limit) of a batch, at most 200. */
   files(batch: string, offset: number, limit: number): Promise<EngineFile[]>;
@@ -159,7 +163,13 @@ export interface EngineService {
   configHistory(id: string): Promise<ConfigVersion[]>;
   configRollback(id: string, expected: number, restore: number): Promise<ConfigItem>;
   decide(job: string, decisions: { id: number; keep: boolean }[]): Promise<void>;
+  /** The per-file confirmation of strict mode: one file, never several at once. */
+  confirm(job: string): Promise<void>;
+  /** “跳过此文件”: one waiting file is left out of its batch and not exported. */
+  skip(job: string): Promise<void>;
   addManual(job: string, seq: number, start: number, end: number, category: string): Promise<number>;
+  /** Takes back a manual redaction (the finding addManual returned) with its decision. */
+  withdrawManual(job: string, finding: number): Promise<void>;
   /** Called with a fresh status whenever a batch changed. Returns the unsubscribe function. */
   onBatchChanged(handler: (b: EngineBatch) => void): () => void;
   /** Called with absolute paths of files dropped on the window. */
@@ -175,6 +185,8 @@ export interface TacetService {
   readonly host: HostKind;
   /** Minimise the main window. No-op in a browser. */
   minimiseWindow(): Promise<void>;
+  /** Hide the main window to the tray; work goes on. No-op in a browser. */
+  hideWindow(): Promise<void>;
   /** End the application. No-op in a browser. */
   quitApp(): Promise<void>;
   /**
@@ -183,4 +195,6 @@ export interface TacetService {
    * Returns a function that removes the handler.
    */
   onCloseRequested(handler: () => void): () => void;
+  /** Called when the person chooses “退出” in the tray: an explicit quit. Returns the unsubscribe function. */
+  onQuitRequested(handler: () => void): () => void;
 }

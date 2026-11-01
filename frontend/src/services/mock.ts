@@ -7,7 +7,11 @@ export const mockService: TacetService = {
     return { name: "Tacet", version: "0.0.0-dev" };
   },
   async minimiseWindow() {},
+  async hideWindow() {},
   async quitApp() {},
+  onQuitRequested() {
+    return () => {};
+  },
   onCloseRequested() {
     return () => {};
   },
