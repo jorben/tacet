@@ -8,10 +8,12 @@ import type { DocLocation,
 const UI_CATEGORY: Record<string, CategoryId> = {
   phone: "phone", email: "email", id_number: "id", payment_card: "card", date: "date",
   person: "name", address: "addr", organization: "org",
+  account: "account", ip_address: "ip_address", url: "url", secret: "secret",
 };
 const ENGINE_CATEGORY: Record<CategoryId, string> = {
   phone: "phone", email: "email", id: "id_number", card: "payment_card", date: "date",
-  name: "person", addr: "address", org: "organization", other: "other",
+  name: "person", addr: "address", org: "organization",
+  account: "account", ip_address: "ip_address", url: "url", secret: "secret", other: "other",
 };
 
 /** The screen category of an engine category; anything without a own place is “其他”. */

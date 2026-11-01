@@ -69,7 +69,8 @@ export type ModalSpec =
   | { type: "aboutLink"; which: "website" | "discord" | "github" }
   | { type: "licenses" }
   | { type: "cleanWorkspace" }
-  | { type: "closeWindow" };
+  | { type: "closeWindow" }
+  | { type: "presetTest" };
 
 export type DrawerSpec = { type: "sample"; category: CategoryId | "img"; rows: SampleRow[] };
 

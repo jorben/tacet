@@ -34,3 +34,19 @@
 .community-link{height:30px;padding:0 12px;gap:6px}
 .community-link:hover{background:var(--surface-2)}
 
+
+/* scheme test */
+.pt-modal{width:min(620px,calc(100% - 48px));max-height:calc(100% - 64px);overflow:auto}
+.pt-modal .field.ta{margin-top:0}
+.pt-meta{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:12px;color:var(--muted)}
+.pt-meta .pt-over{color:var(--bad)}
+.pt-sum{margin-top:16px;font-size:13px}
+.pt-sum .pt-below{color:var(--muted)}
+.pt-err{color:var(--bad)}
+.pt-text{margin-top:10px;padding:12px 14px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
+.pt-hit{color:inherit;border-radius:3px;padding:1px 1px;background:color-mix(in srgb,var(--c) 13%,transparent);box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--c) 75%,transparent)}
+.pt-hit.below{background:none;box-shadow:none;text-decoration:underline dashed color-mix(in srgb,var(--c) 75%,transparent) 1.5px;text-underline-offset:4px}
+.pt-list{margin-top:12px}
+.pt-row .pt-main{flex:1 1 auto;min-width:0}
+.pt-row .pt-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pt-row .rv{flex:none;white-space:nowrap;gap:6px}

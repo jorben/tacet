@@ -1,6 +1,6 @@
 import { Application, Browser, Events, System, Window } from "@wailsio/runtime";
 import * as G from "../../bindings/github.com/jorben/tacet/internal/gui/service";
-import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EnginePagePreview, EngineFile, EngineService, HostKind, TacetService } from "./types";
+import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EnginePresetTest, EngineBatch, EnginePagePreview, EngineFile, EngineService, HostKind, TacetService } from "./types";
 
 /** Must match internal/gui/window.go EventCloseRequested. */
 export const EVENT_CLOSE_REQUESTED = "tacet:close-requested";
@@ -62,6 +62,7 @@ const engine: EngineService = {
   configDelete: (id, v) => G.ConfigDelete(id, v),
   async configHistory(id) { return ((await G.ConfigHistory(id)) ?? []) as ConfigVersion[]; },
   configRollback: (id, v, r) => G.ConfigRollback(id, v, r) as Promise<ConfigItem>,
+  testPreset: (preset, text) => G.TestPreset(preset, text) as Promise<EnginePresetTest>,
   decide: (job, ds) => G.DecideFindings(job, ds as any),
   confirm: (job) => G.ConfirmFile(job),
   skip: (job) => G.SkipFile(job),

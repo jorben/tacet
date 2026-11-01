@@ -1,4 +1,4 @@
-import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EngineService, EngineUnit } from "../services/types";
+import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EnginePresetTest, EngineService, EngineUnit } from "../services/types";
 
 export const cleanBatchStub = true;
 
@@ -163,6 +163,15 @@ export class FakeEngine implements EngineService {
     it.content = this.history[id]!.find((h) => h.v.number === restore)!.content;
     it.version++;
     return { ...it };
+  }
+  testResult: EnginePresetTest = { hits: [], rulesOnly: true };
+  testFails: Error | null = null;
+  tested: { preset: string; text: string } | null = null;
+  async testPreset(preset: string, text: string) {
+    this.calls.push("testPreset:" + preset);
+    this.tested = { preset, text };
+    if (this.testFails) throw this.testFails;
+    return this.testResult;
   }
   async decide(_job: string, ds: { id: number; keep: boolean }[]) {
     this.calls.push("decide");

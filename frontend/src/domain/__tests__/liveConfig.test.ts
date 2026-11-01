@@ -44,6 +44,18 @@ describe("规则集 ↔ 存储内容", () => {
     expect(sameContent(rulesetContent(rulesetFromItem(stored)), stored.content)).toBe(true);
   });
 
+  it("账号、IP、网址、凭证规则按自己的类别显示；旧的公司名规则按“其他”显示并保存", () => {
+    const rs = rulesetFromItem(item("ruleset", "rs3", { rules: [
+      { id: "staff", category: "account", pattern: "E[0-9]{6}" },
+      { id: "ip", category: "ip_address", pattern: "[0-9.]+" },
+      { id: "url", category: "url", pattern: "https?://\\S+" },
+      { id: "key", category: "secret", pattern: "sk-[A-Za-z0-9]{20,}" },
+      { id: "partner", category: "organization", terms: ["星河"] },
+    ] }));
+    expect(rs.rules.map((r) => r.cat)).toEqual(["account", "ip_address", "url", "secret", "other"]);
+    expect(JSON.parse(rulesetContent(rs)).rules.map((r: { category: string }) => r.category)).toEqual(["account", "ip_address", "url", "secret", "other"]);
+  });
+
   it("sameContent 与键顺序、空白无关，对值敏感", () => {
     expect(sameContent('{"a":1,"b":[1,2]}', ' {"b":[1,2], "a":1} ')).toBe(true);
     expect(sameContent('{"a":1}', '{"a":2}')).toBe(false);

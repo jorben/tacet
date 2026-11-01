@@ -549,6 +549,24 @@ func (s *Service) ConfigRollback(id string, expected, restore uint64) (app.Confi
 	return it, publicError(err)
 }
 
+// presetTestTimeout bounds a preset test: loading the model, or waiting for the task that holds it.
+const presetTestTimeout = 3 * time.Minute
+
+// TestPreset runs the detection of a stored preset over a text the person typed; nothing is stored.
+func (s *Service) TestPreset(preset, text string) (app.PresetTest, error) {
+	core, err := s.engine()
+	if err != nil {
+		return app.PresetTest{}, publicError(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), presetTestTimeout)
+	defer cancel()
+	res, err := core.TestPreset(ctx, preset, text)
+	if err != nil && ctx.Err() != nil {
+		return app.PresetTest{}, app.ErrTimeout
+	}
+	return res, publicError(err)
+}
+
 // MaxExchangeFile bounds a configuration file read from disk.
 const MaxExchangeFile = 8 << 20
 

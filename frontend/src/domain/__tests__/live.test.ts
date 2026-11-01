@@ -67,8 +67,10 @@ describe("引擎文档 → 复核视图", () => {
 
 describe("类别与原因", () => {
   it("两个方向的类别映射互逆，未知类别归入其他", () => {
-    for (const c of ["phone", "email", "id", "card", "date", "name", "addr", "org"] as const) expect(uiCategory(engineCategory(c))).toBe(c);
-    expect(uiCategory("secret")).toBe("other");
+    for (const c of ["phone", "email", "id", "card", "date", "name", "addr", "org", "account", "ip_address", "url", "secret"] as const) expect(uiCategory(engineCategory(c))).toBe(c);
+    // account, IP, URL and credential have places of their own; only categories nothing names are “其他”
+    expect(uiCategory("secret")).toBe("secret");
+    expect(uiCategory("employee")).toBe("other");
     expect(engineCategory("other")).toBe("other");
   });
   it("已知原因码有说明，未知的原样显示，空值为 null", () => {
@@ -88,10 +90,12 @@ describe("批次行与例外组", () => {
       .toEqual(["done", "partial", "ready", "held", "held", "held", "bad", "bad", "skipped", "proc", "queue"]);
   });
 
-  it("类别计数落到办公类别，其他类别只计入命中总数之外", () => {
-    const f = toBatchFile(base(0), row("completed", { categories: { phone: 2, id_number: 1, secret: 4 }, output: "f0001.txt", digest: "sha256:ab" }));
+  it("类别计数落到办公类别（含账号、IP、网址、凭证），未知类别只计入命中总数之外", () => {
+    const f = toBatchFile(base(0), row("completed", { categories: { phone: 2, id_number: 1, secret: 4, account: 3, ip_address: 1, url: 2, employee: 5 }, output: "f0001.txt", digest: "sha256:ab" }));
     expect(f.h.phone).toBe(2);
     expect(f.h.id).toBe(1);
+    expect([f.h.account, f.h.ip_address, f.h.url, f.h.secret]).toEqual([3, 1, 2, 4]);
+    expect(Object.values(f.h).reduce((a, n) => a + n, 0)).toBe(13);
     expect(f).toMatchObject({ outputName: "f0001.txt", sha: "sha256:ab", det: true });
   });
 

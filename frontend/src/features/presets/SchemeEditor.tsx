@@ -6,6 +6,7 @@ import {
   type CategorySource,
 } from "../../domain/presets";
 import { uiCategory } from "../../domain/live";
+import { openModal } from "../../overlay/store";
 import type { CategoryId, Preset, PresetTreatment } from "../../domain/types";
 import { Icon, List, Pill, Row, SelectButton, Segmented, Swatch, tip } from "../../ui";
 import { ConfigHeader } from "./ConfigHeader";
@@ -83,7 +84,7 @@ export function SchemeEditor() {
         onImport={() => startImport("preset")}
       />
       <div className="preset-detail" role="region" aria-label="方案内容" tabIndex={0}>
-        <ConfigHeader name={p.name} version={p.ver} locked={locked} lockedHint="内建方案，复制后可编辑" onCopy={copyPreset} onMore={openPresetMoreMenu} />
+        <ConfigHeader name={p.name} version={p.ver} locked={locked} lockedHint="内建方案，复制后可编辑" onTest={() => openModal({ type: "presetTest" })} onCopy={copyPreset} onMore={openPresetMoreMenu} />
         <List style={{ marginBottom: 14 }}>
           <Row icon="scan" title="检测方式">
             <Segmented

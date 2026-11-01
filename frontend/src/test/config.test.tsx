@@ -154,6 +154,51 @@ describe("方案", () => {
     expect(win()).toContain("新方案");
     expect(win()).not.toContain("公司名");
   });
+
+  it("测试：入口在复制左侧；识别文本并标出每条结果来自模型还是规则；改文本清除旧结果", async () => {
+    go("presets");
+    const head = $(".preset-detail .phead")!;
+    const labels = $$("button", head).map((b) => b.textContent);
+    expect(labels.indexOf("测试")).toBe(labels.indexOf("复制") - 1);
+    press("测试", ".preset-detail .phead");
+    const modal = () => $(".pt-modal")!;
+    expect(modal().textContent).toContain("方案「办公外发」· AstrLink Guard + 规则");
+    expect(button("识别", modal()).hasAttribute("disabled")).toBe(true);
+    typeInto("#ptText", "联系人：王晓明，手机 13812345678，证件 11010519491231002X");
+    press("识别", ".pt-modal");
+    await act(async () => {});
+    expect($(".pt-sum")!.textContent).toBe("识别到 3 处 · 模型 1 · 规则 1 · 模型 + 规则 1");
+    const row = (v: string) => $$(".pt-row").find((r) => r.querySelector(".pt-val")?.textContent === v)!;
+    expect($$("[data-source]", row("王晓明")).map((t) => t.textContent)).toEqual(["模型 0.88"]);
+    expect($$("[data-source]", row("13812345678")).map((t) => t.textContent)).toEqual(["模型 0.97", "规则 · 手机号"]);
+    expect($$("[data-source]", row("11010519491231002X")).map((t) => t.textContent)).toEqual(["规则 · 居民身份证"]);
+    expect($$(".pt-text mark").map((m) => m.textContent)).toEqual(["王晓明", "13812345678", "11010519491231002X"]);
+    expect($$(".pt-text mark")[1]!.getAttribute("data-tip")).toBe("电话 · 模型 + 规则 0.97 · 手机号");
+    typeInto("#ptText", "联系人：王晓明");
+    expect($(".pt-sum")).toBeNull();
+    press("关闭", ".pt-modal");
+    expect($(".pt-modal")).toBeNull();
+  });
+
+  it("测试：模型未就绪时说明原因；仅规则方案只列规则命中", async () => {
+    go("presets");
+    act(() => store.update((d) => { d.models[0]!.status = "missing"; }));
+    press("测试", ".preset-detail .phead");
+    typeInto("#ptText", "手机 13812345678");
+    press("识别", ".pt-modal");
+    await act(async () => {});
+    expect($(".pt-err")!.textContent).toContain("模型尚未就绪");
+    press("关闭", ".pt-modal");
+    click($$(".pitem").find((b) => b.textContent!.includes("日志清理"))!);
+    press("测试", ".preset-detail .phead");
+    expect($(".pt-modal")!.textContent).toContain("仅规则");
+    typeInto("#ptText", "联系人：王晓明，手机 13812345678");
+    press("识别", ".pt-modal");
+    await act(async () => {});
+    expect($(".pt-sum")!.textContent).toBe("识别到 1 处 · 规则 1");
+    expect($$("[data-source=model]")).toHaveLength(0);
+    press("关闭", ".pt-modal");
+  });
 });
 
 describe("规则", () => {
@@ -182,6 +227,19 @@ describe("规则", () => {
     click($$('button[aria-label="编辑"]')[2]!);
     press("保存", "#layer .modal");
     expect($(".toast")!.textContent).toContain("内容未变，版本不变");
+  });
+
+  it("规则的命中归类与方案类别一致：可选账号、IP 地址、网址、凭证，不再可选公司名", () => {
+    go("presets");
+    press("规则", "[role=tablist]");
+    press("企业词条", ".plist");
+    const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!;
+    expect(row.querySelector(".rv")!.textContent).toContain("账号");
+    press("添加规则");
+    const options = $$("#layer .typegrid button").map((b) => b.textContent);
+    expect(options).toEqual(expect.arrayContaining(["账号", "IP 地址", "网址", "凭证", "其他"]));
+    expect(options).not.toContain("公司名");
+    press("取消", "#layer .modal");
   });
 
   it("名称与内容必填", () => {

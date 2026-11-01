@@ -314,42 +314,13 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 		if len(formats) == 0 {
 			return fmt.Errorf("%w: no processable file", ErrNotReady)
 		}
-		env := snapshot.Env{Models: map[string]snapshot.Model{}, FormatActions: map[string]map[string]bool{}}
-		for f := range formats {
-			env.Formats = append(env.Formats, f)
-			env.FormatActions[f] = map[string]bool{"delete": true, "placeholder": true, "mask": true, "keep": true, "remove_part": true}
-		}
-		sort.Strings(env.Formats)
-		digests := map[string]string{}
-		for _, m := range e.models {
-			env.Models[m.id] = snapshot.Model{Categories: m.categories, AdapterFloor: m.floor, MemoryBytes: m.kind.memory}
-			digests[m.id] = m.digest
-		}
 		out := r.OutputDir
 		if out == "" {
 			out = run.OutputDir
 		}
-		settings, serr := e.cfg.Settings(tx)
-		style := ""
-		if serr == nil {
-			style = settings.RedactStyle
-		}
-		content, report, err := snapshot.ResolvePreset(tx, e.cfg, preset, snapshot.Bindings{Environment: env, ModelDigests: digests, Style: style,
-			Runtime:  snapshot.RuntimeContent{Protocol: "1.0", Formats: refsByFormat},
-			Delivery: snapshot.DeliveryContent{OutputDir: out, Naming: "neutral", PublishPolicy: "explicit", PartialRule: "marked"}})
+		content, err := e.resolveContent(tx, preset, refsByFormat, out, avail)
 		if err != nil {
 			return err
-		}
-		if len(report.Blocking) > 0 {
-			return fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
-		}
-		if content.Detect.ModelID != "" && !content.Detect.RulesOnly {
-			m := e.modelByID(content.Detect.ModelID)
-			if m == nil || !avail[m.id] {
-				return fmt.Errorf("%w: %s", ErrNotReady, ErrModelNotInstalled)
-			}
-			// the build that runs is frozen with the batch: a resumed run uses the same weights and provider
-			content.Detect.Execution = e.execution(settings, m, avail)
 		}
 		if r.Mode == "strict" { // chosen for this batch; frozen with it (dispose facet)
 			content.Dispose.Mode = "strict"
@@ -375,6 +346,45 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 		e.changed(r.Batch)
 	}
 	return mapErr(err)
+}
+
+// resolveContent resolves a preset into the content a snapshot freezes, for files of the given formats
+// published to out. A preset that uses a model needs it installed; the build that runs is chosen here, so a
+// resumed run uses the same weights and provider.
+func (e *Engine) resolveContent(tx store.Tx, preset string, refsByFormat map[string]snapshot.PluginRef, out string, avail map[string]bool) (snapshot.Content, error) {
+	env := snapshot.Env{Models: map[string]snapshot.Model{}, FormatActions: map[string]map[string]bool{}}
+	for f := range refsByFormat {
+		env.Formats = append(env.Formats, f)
+		env.FormatActions[f] = map[string]bool{"delete": true, "placeholder": true, "mask": true, "keep": true, "remove_part": true}
+	}
+	sort.Strings(env.Formats)
+	digests := map[string]string{}
+	for _, m := range e.models {
+		env.Models[m.id] = snapshot.Model{Categories: m.categories, AdapterFloor: m.floor, MemoryBytes: m.kind.memory}
+		digests[m.id] = m.digest
+	}
+	settings, serr := e.cfg.Settings(tx)
+	style := ""
+	if serr == nil {
+		style = settings.RedactStyle
+	}
+	content, report, err := snapshot.ResolvePreset(tx, e.cfg, preset, snapshot.Bindings{Environment: env, ModelDigests: digests, Style: style,
+		Runtime:  snapshot.RuntimeContent{Protocol: "1.0", Formats: refsByFormat},
+		Delivery: snapshot.DeliveryContent{OutputDir: out, Naming: "neutral", PublishPolicy: "explicit", PartialRule: "marked"}})
+	if err != nil {
+		return snapshot.Content{}, err
+	}
+	if len(report.Blocking) > 0 {
+		return snapshot.Content{}, fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
+	}
+	if content.Detect.ModelID != "" && !content.Detect.RulesOnly {
+		m := e.modelByID(content.Detect.ModelID)
+		if m == nil || !avail[m.id] {
+			return snapshot.Content{}, fmt.Errorf("%w: %w", ErrNotReady, ErrModelNotInstalled)
+		}
+		content.Detect.Execution = e.execution(settings, m, avail)
+	}
+	return content, nil
 }
 
 // phaseOf maps a task state to the verdict's coarse phase.

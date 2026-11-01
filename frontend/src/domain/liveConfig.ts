@@ -49,6 +49,9 @@ export function sameContent(a: string, b: string): boolean {
 }
 
 const ruleFromJSON = (r: RuleJSON): Rule => {
+  // Rules no longer report organization names (schemes do not offer them; they are marked by hand in review).
+  // An older rule that did is shown, and saved again, as “其他”, the category it is treated as from now on.
+  if (r.category === "organization") r = { ...r, category: "other" };
   const kind = r.terms?.length ? "词表" : r.validator ? "校验" : "正则";
   const body = r.terms?.length ? r.terms.join("\n") : r.validator ? `${r.pattern ?? ""}${r.validator ? "  ·  校验 " + r.validator : ""}` : (r.pattern ?? "");
   return {

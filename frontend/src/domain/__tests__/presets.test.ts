@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
+import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetCategoryLabel, presetModelId, presetNeedsModel, ruleCategoryId, ruleSummary } from "../presets";
+import { RULE_CATEGORIES } from "../catalog";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
+import type { Rule } from "../types";
 
 describe("置信度", () => {
   it("默认值与下限来自所绑定的模型", () => {
@@ -22,8 +24,10 @@ describe("方案", () => {
     const models = seedModels();
     const rules = seedRulesets();
     const cats = presetCategories(p, models, rules);
-    expect(cats).toEqual(["name", "phone", "email", "id", "addr", "card", "date", "account", "ip_address", "url", "secret", "other"]);
+    expect(cats).toEqual(["name", "phone", "email", "id", "addr", "card", "date", "account", "ip_address", "url", "secret"]);
     expect(cats).not.toContain("org");
+    // a rule reporting “其他” brings “其他” into the scheme, listed last
+    expect(presetCategories({ ...p, rules: ["cn", "corp"] }, models, rules).at(-1)).toBe("other");
     models.push({ ...models[0]!, id: "pf", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
     const minimal = [{ ...rules[0]!, rules: rules[0]!.rules.filter((r) => r.cat === "phone") }];
     expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("ip_address");
@@ -31,6 +35,21 @@ describe("方案", () => {
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual(["phone"]);
     minimal[0]!.rules.forEach((r) => { r.on = false; });
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual([]);
+  });
+
+  it("规则的每个命中归类在仅规则方案中都有同名的一项；规则不再归入公司名", () => {
+    expect(RULE_CATEGORIES).not.toContain("org");
+    expect(RULE_CATEGORIES).toEqual(expect.arrayContaining(["account", "ip_address", "url", "secret", "other"]));
+    const p = { ...seedPresets()[0]!, det: "rules" as const, rules: ["all"] };
+    const rules: Rule[] = RULE_CATEGORIES.map((cat) => ({ name: cat, kind: "正则", cat, body: "x", on: true }));
+    const cats = presetCategories(p, [], [{ id: "all", name: "all", ver: "v1", rules }]);
+    expect(cats).toHaveLength(RULE_CATEGORIES.length);
+    for (const r of rules) {
+      expect(cats).toContain(ruleCategoryId(r));
+      expect(presetCategoryLabel(ruleCategoryId(r))).not.toBe(r.cat === "other" ? "" : "其他");
+    }
+    // engine categories without a screen id keep their own name on both pages
+    expect(presetCategoryLabel(ruleCategoryId({ cat: "other", ecat: "employee" }))).toBe("工号");
   });
 
   it("类别的检测来源：模型、规则或两者", () => {

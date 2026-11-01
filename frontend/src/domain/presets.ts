@@ -1,5 +1,5 @@
 // Schemes (presets), rule sets and their version history.
-import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Ruleset } from "./types";
+import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
 import { CATEGORIES, PRESET_CATEGORIES } from "./catalog";
 import { engineCategory, uiCategory } from "./live";
 
@@ -9,7 +9,7 @@ export const presetCategoryId = (engine: string): string => {
   return ui === "other" ? engine : ui;
 };
 export const presetEngineCategory = (id: string): string => id in CATEGORIES ? engineCategory(id as keyof typeof CATEGORIES) : id;
-const EXTRA_LABELS: Record<string, string> = { account: "账号", ip_address: "IP 地址", url: "网址", secret: "凭证", employee: "工号" };
+const EXTRA_LABELS: Record<string, string> = { employee: "工号" };
 export const presetCategoryLabel = (id: string): string => CATEGORIES[id as keyof typeof CATEGORIES]?.l ?? EXTRA_LABELS[id] ?? id;
 export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
 
@@ -26,17 +26,20 @@ export function presetCategorySources(p: Pick<Preset, "det" | "model" | "rules">
   };
   if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => mark(presetCategoryId(c), "model"));
   rulesets.filter((r) => p.rules.includes(r.id)).forEach((s) => s.rules.forEach((r) => {
-    if (r.on) mark(presetCategoryId(r.ecat ?? engineCategory(r.cat)), "rules");
+    if (r.on) mark(ruleCategoryId(r), "rules");
   }));
   return out;
 }
+
+/** The scheme category a rule reports: the same id (and so the same name) the scheme lists it under. */
+export const ruleCategoryId = (r: Pick<Rule, "cat" | "ecat">): string => presetCategoryId(r.ecat ?? engineCategory(r.cat));
 
 export const categorySourceLabel = (s: CategorySource | undefined): string => (s?.model ? (s.rules ? "模型 + 规则" : "模型") : s?.rules ? "规则" : "");
 
 /** Only categories detected by the selected model or active rules are offered. */
 export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): string[] {
   const covered = presetCategorySources(p, models, rulesets);
-  const order: string[] = [...PRESET_CATEGORIES, "account", "ip_address", "url", "secret"];
+  const order: string[] = [...PRESET_CATEGORIES, "other"];
   return [...covered.keys()].sort((a, b) => {
     const rank = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
     return rank(a) - rank(b) || a.localeCompare(b);

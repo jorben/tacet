@@ -6,6 +6,7 @@ import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
 import { exportLive, flushConfig, saveSettingsNow, importLive, loadConfig, openVersions, stopConfigSync } from "../actions/liveConfig";
 import { takePaths } from "../actions/live";
+import { runPresetTest, testErrorText } from "../actions/presetTest";
 import { overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -428,6 +429,28 @@ describe("方案与规则集的存储同步", () => {
     fake.settingsFails = null;
     await waitFor(() => expect(getState().settings.tier).toBe("comfort"));
     await saveSettingsNow();
+  });
+
+  it("测试方案：先写回未保存的改动，再按存储编号交给内核；结果标出来源", async () => {
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    const copy = getState().presets.find((p) => !p.builtin)!;
+    fake.testResult = { rulesOnly: false, model: "astrlink-guard-int8", minConfidence: 0.8, hits: [
+      { start: 0, end: 11, category: "phone", source: "rule", rule: "cn_mobile", ruleName: "手机号" },
+      { start: 0, end: 11, category: "phone", source: "model", score: 0.93 },
+      { start: 12, end: 15, category: "person", source: "model", score: 0.61, low: true, below: true },
+    ] };
+    const r = await runPresetTest("13812345678 王小明");
+    const stored = getState().presets.find((p) => p.id === getState().presetSel)!.stored!.id;
+    expect(stored).not.toBe(copy.id);
+    expect(fake.calls.indexOf("configCreate:preset")).toBeLessThan(fake.calls.indexOf("testPreset:" + stored));
+    expect(fake.tested).toEqual({ preset: stored, text: "13812345678 王小明" });
+    expect(r.minConfidence).toBe(0.8);
+    expect(r.hits.map((h) => [h.cat, h.rules, h.model?.score, h.model?.below])).toEqual([["phone", ["手机号"], 0.93, false], ["name", [], 0.61, true]]);
+    fake.testFails = new Error("MODEL_NOT_INSTALLED");
+    await expect(runPresetTest("x")).rejects.toThrow("MODEL_NOT_INSTALLED");
+    expect(testErrorText(new Error("MODEL_NOT_INSTALLED"))).toContain("模型尚未就绪");
+    expect(testErrorText(new Error("TIMEOUT"))).toContain("超时");
   });
 
   it("flushConfig 在没有引擎时什么也不做", async () => {

@@ -91,6 +91,32 @@ export interface ConfigItem {
   minConfidenceReset?: boolean;
 }
 
+/** One candidate a preset test found; start/end count UTF-16 code units of the text. */
+export interface EngineTestHit {
+  start: number;
+  end: number;
+  /** Engine category (phone, person, account, …). */
+  category: string;
+  /** "model", "rule" or "dictionary" (a word-list rule). */
+  source: string;
+  /** Id and name of the rule that matched; absent for model candidates. */
+  rule?: string;
+  ruleName?: string;
+  score?: number;
+  /** Below the model's calibrated value. */
+  low?: boolean;
+  /** Below the preset's minimum confidence: a task keeps it and does not redact it. */
+  below?: boolean;
+}
+
+/** What a stored preset finds in a text, as a task with it would detect it. Nothing is stored. */
+export interface EnginePresetTest {
+  hits: EngineTestHit[] | null;
+  rulesOnly: boolean;
+  model?: string;
+  minConfidence?: number;
+}
+
 export interface ConfigVersion {
   number: number;
   savedAt: number;
@@ -233,6 +259,8 @@ export interface EngineService {
   configDelete(id: string, expected: number): Promise<void>;
   configHistory(id: string): Promise<ConfigVersion[]>;
   configRollback(id: string, expected: number, restore: number): Promise<ConfigItem>;
+  /** Runs a stored preset's detection over a text (at most 20000 characters); nothing is stored. */
+  testPreset(preset: string, text: string): Promise<EnginePresetTest>;
   decide(job: string, decisions: { id: number; keep: boolean }[]): Promise<void>;
   /** The per-file confirmation of strict mode: one file, never several at once. */
   confirm(job: string): Promise<void>;

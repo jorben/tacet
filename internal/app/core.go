@@ -304,6 +304,9 @@ type Core interface {
 	SettingsGet(ctx context.Context) (Settings, error)
 	SettingsSave(ctx context.Context, s Settings) (Settings, error)
 	ConfigRollback(ctx context.Context, id string, expected, restore uint64) (ConfigItem, error)
+	// TestPreset runs a stored preset's detection over a text (at most MaxTestText characters) and
+	// returns what it finds, each with its source; nothing is stored.
+	TestPreset(ctx context.Context, preset, text string) (PresetTest, error)
 	Resume(ctx context.Context, batch string) error
 	Cancel(ctx context.Context, batch string) error
 	Retry(ctx context.Context, batch string, jobs []string) error

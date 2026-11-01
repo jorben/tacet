@@ -2,7 +2,9 @@
 
 /* ── Categories, documents and single-file review ─────────────────────────── */
 
-export type CategoryId = "org" | "name" | "phone" | "email" | "id" | "addr" | "card" | "date" | "other";
+export type CategoryId =
+  | "org" | "name" | "phone" | "email" | "id" | "addr" | "card" | "date"
+  | "account" | "ip_address" | "url" | "secret" | "other";
 export type OfficeCategoryId = Exclude<CategoryId, "other">;
 export type PresetCategoryId = Exclude<OfficeCategoryId, "org">;
 /** How a category is written to the output: block it out, replace by a placeholder, or leave it alone. */

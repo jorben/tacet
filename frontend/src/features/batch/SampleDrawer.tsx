@@ -8,7 +8,8 @@ import { closeModal, type SampleRow } from "../../overlay/store";
 import { Button, Icon, IconButton, Swatch } from "../../ui";
 
 const CONTEXT: Record<CategoryId | "img", string> = {
-  org: "单位：", name: "联系人：", phone: "电话：", email: "邮箱：", id: "身份证号：", addr: "住址：", card: "账户：", date: "出生日期：", img: "", other: "",
+  org: "单位：", name: "联系人：", phone: "电话：", email: "邮箱：", id: "身份证号：", addr: "住址：", card: "账户：", date: "出生日期：",
+  account: "工号：", ip_address: "服务器：", url: "链接：", secret: "密钥：", img: "", other: "",
 };
 
 /** A masked value that shows its digits for a moment when clicked. */

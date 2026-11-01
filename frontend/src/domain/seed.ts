@@ -36,19 +36,19 @@ export const seedRulesets = (): Ruleset[] => [
       { name: "居民身份证", kind: "校验", cat: "id", body: "18 位 · 出生日期 · 校验位", on: true },
       { name: "银行卡", kind: "校验", cat: "card", body: "16–19 位 · Luhn", on: true },
       { name: "日期", kind: "正则", cat: "date", body: "\\d{4}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日", on: true },
-      { name: "API Key / Token", kind: "校验", cat: "other", body: "已知格式 42 种", on: true },
+      { name: "API Key / Token", kind: "校验", cat: "secret", body: "已知格式 42 种", on: true },
     ],
   },
   {
     id: "corp", name: "企业词条", ver: "v2", edited: "3 天前",
     hist: [{ ver: "v1", when: "上月", data: { rules: [
       { name: "项目代号", kind: "词表", cat: "other", body: "", n: 36, on: true },
-      { name: "合作方简称", kind: "词表", cat: "org", body: "", n: 120, on: true },
+      { name: "合作方简称", kind: "词表", cat: "other", body: "", n: 120, on: true },
     ] } }],
     rules: [
       { name: "项目代号", kind: "词表", cat: "other", body: "", n: 36, on: true },
-      { name: "合作方简称", kind: "词表", cat: "org", body: "", n: 120, on: true },
-      { name: "员工工号", kind: "正则", cat: "other", body: "HZ\\d{6}", on: true },
+      { name: "合作方简称", kind: "词表", cat: "other", body: "", n: 120, on: true },
+      { name: "员工工号", kind: "正则", cat: "account", body: "HZ\\d{6}", on: true },
     ],
   },
   {

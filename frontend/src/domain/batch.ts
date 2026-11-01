@@ -40,7 +40,9 @@ export function createBatch(names: string[], opt: NewBatchOptions): Batch {
     const h = {
       org: randInt(1, 12), name: randInt(4, 40), phone: randInt(1, 14), email: randInt(0, 6),
       id: randInt(0, 4), addr: randInt(0, 7), card: randInt(0, 2), date: randInt(1, 10),
-    } as Record<OfficeCategoryId, number>;
+      // the demo documents carry none of these; drawing for them would change every other synthetic number
+      account: 0, ip_address: 0, url: 0, secret: 0,
+    } satisfies Record<OfficeCategoryId, number>;
     const imgs = randInt(0, 5);
     return {
       i, id: "T" + String(i + 1).padStart(4, "0"), name, ext, pages, h, imgs, st: supported ? "queue" : "bad", t: 0,

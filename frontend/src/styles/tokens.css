@@ -6,7 +6,7 @@
  --primary:#34734F;--on-primary:#fff;--primary-soft:#EDF5EE;--ring:#4F8E68;
  --ok:#13834C;--ok-soft:#E6F5EC;--warn:#985A06;--warn-soft:#FAEFD8;--bad:#B42318;--bad-soft:#FBE7E4;
  --redact:#141619;--paper:#FFFFFF;--paper-ink:#23262A;
- --t-org:#8C6A1F;--t-name:#6550C8;--t-phone:#0B7A8F;--t-email:#2F6FB5;--t-id:#B4570B;--t-addr:#4E7A12;--t-card:#B0234F;--t-date:#8A4FC2;--t-other:#5B6470;--t-img:#5B6470;
+ --t-org:#8C6A1F;--t-name:#6550C8;--t-phone:#0B7A8F;--t-email:#2F6FB5;--t-id:#B4570B;--t-addr:#4E7A12;--t-card:#B0234F;--t-date:#8A4FC2;--t-account:#9C3D7A;--t-ip_address:#2D7A5C;--t-url:#3D5A99;--t-secret:#A03E1F;--t-other:#5B6470;--t-img:#5B6470;
  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
  --pop:0 12px 32px rgba(0,0,0,.16),0 1px 3px rgba(0,0,0,.08);
  --ease:cubic-bezier(.2,.8,.2,1);

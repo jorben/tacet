@@ -91,6 +91,9 @@ func (f *fake) ConfigHistory(context.Context, string) ([]app.ConfigVersion, erro
 func (f *fake) ConfigRollback(context.Context, string, uint64, uint64) (app.ConfigItem, error) {
 	return app.ConfigItem{}, nil
 }
+func (f *fake) TestPreset(context.Context, string, string) (app.PresetTest, error) {
+	return app.PresetTest{}, nil
+}
 func (f *fake) Publish(context.Context, string, bool, string) error                 { f.rec("publish"); return nil }
 func (f *fake) Unlock(context.Context, string, []byte) error                        { return nil }
 func (f *fake) Document(context.Context, string, int, int) ([]app.DocUnit, error)   { return nil, nil }

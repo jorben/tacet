@@ -323,6 +323,10 @@ const SAMPLE_VALUES: Record<CategoryId | "img", string[]> = {
   addr: ["杭州市西湖区••••", "上海市浦东新区••••"],
   card: ["6222 •••• •••• 885"],
   date: ["1992 年 3 月 ••", "2026 年 1 月 ••"],
+  account: ["E10••••27", "E20••••09"],
+  ip_address: ["10.12.•••.••", "192.168.•••.••"],
+  url: ["https://intra.••••.cn/••••"],
+  secret: ["sk-••••••••", "AKIA••••••••"],
   img: ["证件照", "公章", "截图"],
   other: [],
 };

@@ -10,13 +10,22 @@ export const CATEGORIES: Record<CategoryId, { l: string; ph: string }> = {
   addr: { l: "地址", ph: "地址" },
   card: { l: "银行卡", ph: "卡号" },
   date: { l: "日期", ph: "日期" },
+  account: { l: "账号", ph: "账号" },
+  ip_address: { l: "IP 地址", ph: "IP 地址" },
+  url: { l: "网址", ph: "网址" },
+  secret: { l: "凭证", ph: "凭证" },
   other: { l: "其他", ph: "已隐去" },
 };
 export const CATEGORY_IDS = Object.keys(CATEGORIES) as CategoryId[];
 /** Office categories used in detection statistics. */
-export const OFFICE_CATEGORIES: OfficeCategoryId[] = ["org", "name", "phone", "email", "id", "addr", "card", "date"];
+export const OFFICE_CATEGORIES: OfficeCategoryId[] = ["org", "name", "phone", "email", "id", "addr", "card", "date", "account", "ip_address", "url", "secret"];
 /** Categories offered by schemes; the built-in models have no organization label. */
 export const PRESET_CATEGORIES = OFFICE_CATEGORIES.filter((c) => c !== "org");
+/**
+ * Categories a rule can report (“命中归类”). They are the scheme's categories plus “其他”, so that what a rule
+ * reports is what the scheme lists; organization names are only marked by hand in review.
+ */
+export const RULE_CATEGORIES: CategoryId[] = CATEGORY_IDS.filter((c) => c !== "org");
 /** Order of the category list in the single-file review sidebar. */
 export const REVIEW_CATEGORY_ORDER: CategoryId[] = [...OFFICE_CATEGORIES, "other"];
 /** Categories offered when a selection is masked by hand. */
@@ -31,6 +40,10 @@ export const HIT_SOURCE: Record<CategoryId, string> = {
   email: "规则",
   id: "规则 · 校验",
   card: "规则 · 校验",
+  account: "模型 · 规则",
+  ip_address: "模型 · 规则",
+  url: "模型 · 规则",
+  secret: "模型 · 规则",
   other: "人工",
 };
 

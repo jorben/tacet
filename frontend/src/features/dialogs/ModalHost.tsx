@@ -3,6 +3,7 @@ import { UpdateAppDialog, AboutLinkDialog, LicensesDialog, CleanWorkspaceDialog,
 import { BulkConfirmDialog, ExportReadyDialog, LiveBlockedDialog, LivePasswordDialog, PasswordDialog } from "./batchDialogs";
 import { ImportConflictDialog, RuleEditorDialog, VersionsDialog } from "./configDialogs";
 import { HistoryItemDialog, RecentTasksDialog, ResumeBatchDialog } from "./history";
+import { PresetTestDialog } from "./presetTest";
 import { InstallPluginDialog, UninstallPluginDialog } from "./pluginDialogs";
 import { SlotConflictDialog, SwitchPresetDialog } from "./slots";
 
@@ -29,5 +30,6 @@ export function ModalContent({ spec }: { spec: ModalSpec }) {
     case "licenses": return <LicensesDialog />;
     case "cleanWorkspace": return <CleanWorkspaceDialog />;
     case "closeWindow": return <CloseWindowDialog />;
+    case "presetTest": return <PresetTestDialog />;
   }
 }

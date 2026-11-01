@@ -9,12 +9,14 @@ interface ConfigHeaderProps {
   lockedHint: string;
   /** Line under the name. */
   subtitle?: ReactNode;
+  /** “测试”: shown left of “复制” when the object can be tried on a text. */
+  onTest?: () => void;
   onCopy: () => void;
   onMore: (anchor: HTMLElement) => void;
 }
 
 /** Name, version and actions of the scheme or rule set being shown. */
-export function ConfigHeader({ name, version, locked, lockedHint, subtitle, onCopy, onMore }: ConfigHeaderProps) {
+export function ConfigHeader({ name, version, locked, lockedHint, subtitle, onTest, onCopy, onMore }: ConfigHeaderProps) {
   return (
     <div className="phead">
       {subtitle != null ? (
@@ -38,6 +40,11 @@ export function ConfigHeader({ name, version, locked, lockedHint, subtitle, onCo
         <span className="ib" tabIndex={0} {...tip(lockedHint, { align: "end" })}>
           <Icon name="lock" size={16} />
         </span>
+      )}
+      {onTest && (
+        <Button icon="scan" onClick={onTest}>
+          测试
+        </Button>
       )}
       <Button icon="copy" onClick={onCopy}>
         复制

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import {
   deleteRule, finishImport, importNameClashes, rollback, saveRule, versionTarget, type RuleDraft,
 } from "../../actions/presets";
-import { CATEGORIES, CATEGORY_IDS } from "../../domain/catalog";
+import { CATEGORIES, RULE_CATEGORIES } from "../../domain/catalog";
 import type { Boundary, RuleKind } from "../../domain/types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
@@ -55,7 +55,7 @@ export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; inde
           命中归类
         </div>
         <div className="typegrid" style={{ padding: 0 }}>
-          {CATEGORY_IDS.map((t) => (
+          {RULE_CATEGORIES.map((t) => (
             <button key={t} type="button" aria-pressed={draft.cat === t} onClick={() => set("cat", t)}>
               <Swatch category={t} />
               {CATEGORIES[t].l}
