@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿；也是桌面应用图标的来源：构建先通过 `build/icons/make_masters.py` 自动生成 macOS 与 Windows 两张圆角图标母版，再转为 `.icns` 与 `.ico`；母版 PNG 与最终图标均不纳入版本控制 |
+| [tacet-seedling-logo.png](tacet-seedling-logo.png) | 用户提供的 1024 × 1024 PNG 原稿；也是桌面应用图标的来源：构建先通过 `build/icons/make_masters.py` 自动生成 macOS 与 Windows 的正式版、开发版圆角图标母版，再转为 `.icns` 与 `.ico`；开发版右上角带有黄底深色字的 `DEV` 标签，标签内缩于圆角底板内，透明通道与正式版完全一致，避免标签突出改变外轮廓；母版 PNG 与最终图标均不纳入版本控制 |
 | [tacet-seedling-logo.webp](tacet-seedling-logo.webp) | 256 × 256 WebP 界面素材，内嵌于原型的 `HOME_ICON` 及标签页图标 |
 
 首页与标题栏使用相同比例的圆角处理。首页 Logo 显示为 80 × 80 CSS px。
@@ -36,6 +36,8 @@ Jorben 提供的 2048 × 1152 宣传图：左侧为 Logo、Tacet 字标、标语
 ## 维护约定
 
 - PNG 原稿用于后续导出与调整，WebP 用于界面展示。
-- 应用图标由 `common:generate:icons` 任务自动生成，需安装 uv；生成脚本通过隔离环境使用 Python 3.13 与固定版本 Pillow，不依赖插件虚拟环境。
+- 应用图标由 `common:generate:icons` 任务自动生成，需安装 uv；生成脚本通过隔离环境使用 Python 3.13 与固定版本 Pillow，不依赖插件虚拟环境。`DEV` 标签使用 Pillow 内嵌字体，构建机无需安装额外字体。
+- macOS 正式版 Bundle ID 为 `com.sophinova.tacet`，开发版为 `com.sophinova.tacet.dev`；开发运行与 `package DEV=true` 均使用开发版图标和标识，桌面单实例标识也随构建模式切换。
+- macOS 开发版签名读取环境变量 `DEV_SIGN_IDENTITY`（证书名称或指纹），未配置时使用 ad-hoc 签名；配置后签名失败会直接报错。正式版的证书签名仍通过 `darwin:sign` 任务执行。
 - 原型保持单 HTML 离线可用，图片以内嵌副本使用，无外部图片依赖。
 - 替换素材时，同步更新对应 WebP 文件及 HTML 中的全部内嵌副本。

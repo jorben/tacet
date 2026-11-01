@@ -162,7 +162,9 @@ tasks:
       - "make_masters.py"
     generates:
       - "macos.png"
+      - "macos-dev.png"
       - "windows.png"
+      - "windows-dev.png"
     cmds:
       - uv run --no-project --python 3.13 --with pillow==12.1.1 python make_masters.py
 
@@ -174,13 +176,19 @@ tasks:
     dir: build
     sources:
       - "icons/macos.png"
+      - "icons/macos-dev.png"
       - "icons/windows.png"
+      - "icons/windows-dev.png"
     generates:
       - "darwin/icons.icns"
+      - "darwin/icons.dev.icns"
       - "windows/icon.ico"
+      - "windows/icon.dev.ico"
     cmds:
       - wails3 generate icons -input icons/macos.png -macfilename darwin/icons.icns -windowsfilename ""
+      - wails3 generate icons -input icons/macos-dev.png -macfilename darwin/icons.dev.icns -windowsfilename ""
       - wails3 generate icons -input icons/windows.png -macfilename "" -windowsfilename windows/icon.ico
+      - wails3 generate icons -input icons/windows-dev.png -macfilename "" -windowsfilename windows/icon.dev.ico
 
   dev:frontend:
     summary: Runs the frontend in development mode

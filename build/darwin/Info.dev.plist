@@ -8,7 +8,7 @@
         <key>CFBundleExecutable</key>
             <string>tacet</string>
         <key>CFBundleIdentifier</key>
-            <string>com.jorben.tacet</string>
+            <string>com.sophinova.tacet.dev</string>
         <key>CFBundleVersion</key>
             <string>0.1.0</string>
         <key>CFBundleGetInfoString</key>

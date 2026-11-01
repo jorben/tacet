@@ -8,7 +8,7 @@
   IgnorableNamespaces="uap3">
   
   <Identity 
-    Name="com.jorben.tacet"
+    Name="com.sophinova.tacet"
     Publisher="CN=Tacet"
     Version="0.1.0.0" 
     ProcessorArchitecture="arm64" />
@@ -29,7 +29,7 @@
   </Resources>
   
   <Applications>
-    <Application Id="com.jorben.tacet" Executable="tacet" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="com.sophinova.tacet" Executable="tacet" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Tacet"
         Description="Local document redaction"

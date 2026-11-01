@@ -195,7 +195,7 @@ func OpenWith(ctx context.Context, c Config) (*Engine, error) {
 // Interrupts are the signals that stop a command-line run (platform dependent).
 func Interrupts() []os.Signal { return platform.TerminationSignals() }
 
-const credentialService = "com.tacet.workspace"
+const credentialService = "com.sophinova.tacet.workspace"
 
 // credentialAccount names a workspace's key in the credential store: the kind and a digest of the workspace
 // path. The store accepts only plain names (no ':' or path separators, Windows uses them in a file name),

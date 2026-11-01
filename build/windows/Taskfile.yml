@@ -48,6 +48,7 @@ tasks:
       - task: generate:syso
         vars:
           ARCH: '{{.ARCH}}'
+          DEV: '{{.DEV}}'
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" {{.MAIN_PKG}}'
       - cmd: powershell Remove-item {{.MAIN_DIR}}/*.syso
         platforms: [windows]
@@ -74,7 +75,7 @@ tasks:
     summary: Generates Windows `.syso` file
     dir: build
     cmds:
-      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../{{.MAIN_DIR}}/wails_windows_{{.ARCH}}.syso
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon{{if eq .DEV "true"}}.dev{{end}}.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../{{.MAIN_DIR}}/wails_windows_{{.ARCH}}.syso
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
 

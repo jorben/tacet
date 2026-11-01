@@ -25,7 +25,7 @@
         </Capabilities>
         <Applications>
             <Application
-                Id="com.jorben.tacet"
+                Id="com.sophinova.tacet"
                 Description="Local document redaction"
                 DisplayName="Tacet"
                 ExecutableName="tacet"

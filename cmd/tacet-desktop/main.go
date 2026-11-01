@@ -72,9 +72,9 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: svc.AssetHandler(application.AssetFileServerFS(assets)),
 		},
-		// One GUI instance per OS user (architecture 6.2). Handing files dropped
-		// on a second launch to this instance comes with the lifecycle module.
-		SingleInstance: &application.SingleInstanceOptions{UniqueID: "com.jorben.tacet"},
+		// One GUI instance per OS user and build mode (architecture 6.2).
+		// Development and production use separate instance identities.
+		SingleInstance: &application.SingleInstanceOptions{UniqueID: bundleID},
 		Windows: application.WindowsOptions{
 			// WM_ENDSESSION with wParam TRUE: the session really ends (a vetoed one sends FALSE); it comes
 			// before Wails quits, so the exit that follows takes the short order.

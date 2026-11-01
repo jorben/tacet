@@ -7,7 +7,7 @@ version: '3'
 info:
   companyName: "Tacet" # The name of the company
   productName: "Tacet" # The name of the application
-  productIdentifier: "com.jorben.tacet" # The unique product identifier
+  productIdentifier: "com.sophinova.tacet" # The unique product identifier
   description: "Local document redaction" # The application description
   copyright: "© 2026 Tacet contributors" # Copyright text
   comments: "Local document redaction" # Comments

@@ -123,29 +123,44 @@ tasks:
 
 
   create:app:bundle:
-    summary: Creates an `.app` bundle
+    summary: Creates an `.app` bundle with the matching identity and icon
+    deps:
+      - task: common:generate:icons
+    vars:
+      BUNDLE_NAME: '{{.APP_NAME}}{{if eq .DEV "true"}}.dev{{end}}'
+      VARIANT: '{{if eq .DEV "true"}}.dev{{end}}'
     cmds:
       # A reused bundle can acquire Finder metadata in synced folders. Build a
       # fresh bundle so codesign never has to replace a contaminated signature.
-      - test -n "{{.BIN_DIR}}" && test -n "{{.APP_NAME}}" && rm -rf -- "{{.BIN_DIR}}/{{.APP_NAME}}.app"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
-      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+      - test -n "{{.BIN_DIR}}" && test -n "{{.APP_NAME}}" && rm -rf -- "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources"
+      - cp "build/darwin/icons{{.VARIANT}}.icns" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources/icons.icns"
       - |
-        if [ -f build/darwin/Assets.car ]; then
-          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+        # An asset catalog would override the badged development icon.
+        if [ "{{.DEV}}" != "true" ] && [ -f build/darwin/Assets.car ]; then
+          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources"
         fi
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
-      - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/MacOS"
+      - cp "build/darwin/Info{{.VARIANT}}.plist" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Info.plist"
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
+        vars:
+          BUNDLE_NAME: '{{.BUNDLE_NAME}}'
 
   codesign:adhoc:
-    summary: Ad-hoc signs the app bundle (macOS only)
+    summary: Signs the app bundle, using DEV_SIGN_IDENTITY for development when configured (macOS only)
     internal: true
+    vars:
+      BUNDLE_NAME: '{{.BUNDLE_NAME | default .APP_NAME}}'
     cmds:
-      - xattr -cr "{{.BIN_DIR}}/{{.APP_NAME}}.app"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
-      - codesign --verify --deep --strict "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - xattr -cr "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
+      - |
+        identity="-"
+        if [ "{{.BUNDLE_NAME}}" = "{{.APP_NAME}}.dev" ] && [ -n "${DEV_SIGN_IDENTITY:-}" ]; then
+          identity="$DEV_SIGN_IDENTITY"
+        fi
+        codesign --force --deep --sign "$identity" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
+      - codesign --verify --deep --strict "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
 
   codesign:skip:
     summary: Skips codesigning when cross-compiling
@@ -156,19 +171,9 @@ tasks:
   run:
     cmds:
       - wails3 tool prepare-macos-output --dir "{{.BIN_DIR}}"
-      - test -n "{{.BIN_DIR}}" && test -n "{{.APP_NAME}}" && rm -rf -- "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - |
-        if [ -f build/darwin/Assets.car ]; then
-          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-        fi
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
-      - xattr -cr "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - codesign --verify --deep --strict "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+      - task: create:app:bundle
+        vars:
+          DEV: "true"
       - '"{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
 
   sign:
