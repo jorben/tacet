@@ -39,15 +39,15 @@ export function RulesEditor() {
         <List>
           {r.rules.length ? (
             r.rules.map((x, i) => (
-              <div className="row" style={categoryColor(x.cat)} key={i}>
+              <div className="row rule-row" style={categoryColor(x.cat)} key={i}>
                 <Swatch category={x.cat} />
-                <div style={{ minWidth: 0 }}>
-                  <div className="rl" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {x.name}
+                <div className="rule-main">
+                  <div className="rl">
+                    <span className="rule-name" title={x.name}>{x.name}</span>
                     <Tag>{x.kind}</Tag>
                     {x.bd && <Tag {...tip("命中前后不能紧邻" + BOUNDARY_LABELS[x.bd], { align: "end" })}>边界 · {BOUNDARY_LABELS[x.bd]}</Tag>}
                   </div>
-                  <div className={x.kind === "正则" ? "rs mono" : "rs"} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div className={x.kind === "正则" ? "rs mono" : "rs"} title={ruleSummary(x)}>
                     {ruleSummary(x)}
                   </div>
                 </div>

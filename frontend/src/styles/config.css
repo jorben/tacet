@@ -18,6 +18,13 @@
 .phead{display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--muted);font-weight:500}
 .tag.tp{background:var(--primary-soft);color:var(--primary)}
+/* Rule rows: the text column absorbs any squeeze so the category, edit button and switch keep their width. */
+.rule-row .rule-main{flex:1 1 auto;min-width:0}
+.rule-row .rl{display:flex;align-items:center;gap:8px;min-width:0}
+.rule-row .rule-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rule-row .rl .tag{flex:none;white-space:nowrap}
+.rule-row .rs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rule-row .rv{flex:none;white-space:nowrap}
 
 /* settings */
 .text-link{color:var(--primary);font-size:12px;white-space:nowrap}
