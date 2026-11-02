@@ -4,8 +4,8 @@ import { isDraft, current } from "immer";
 import { isSettled } from "../domain/batch";
 import { extOf } from "../domain/format";
 import {
-  buildLiveDocument, decisionsOf, engineCategory, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, reasonLabel, toBatchFile,
-  unitOffsets, zeroHits,
+  buildLiveDocument, decisionsOf, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, reasonLabel, toBatchFile,
+  unitOffsets,
 } from "../domain/live";
 import { createSingle } from "../domain/single";
 import type { Batch, BatchFile, CategoryId, RasterDoc, RasterPage, Single } from "../domain/types";
@@ -316,7 +316,7 @@ export async function addLiveManual(type: CategoryId, sel: ManualSelection): Pro
   const [start, end] = unitOffsets(block, s.hits, si, sel.st, sel.en);
   const runId = s.runId;
   try {
-    const finding = await e.addManual(s.live.job, seq, start, end, engineCategory(type));
+    const finding = await e.addManual(s.live.job, seq, start, end, type);
     const { units, truncated } = await loadUnits(s.live.job);
     store.update((d) => {
       const x = d.single;
@@ -450,7 +450,7 @@ const PAGE = 200;
 
 function placeholderFile(i: number, name: string): BatchFile {
   return {
-    i, id: "T" + String(i + 1).padStart(4, "0"), name, ext: extOf(name), pages: 0, h: zeroHits(), imgs: 0, st: "queue", t: 0, g: [], late: [],
+    i, id: "T" + String(i + 1).padStart(4, "0"), name, ext: extOf(name), pages: 0, h: {}, imgs: 0, st: "queue", t: 0, g: [], late: [],
     det: false, partial: false, man: false,
   };
 }

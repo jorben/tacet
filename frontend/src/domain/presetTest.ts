@@ -2,8 +2,8 @@
 // Pure: the kernel's result (desktop) or a simulation of it (browser) goes in, the screen's shape comes out.
 import type { EnginePresetTest } from "../services/types";
 import type { CategoryId, ModelPlugin, Preset, Rule, Ruleset } from "./types";
-import { uiCategory, engineCategory } from "./live";
-import { presetCategories, presetCategoryId, presetCategoryLabel, presetConfidence, presetTreatment } from "./presets";
+import { categoryName, STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
+import { presetCategories, presetConfidence, presetTreatment } from "./presets";
 
 /** The kernel refuses longer texts; the screen says so before asking. */
 export const MAX_TEST_TEXT = 20000;
@@ -15,10 +15,11 @@ export interface TestModelSource { score: number; low: boolean; below: boolean }
 export interface TestHit {
   start: number;
   end: number;
-  /** Category id as schemes name it (name, phone, account, …). */
-  cat: string;
-  /** Colour of the category on screen. */
+  /** Category id (person, phone, account, a user category, …). */
+  cat: CategoryId;
+  /** Colour of the category on screen: the category's own. */
   color: CategoryId;
+  /** The category's catalog name. */
   label: string;
   model: TestModelSource | null;
   /** Names of the rules that matched it; empty when only the model found it. */
@@ -52,14 +53,14 @@ export function testCounts(hits: TestHit[]): TestCounts {
 interface RawHit { start: number; end: number; category: string; model?: TestModelSource; rule?: string }
 
 /** One entry per span and category: a span both the model and a rule found is one finding with two sources. */
-function merge(raw: RawHit[]): TestHit[] {
+function merge(raw: RawHit[], catalog: readonly CategoryInfo[]): TestHit[] {
   const by = new Map<string, TestHit>();
   for (const r of raw) {
-    const cat = presetCategoryId(r.category);
+    const cat = r.category;
     const key = r.start + ":" + r.end + ":" + cat;
     let h = by.get(key);
     if (!h) {
-      h = { start: r.start, end: r.end, cat, color: uiCategory(r.category), label: presetCategoryLabel(cat), model: null, rules: [] };
+      h = { start: r.start, end: r.end, cat, color: cat, label: categoryName(catalog, cat), model: null, rules: [] };
       by.set(key, h);
     }
     if (r.model && (!h.model || r.model.score > h.model.score)) h.model = r.model;
@@ -69,19 +70,19 @@ function merge(raw: RawHit[]): TestHit[] {
 }
 
 /** The kernel's answer, in the screen's shape. */
-export function testFromEngine(r: EnginePresetTest): TestResult {
+export function testFromEngine(r: EnginePresetTest, catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): TestResult {
   const raw: RawHit[] = (r.hits ?? []).map((h) => h.source === "model"
     ? { start: h.start, end: h.end, category: h.category, model: { score: h.score ?? 0, low: !!h.low, below: !!h.below } }
     : { start: h.start, end: h.end, category: h.category, rule: h.ruleName || h.rule || (h.source === "dictionary" ? "词表" : "规则") });
-  return { hits: merge(raw), rulesOnly: r.rulesOnly, ...(r.rulesOnly ? {} : { minConfidence: r.minConfidence }) };
+  return { hits: merge(raw, catalog), rulesOnly: r.rulesOnly, ...(r.rulesOnly ? {} : { minConfidence: r.minConfidence }) };
 }
 
 /* ── browser simulation ─────────────────────────────────────────────────────── */
 
 /** Rules whose check is done by code (“校验”) stand in with a pattern and the same check. */
 const CHECKED: Partial<Record<CategoryId, { re: string; ok?: (s: string) => boolean }>> = {
-  id: { re: "(?<![0-9])\\d{17}[\\dXx](?![0-9A-Za-z])", ok: idChecksum },
-  card: { re: "(?<![0-9])\\d{16,19}(?![0-9Xx])", ok: luhn },
+  id_number: { re: "(?<![0-9])\\d{17}[\\dXx](?![0-9A-Za-z])", ok: idChecksum },
+  payment_card: { re: "(?<![0-9])\\d{16,19}(?![0-9Xx])", ok: luhn },
   secret: { re: "\\b(?:sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\\b" },
 };
 
@@ -131,15 +132,15 @@ function ruleMatches(r: Rule, text: string): { start: number; end: number }[] {
  * The browser stands in for the kernel: the scheme's active rules run as they are written, the model is a
  * handful of patterns. Categories the scheme turns off are not reported, as in a task.
  */
-export function simulateTest(p: Preset, rulesets: Ruleset[], models: ModelPlugin[], text: string): TestResult {
+export function simulateTest(p: Preset, rulesets: Ruleset[], models: ModelPlugin[], text: string, catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): TestResult {
   const useModel = p.det === "model";
   const on = new Set(presetCategories(p, models, rulesets).filter((c) => !["off", "na"].includes(presetTreatment(p, c))));
   const raw: RawHit[] = [];
   for (const set of rulesets.filter((r) => p.rules.includes(r.id))) {
     for (const r of set.rules) {
       if (!r.on) continue;
-      const category = r.ecat ?? engineCategory(r.cat);
-      if (!on.has(presetCategoryId(category))) continue;
+      const category = r.cat;
+      if (!on.has(category)) continue;
       for (const m of ruleMatches(r, text)) raw.push({ ...m, category, rule: r.name });
     }
   }
@@ -148,13 +149,13 @@ export function simulateTest(p: Preset, rulesets: Ruleset[], models: ModelPlugin
     const model = models.find((m) => m.id === p.model);
     for (const category of model?.categories ?? []) {
       const pat = MODEL_PATTERNS[category];
-      if (!pat || !on.has(presetCategoryId(category))) continue;
+      if (!pat || !on.has(category)) continue;
       for (const m of matches(text, pat.re, pat.group, pat.ok)) {
         raw.push({ ...m, category, model: { score: pat.score, low: pat.score < (model?.confRec ?? 0.5), below: pat.score < min } });
       }
     }
   }
-  return { hits: merge(raw), rulesOnly: !useModel, ...(useModel ? { minConfidence: min } : {}) };
+  return { hits: merge(raw, catalog), rulesOnly: !useModel, ...(useModel ? { minConfidence: min } : {}) };
 }
 
 function luhn(s: string): boolean {

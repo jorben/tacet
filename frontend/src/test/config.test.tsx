@@ -229,17 +229,45 @@ describe("规则", () => {
     expect($(".toast")!.textContent).toContain("内容未变，版本不变");
   });
 
-  it("规则的命中归类与方案类别一致：可选账号、IP 地址、网址、凭证，不再可选公司名", () => {
+  it("规则的命中归类来自类别目录：任何目录中的类别都可选，规则页与方案页同名", () => {
     go("presets");
     press("规则", "[role=tablist]");
     press("企业词条", ".plist");
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!;
     expect(row.querySelector(".rv")!.textContent).toContain("账号");
     press("添加规则");
-    const options = $$("#layer .typegrid button").map((b) => b.textContent);
-    expect(options).toEqual(expect.arrayContaining(["账号", "IP 地址", "网址", "凭证", "其他"]));
-    expect(options).not.toContain("公司名");
+    const options = $$("#layer .typegrid button:not(.typegrid-add)").map((b) => b.textContent);
+    expect(options).toEqual(getState().categories.map((c) => c.name));
+    expect(options).toEqual(expect.arrayContaining(["账号", "IP 地址", "网址", "凭证", "公司名", "其他"]));
     press("取消", "#layer .modal");
+  });
+
+  it("写规则时新建类别：选中新类别保存后，规则页与方案页都按它的名称列出；同名被拒绝", async () => {
+    go("presets");
+    press("规则", "[role=tablist]");
+    press("企业词条", ".plist");
+    press("添加规则");
+    typeInto("#rdName", "代号");
+    typeInto("#rdBody", "北斗\n银河");
+    press("新建类别", "#layer .modal");
+    typeInto("#rdCatName", "电话");
+    await act(async () => { press("创建", "#layer .newcat"); });
+    expect($("#layer .newcat")!.textContent).toContain("已有同名类别");
+    typeInto("#rdCatName", "项目代号");
+    await act(async () => { press("创建", "#layer .newcat"); });
+    const made = getState().categories.at(-1)!;
+    expect(made).toMatchObject({ name: "项目代号", placeholder: "[项目代号]", origin: "custom", manual: true });
+    expect($("#layer .newcat")).toBeNull();
+    expect($$("#layer .typegrid button[aria-pressed=true]").map((b) => b.textContent)).toEqual(["项目代号"]);
+    press("保存", "#layer .modal");
+    const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "代号")!;
+    expect(row.querySelector(".rv")!.textContent).toContain("项目代号");
+    expect(getState().rulesets.find((r) => r.name === "企业词条")!.rules.at(-1)!.cat).toBe(made.id);
+    // 简历脱敏 uses the enterprise terms: the new category is one of its categories, with the rules as source
+    press("方案", "[role=tablist]");
+    press("简历脱敏", ".plist");
+    const cat = $$(".row").find((r) => r.querySelector(".rl")?.textContent === "项目代号");
+    expect(cat?.querySelector("[data-source]")!.textContent).toBe("规则");
   });
 
   it("名称与内容必填", () => {

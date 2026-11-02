@@ -1,5 +1,4 @@
 // The built-in sample document the prototype reviews, written as a compact markup and expanded by `buildDoc`.
-import { HIT_SOURCE } from "./catalog";
 import type { Block, BlockKind, CategoryId, DocContent, DocImage, Hit } from "./types";
 
 type SourceBlock = [BlockKind | "img", string];
@@ -40,6 +39,16 @@ const PAGES: SourceBlock[][] = [
   ['sign','乙方（签字）：[[name|林晓雯]]']]
 ];
 
+/** The markup's short type codes, as category ids. */
+const TYPE: Record<string, CategoryId> = {
+  org: "organization", name: "person", id: "id_number", addr: "address", card: "payment_card", date: "date", phone: "phone", email: "email",
+};
+/** What the demo says found each kind of hit. */
+const HIT_SOURCE: Record<CategoryId, string> = {
+  organization: "模型 · 词表", person: "模型", address: "模型", date: "模型", phone: "规则", email: "规则",
+  id_number: "规则 · 校验", payment_card: "规则 · 校验",
+};
+
 const HIT_PATTERN = /\[\[(\w+)\|([^|\]]+)(?:\|(l))?\]\]/g;
 
 /** Expands the sample document into pages of blocks, plus the hits and images found in it. */
@@ -68,10 +77,10 @@ export function buildDocument(): DocContent {
       const re = new RegExp(HIT_PATTERN);
       while ((m = re.exec(s))) {
         if (m.index > last) block.segs!.push({ t: s.slice(last, m.index) });
-        const type = m[1] as CategoryId;
+        const type = TYPE[m[1]!] ?? m[1]!;
         hits.push({
           id: hits.length, type, text: m[2]!, low: !!m[3], seen: false,
-          src: m[3] ? "模型 · 低置信" : HIT_SOURCE[type], state: "redact", ...at,
+          src: m[3] ? "模型 · 低置信" : (HIT_SOURCE[type] ?? "规则"), state: "redact", ...at,
         });
         block.segs!.push({ h: hits.length - 1 });
         last = re.lastIndex;

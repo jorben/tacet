@@ -1,7 +1,7 @@
 import { locAt } from "../format";
 import { describe, expect, it } from "vitest";
 import type { EngineFile, EngineUnit } from "../../services/types";
-import { buildLiveDocument, decisionsOf, engineCategory, groupOf, liveGroups, reasonLabel, toBatchFile, uiCategory, unitOffsets, zeroHits } from "../live";
+import { buildLiveDocument, decisionsOf, groupOf, liveGroups, reasonLabel, toBatchFile, unitOffsets } from "../live";
 import type { BatchFile } from "../types";
 
 const unit = (seq: number, text: string, findings: EngineUnit["findings"], part = "body"): EngineUnit => ({ seq, part, ordinal: seq, visibility: "visible", text, findings });
@@ -42,7 +42,7 @@ describe("引擎文档 → 复核视图", () => {
     first.hits[0]!.seen = true;
     const next = buildLiveDocument([unit(1, "x 13812345678 y 张三", [find(5, 2, 13, "phone", { low: true }), find(6, 16, 18, "person", { source: "manual" })])], "txt", { findingOf: first.findingOf, hits: first.hits });
     expect(next.hits[0]).toMatchObject({ state: "keep", seen: true, low: true, src: "规则 · 低置信" });
-    expect(next.hits[1]).toMatchObject({ type: "name", manual: true, seen: true, state: "redact" });
+    expect(next.hits[1]).toMatchObject({ type: "person", manual: true, seen: true, state: "redact" });
     expect(decisionsOf(next.hits, next)).toEqual([{ id: 5, keep: true }, { id: 6, keep: false }]);
   });
 
@@ -66,12 +66,9 @@ describe("引擎文档 → 复核视图", () => {
 });
 
 describe("类别与原因", () => {
-  it("两个方向的类别映射互逆，未知类别归入其他", () => {
-    for (const c of ["phone", "email", "id", "card", "date", "name", "addr", "org", "account", "ip_address", "url", "secret"] as const) expect(uiCategory(engineCategory(c))).toBe(c);
-    // account, IP, URL and credential have places of their own; only categories nothing names are “其他”
-    expect(uiCategory("secret")).toBe("secret");
-    expect(uiCategory("employee")).toBe("other");
-    expect(engineCategory("other")).toBe("other");
+  it("引擎类别原样用作界面类别：没有第二套编号，未知类别也不并入其他", () => {
+    const doc = buildLiveDocument([unit(1, "甲13812345678乙", [find(1, 1, 12, "phone"), find(2, 0, 1, "cfg_0123456789abcdef01234567")])], "txt");
+    expect(doc.hits.map((h) => h.type).sort()).toEqual(["cfg_0123456789abcdef01234567", "phone"]);
   });
   it("已知原因码有说明，未知的原样显示，空值为 null", () => {
     expect(reasonLabel("PASSWORD_INCORRECT")).toContain("密码");
@@ -81,7 +78,7 @@ describe("类别与原因", () => {
 });
 
 const row = (state: string, extra: Partial<EngineFile> = {}): EngineFile => ({ id: "j1", name: "f0001", state, status: "x", format: "txt", pending: 0, findings: 0, ...extra });
-const base = (i: number): BatchFile => ({ i, id: "T000" + (i + 1), name: "a.txt", ext: "txt", pages: 0, h: zeroHits(), imgs: 0, st: "queue", t: 0, g: [], late: [], det: false, partial: false, man: false });
+const base = (i: number): BatchFile => ({ i, id: "T000" + (i + 1), name: "a.txt", ext: "txt", pages: 0, h: {}, imgs: 0, st: "queue", t: 0, g: [], late: [], det: false, partial: false, man: false });
 
 describe("批次行与例外组", () => {
   it("状态映射：完成/部分/待导出/待处理/失败/跳过/处理中", () => {
@@ -90,12 +87,11 @@ describe("批次行与例外组", () => {
       .toEqual(["done", "partial", "ready", "held", "held", "held", "bad", "bad", "skipped", "proc", "queue"]);
   });
 
-  it("类别计数落到办公类别（含账号、IP、网址、凭证），未知类别只计入命中总数之外", () => {
+  it("类别计数按引擎类别记录，任何类别（含自建类别）都单独计数", () => {
     const f = toBatchFile(base(0), row("completed", { categories: { phone: 2, id_number: 1, secret: 4, account: 3, ip_address: 1, url: 2, employee: 5 }, output: "f0001.txt", digest: "sha256:ab" }));
     expect(f.h.phone).toBe(2);
-    expect(f.h.id).toBe(1);
-    expect([f.h.account, f.h.ip_address, f.h.url, f.h.secret]).toEqual([3, 1, 2, 4]);
-    expect(Object.values(f.h).reduce((a, n) => a + n, 0)).toBe(13);
+    expect(f.h.id_number).toBe(1);
+    expect([f.h.account, f.h.ip_address, f.h.url, f.h.secret, f.h.employee]).toEqual([3, 1, 2, 4, 5]);
     expect(f).toMatchObject({ outputName: "f0001.txt", sha: "sha256:ab", det: true });
   });
 

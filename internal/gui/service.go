@@ -634,6 +634,16 @@ func (s *Service) Models() ([]app.ModelRuntime, error) {
 	return ms, publicError(err)
 }
 
+// Categories lists the category catalog in display order.
+func (s *Service) Categories() ([]app.CategoryInfo, error) {
+	core, err := s.engine()
+	if err != nil {
+		return nil, publicError(err)
+	}
+	cs, err := core.Categories(context.Background())
+	return cs, publicError(err)
+}
+
 func (s *Service) model(id string, f func(app.Core, context.Context, string) error) error {
 	core, err := s.engine()
 	if err != nil {

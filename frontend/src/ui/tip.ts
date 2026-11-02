@@ -14,4 +14,4 @@ export function tip(text: string, opt: { align?: "end"; placement?: "above" } = 
 }
 
 /** Sets the `--c` custom property that coloured swatches, hits and rows read. */
-export const categoryColor = (t: CategoryId): CSSProperties => ({ ["--c" as string]: `var(--t-${t})` });
+export const categoryColor = (t: CategoryId): CSSProperties => ({ ["--c" as string]: `var(--t-${t}, var(--t-other))` });

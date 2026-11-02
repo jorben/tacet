@@ -267,3 +267,40 @@ func TestScoreEqualToTheThresholdIsNotBelowIt(t *testing.T) {
 		t.Fatalf("%+v", out)
 	}
 }
+
+func TestHandMarksOfACategoryWithoutActionArePlaceholdersAnyCategory(t *testing.T) {
+	// No category list: whatever a person marks (standard, model-declared or user-defined) is removed and
+	// named by its placeholder; a detected candidate of such a category still asks a person.
+	out := resolve(base(),
+		cand("org", 0, 4, "organization", kernel.SourceManual, 0),
+		cand("custom", 10, 14, "cfg_0123456789abcdef01234567", kernel.SourceManual, 0),
+		cand("ruled", 20, 24, "cfg_0123456789abcdef01234567", kernel.SourceRule, 0),
+		cand("phone", 30, 41, "phone", kernel.SourceManual, 0),
+	)
+	got := map[string]Action{}
+	for _, d := range out.Dispositions {
+		got[d.ID] = d.Action
+	}
+	want := map[string]Action{"org": Placeholder, "custom": Placeholder, "phone": Delete}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dispositions = %v", got)
+	}
+	if len(out.Drafts) != 1 || out.Drafts[0].Reason != "no_action_for_category" {
+		t.Fatalf("drafts = %+v", out.Drafts)
+	}
+}
+
+func TestADecidedRedactionOfAHandMarkWithoutActionIsAPlaceholderToo(t *testing.T) {
+	out := Resolve(Input{Policy: base(), Candidates: []Candidate{
+		cand("m", 0, 4, "organization", kernel.SourceManual, 0),
+		cand("r", 10, 14, "organization", kernel.SourceRule, 0),
+	}, Decisions: map[string]Decision{"m": {}, "r": {}}})
+	got := map[string]Action{}
+	for _, d := range out.Dispositions {
+		got[d.ID] = d.Action
+	}
+	// a detected candidate a person chose to redact, without an action, is still removed outright
+	if got["m"] != Placeholder || got["r"] != Delete {
+		t.Fatalf("dispositions = %v", got)
+	}
+}

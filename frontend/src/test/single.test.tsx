@@ -97,7 +97,7 @@ describe("单份文档", () => {
     go("s2");
     press("人名 处理方式");
     pick("占位符");
-    expect(single().catAct.name).toBe("ph");
+    expect(single().catAct.person).toBe("ph");
     press("日期 处理方式");
     pick("全部保留");
     expect(single().hits.filter((h) => h.type === "date").every((h) => h.state === "keep")).toBe(true);

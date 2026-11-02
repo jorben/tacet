@@ -75,6 +75,7 @@ func (f *fake) ConfigCopy(context.Context, string, string) (app.ConfigItem, erro
 func (f *fake) ConfigDelete(context.Context, string, uint64) error     { return nil }
 func (f *fake) Plugins(context.Context) ([]app.PluginInfo, error)      { return nil, nil }
 func (f *fake) Models(context.Context) ([]app.ModelRuntime, error)     { return nil, nil }
+func (f *fake) Categories(context.Context) ([]app.CategoryInfo, error) { return nil, nil }
 func (f *fake) DownloadModel(context.Context, string) error            { return nil }
 func (f *fake) PauseModel(context.Context, string) error               { return nil }
 func (f *fake) DiscardModel(context.Context, string) error             { return nil }

@@ -12,7 +12,7 @@ describe("示例文档", () => {
     expect(d.pages).toHaveLength(3);
     expect(d.hits.length).toBeGreaterThanOrEqual(15);
     expect(d.imgs.map((i) => i.label)).toEqual(["证件照", "公章"]);
-    expect(d.hits[0]).toMatchObject({ type: "org", text: "杭州澄音科技有限公司", state: "redact", page: 0 });
+    expect(d.hits[0]).toMatchObject({ type: "organization", text: "杭州澄音科技有限公司", state: "redact", page: 0 });
     expect(d.hits.filter((h) => h.low).every((h) => h.src === "模型 · 低置信")).toBe(true);
   });
 
@@ -40,11 +40,11 @@ describe("单份文档操作", () => {
 
   it("类别统计：涂抹与保留数，未看的低置信项", () => {
     const s = doc();
-    s.hits.find((h) => h.type === "name")!.state = "keep";
+    s.hits.find((h) => h.type === "person")!.state = "keep";
     const st = categoryStats(s);
-    expect(st.name!.kept).toBe(1);
-    expect(st.name!.redacted + st.name!.kept).toBe(s.hits.filter((h) => h.type === "name").length);
-    expect(st.name!.unseen).toBeGreaterThan(0);
+    expect(st.person!.kept).toBe(1);
+    expect(st.person!.redacted + st.person!.kept).toBe(s.hits.filter((h) => h.type === "person").length);
+    expect(st.person!.unseen).toBeGreaterThan(0);
   });
 
   it("处理方式默认涂抹", () => {

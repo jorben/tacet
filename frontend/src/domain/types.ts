@@ -2,11 +2,8 @@
 
 /* ── Categories, documents and single-file review ─────────────────────────── */
 
-export type CategoryId =
-  | "org" | "name" | "phone" | "email" | "id" | "addr" | "card" | "date"
-  | "account" | "ip_address" | "url" | "secret" | "other";
-export type OfficeCategoryId = Exclude<CategoryId, "other">;
-export type PresetCategoryId = Exclude<OfficeCategoryId, "org">;
+import type { CategoryId } from "./categories";
+export type { CategoryId } from "./categories";
 /** How a category is written to the output: block it out, replace by a placeholder, or leave it alone. */
 export type Treatment = "mask" | "ph";
 /** Preset-level handling: a treatment, switched off, or outside the scope of rules-only detection. */
@@ -65,7 +62,7 @@ export interface DecisionSnapshot extends DocContent {
   /** Live documents: undoing this entry takes back the manual redaction with this engine finding id. */
   manual?: number;
 }
-export type CategoryTreatments = Partial<Record<CategoryId, Treatment>>;
+export type CategoryTreatments = Record<CategoryId, Treatment>;
 
 export type SinglePhase = "processing" | "review" | "exporting" | "done";
 
@@ -189,14 +186,13 @@ export type Boundary = "" | "digit" | "word";
 export interface Rule {
   name: string;
   kind: RuleKind;
+  /** The category a hit of this rule is reported as (an engine category id). */
   cat: CategoryId;
   body: string;
   bd?: Boundary;
   /** Number of word-list entries when the list itself is not kept in `body`. */
   n?: number;
   on: boolean;
-  /** Category id of the engine, kept for rules the screen has no category of (account, url, …). */
-  ecat?: string;
   /** Id of the stored rule; a rule made on screen gets one when it is first stored. */
   rid?: string;
   /** Settings of the stored rule the screen has no control for (validator, context words, …). */
@@ -282,7 +278,7 @@ export interface BatchFile {
   ext: string;
   pages: number;
   /** Hits per office category, as found by detection. */
-  h: Record<OfficeCategoryId, number>;
+  h: Record<CategoryId, number>;
   imgs: number;
   st: FileStatus;
   /** Ticks left of the current processing step. */

@@ -1,5 +1,5 @@
 import { addManualRedaction, setHitState, setSameAll } from "../../actions/single";
-import { CATEGORIES, MANUAL_CATEGORIES } from "../../domain/catalog";
+import { categoryName, manualCategories } from "../../domain/categories";
 import { locAt } from "../../domain/format";
 import { sameValueHits, type ManualSelection } from "../../domain/single";
 import { useAppState } from "../../store";
@@ -8,6 +8,7 @@ import { Segmented, Swatch } from "../../ui";
 /** Details of one hit and the choice to keep or redact it (and its twins with the same value). */
 export function HitPopover({ hitId }: { hitId: number }) {
   const single = useAppState((s) => s.single);
+  const catalog = useAppState((s) => s.categories);
   const hit = single?.hits[hitId];
   if (!single || !hit) return null;
   const same = sameValueHits(single, hit);
@@ -15,7 +16,7 @@ export function HitPopover({ hitId }: { hitId: number }) {
     <div className="hp">
       <div className="hp-h">
         <Swatch category={hit.type} />
-        {CATEGORIES[hit.type].l}
+        {categoryName(catalog, hit.type)}
         <span className="muted" style={{ fontWeight: 400 }}>
           · {hit.src}
         </span>
@@ -58,14 +59,15 @@ function KeyRow({ keys, what }: { keys: string; what: string }) {
 /** Offered after selecting text in the document: which kind of information it is. */
 export function SelectionPicker({ selection }: { selection: ManualSelection }) {
   const { text } = selection;
+  const choices = manualCategories(useAppState((s) => s.categories));
   return (
     <>
       <div className="mh">涂抹「{text.length > 14 ? text.slice(0, 14) + "…" : text}」</div>
       <div className="typegrid">
-        {MANUAL_CATEGORIES.map((t) => (
-          <button key={t} type="button" onClick={() => addManualRedaction(t, selection)}>
-            <Swatch category={t} />
-            {CATEGORIES[t].l}
+        {choices.map((c) => (
+          <button key={c.id} type="button" onClick={() => addManualRedaction(c.id, selection)}>
+            <Swatch category={c.id} />
+            {c.name}
           </button>
         ))}
       </div>

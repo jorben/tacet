@@ -1,13 +1,13 @@
 import { useAppState } from "../../store";
 import { openConfidenceMenu, openPresetModelMenu, openPresetMoreMenu, openPresetRulesMenu, copyPreset, newPreset, selectPreset, setCategoryTreatment, setDetection, startImport } from "../../actions/presets";
-import { CATEGORIES, MODEL_LABELS } from "../../domain/catalog";
+import { MODEL_LABELS } from "../../domain/catalog";
+import { categoryName } from "../../domain/categories";
 import {
-  availableRulesets, categorySourceLabel, confidenceOf, formatConfidence, modelById, presetConfidence, presetCategories, presetCategoryLabel, presetCategorySources, presetTreatment,
+  availableRulesets, categorySourceLabel, confidenceOf, formatConfidence, modelById, presetConfidence, presetCategories, presetCategorySources, presetTreatment,
   type CategorySource,
 } from "../../domain/presets";
-import { uiCategory } from "../../domain/live";
 import { openModal } from "../../overlay/store";
-import type { CategoryId, Preset, PresetTreatment } from "../../domain/types";
+import type { Preset, PresetTreatment } from "../../domain/types";
 import { Icon, List, Pill, Row, SelectButton, Segmented, Swatch, tip } from "../../ui";
 import { ConfigHeader } from "./ConfigHeader";
 import { ItemList } from "./ItemList";
@@ -48,10 +48,11 @@ function ConfidenceRow({ preset: p, locked }: { preset: Preset; locked: boolean 
 }
 
 function CategoryRow({ category, source, value, locked }: { category: string; source?: CategorySource; value: PresetTreatment; locked: boolean }) {
+  const name = categoryName(useAppState((s) => s.categories), category);
   return (
     <div className="row">
-      <Swatch category={category in CATEGORIES ? category as CategoryId : uiCategory(category)} />
-      <span className="rl">{presetCategoryLabel(category)}</span>
+      <Swatch category={category} />
+      <span className="rl">{name}</span>
       {/* which detector covers the category, so switching models shows what the model itself finds */}
       <span className={source?.model ? "tag tp" : "tag"} data-source>{categorySourceLabel(source)}</span>
       <span className="rv">
@@ -67,6 +68,7 @@ export function SchemeEditor() {
   const models = useAppState((s) => s.models);
   const rulesets = useAppState((s) => s.rulesets);
   const plugins = useAppState((s) => s.plugins);
+  const catalog = useAppState((s) => s.categories);
   const selected = useAppState((s) => s.presetSel);
   const p = presets.find((x) => x.id === selected) || presets[0]!;
   const locked = !!p.builtin;
@@ -117,7 +119,7 @@ export function SchemeEditor() {
           </Row>
         </List>
         <List>
-          {presetCategories(p, models, available).map((t) => (
+          {presetCategories(p, models, available, catalog).map((t) => (
             <CategoryRow key={t} category={t} source={sources.get(t)} value={presetTreatment(p, t)} locked={locked} />
           ))}
         </List>

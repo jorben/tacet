@@ -1,7 +1,8 @@
 import { openSampleDrawer } from "../../actions/batch";
-import { CATEGORIES, OFFICE_CATEGORIES } from "../../domain/catalog";
+import { byCatalogOrder, categoryName } from "../../domain/categories";
 import { fmt } from "../../domain/format";
-import type { Batch, OfficeCategoryId } from "../../domain/types";
+import type { Batch, CategoryId } from "../../domain/types";
+import { useAppState } from "../../store";
 import { Button, List, Row, Swatch, categoryColor } from "../../ui";
 
 const COUNT_STYLE = { minWidth: 60, textAlign: "right" } as const;
@@ -25,12 +26,15 @@ function SampleRowControls({ count, unit, onSample, hidden }: { count: number; u
 /** What was handled without asking: counts per category, with a spot-check for each. */
 export function AutoTab({ batch: B }: { batch: Batch }) {
   const detected = B.files.filter((f) => f.det && f.st !== "bad" && f.st !== "skipped");
-  const total = (t: OfficeCategoryId) => detected.reduce((a, f) => a + f.h[t], 0);
+  const catalog = useAppState((s) => s.categories);
+  const total = (t: CategoryId) => detected.reduce((a, f) => a + (f.h[t] ?? 0), 0);
+  // the categories this batch found, whatever they are, in catalog order
+  const found = byCatalogOrder(catalog, detected.flatMap((f) => Object.keys(f.h).filter((t) => f.h[t])));
   const images = detected.reduce((a, f) => a + f.imgs, 0);
   return (
     <List>
-      {OFFICE_CATEGORIES.map((t) => (
-        <Row key={t} lead={<Swatch category={t} />} title={CATEGORIES[t].l} style={categoryColor(t)}>
+      {found.map((t) => (
+        <Row key={t} lead={<Swatch category={t} />} title={categoryName(catalog, t)} style={categoryColor(t)}>
           <SampleRowControls count={total(t)} unit="涂抹" onSample={() => openSampleDrawer(t)} />
         </Row>
       ))}

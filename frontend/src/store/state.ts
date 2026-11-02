@@ -1,3 +1,4 @@
+import { STANDARD_CATEGORIES, type CategoryInfo } from "../domain/categories";
 import { DEFAULT_PRESET_NAME, seedModels, seedPlugins, seedPresets, seedRulesets, seedSettings } from "../domain/seed";
 import type {
   Batch, DecisionSnapshot, HistoryEntry, HistoryResult, ModelPending, ModelPlugin, NavEntry, PluginInfo,
@@ -10,6 +11,8 @@ export interface AppState {
   navStack: NavEntry[];
 
   models: ModelPlugin[];
+  /** The category catalog: names, placeholders and colors of the ids rules, schemes and findings carry. */
+  categories: CategoryInfo[];
   modelPending: ModelPending | null;
 
   theme: "light" | "dark";
@@ -47,6 +50,7 @@ export function createInitialState(): AppState {
     view: "home",
     navStack: [],
     models: seedModels(),
+    categories: STANDARD_CATEGORIES.map((c) => ({ ...c })),
     modelPending: null,
     theme: prefersDark() ? "dark" : "light",
     themePref: "system",

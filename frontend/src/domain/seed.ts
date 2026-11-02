@@ -10,19 +10,19 @@ export const seedModels = (): ModelPlugin[] => [
 export const seedPresets = (): Preset[] => [
   {
     id: "office", name: "办公外发", ver: "内建", builtin: true, det: "model", model: "astr", conf: 0.5, rules: ["cn"],
-    cats: { name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove", edited: "",
+    cats: { person: "mask", phone: "mask", email: "mask", id_number: "mask", address: "mask", payment_card: "mask", date: "mask" }, img: "remove", edited: "",
   },
   {
     id: "cv", name: "简历脱敏", ver: "v3", det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"],
-    cats: { name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "off" }, img: "remove", edited: "2 天前",
+    cats: { person: "ph", phone: "mask", email: "mask", id_number: "mask", address: "mask", payment_card: "mask", date: "off" }, img: "remove", edited: "2 天前",
     hist: [
-      { ver: "v2", when: "上周", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"], cats: { name: "ph", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
-      { ver: "v1", when: "上月", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: { name: "mask", phone: "mask", email: "mask", id: "mask", addr: "mask", card: "mask", date: "mask" }, img: "remove" } },
+      { ver: "v2", when: "上周", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn", "corp"], cats: { person: "ph", phone: "mask", email: "mask", id_number: "mask", address: "mask", payment_card: "mask", date: "mask" }, img: "remove" } },
+      { ver: "v1", when: "上月", data: { det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: { person: "mask", phone: "mask", email: "mask", id_number: "mask", address: "mask", payment_card: "mask", date: "mask" }, img: "remove" } },
     ],
   },
   {
     id: "log", name: "日志清理", ver: "v1", det: "rules", model: "astr", conf: 0.5, rules: ["cn"],
-    cats: { name: "na", phone: "mask", email: "ph", id: "mask", addr: "na", card: "mask", date: "off" }, img: "remove", edited: "上月",
+    cats: { person: "na", phone: "mask", email: "ph", id_number: "mask", address: "na", payment_card: "mask", date: "off" }, img: "remove", edited: "上月",
   },
 ];
 
@@ -33,8 +33,8 @@ export const seedRulesets = (): Ruleset[] => [
       { name: "手机号", kind: "正则", cat: "phone", body: "1[3-9]\\d{9}", bd: "digit", on: true },
       { name: "座机", kind: "正则", cat: "phone", body: "0\\d{2,3}-?\\d{7,8}", bd: "digit", on: true },
       { name: "邮箱", kind: "正则", cat: "email", body: "[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+", on: true },
-      { name: "居民身份证", kind: "校验", cat: "id", body: "18 位 · 出生日期 · 校验位", on: true },
-      { name: "银行卡", kind: "校验", cat: "card", body: "16–19 位 · Luhn", on: true },
+      { name: "居民身份证", kind: "校验", cat: "id_number", body: "18 位 · 出生日期 · 校验位", on: true },
+      { name: "银行卡", kind: "校验", cat: "payment_card", body: "16–19 位 · Luhn", on: true },
       { name: "日期", kind: "正则", cat: "date", body: "\\d{4}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日", on: true },
       { name: "API Key / Token", kind: "校验", cat: "secret", body: "已知格式 42 种", on: true },
     ],
@@ -47,14 +47,14 @@ export const seedRulesets = (): Ruleset[] => [
     ] } }],
     rules: [
       { name: "项目代号", kind: "词表", cat: "other", body: "", n: 36, on: true },
-      { name: "合作方简称", kind: "词表", cat: "other", body: "", n: 120, on: true },
+      { name: "合作方简称", kind: "词表", cat: "organization", body: "", n: 120, on: true },
       { name: "员工工号", kind: "正则", cat: "account", body: "HZ\\d{6}", on: true },
     ],
   },
   {
     id: "fin", name: "金融行业规则包", ver: "1.2.0", plugin: "fin",
     rules: [
-      { name: "证券账户", kind: "正则", cat: "card", body: "[AB]\\d{9}", on: true },
+      { name: "证券账户", kind: "正则", cat: "payment_card", body: "[AB]\\d{9}", on: true },
       { name: "SWIFT 代码", kind: "正则", cat: "other", body: "[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?", on: true },
     ],
   },

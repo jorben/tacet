@@ -3,9 +3,8 @@
 // A screen "scheme" is two stored objects: a preset (which rule sets, which model, how confident) and a
 // scheme (what is done to each category). The screen shows them as one. A rule set maps one to one.
 import type { ConfigItem, EngineModelRuntime, EnginePlugin, EngineSettings } from "../services/types";
-import { PRESET_CATEGORIES } from "./catalog";
-import { presetCategories, presetCategoryId, presetEngineCategory, presetTreatment } from "./presets";
-import { engineCategory, uiCategory } from "./live";
+import type { CategoryInfo } from "./categories";
+import { presetCategories, presetTreatment } from "./presets";
 import type {
   KeepDays, PluginInfo, RedactStyle, Settings, ThemePref,
   Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, Preset, PresetTreatment, Rule, Ruleset,
@@ -49,14 +48,11 @@ export function sameContent(a: string, b: string): boolean {
 }
 
 const ruleFromJSON = (r: RuleJSON): Rule => {
-  // Rules no longer report organization names (schemes do not offer them; they are marked by hand in review).
-  // An older rule that did is shown, and saved again, as “其他”, the category it is treated as from now on.
-  if (r.category === "organization") r = { ...r, category: "other" };
   const kind = r.terms?.length ? "词表" : r.validator ? "校验" : "正则";
   const body = r.terms?.length ? r.terms.join("\n") : r.validator ? `${r.pattern ?? ""}${r.validator ? "  ·  校验 " + r.validator : ""}` : (r.pattern ?? "");
   return {
-    name: r.name || r.id, kind, cat: uiCategory(r.category), body, bd: (["digit", "word"].includes(r.boundary ?? "") ? r.boundary : "") as Boundary,
-    on: !r.disabled, ecat: r.category, rid: r.id, ext: extOf(r),
+    name: r.name || r.id, kind, cat: r.category, body, bd: (["digit", "word"].includes(r.boundary ?? "") ? r.boundary : "") as Boundary,
+    on: !r.disabled, rid: r.id, ext: extOf(r),
   };
 };
 
@@ -90,7 +86,7 @@ export function rulesetContent(rs: Pick<Ruleset, "id" | "rules">): string {
   };
   const rules: RuleJSON[] = rs.rules.map((r) => {
     const id = r.rid ?? fresh();
-    const out: RuleJSON = { id, category: r.ecat ?? engineCategory(r.cat) };
+    const out: RuleJSON = { id, category: r.cat };
     if (r.name && r.name !== id) out.name = r.name;
     if (r.kind === "词表") out.terms = r.body.split("\n").map((t) => t.trim()).filter(Boolean);
     else out.pattern = r.body.replace(/\s+·\s+校验.*$/s, "");
@@ -101,10 +97,10 @@ export function rulesetContent(rs: Pick<Ruleset, "id" | "rules">): string {
   return JSON.stringify({ rules });
 }
 
-/** Engine categories a set of rule sets detects (rules that are switched off do not count). */
+/** Categories a set of rule sets detects (rules that are switched off do not count). */
 export function ruleCategories(sets: Pick<Ruleset, "rules">[]): Set<string> {
   const out = new Set<string>();
-  sets.forEach((s) => s.rules.forEach((r) => { if (r.on) out.add(r.ecat ?? engineCategory(r.cat)); }));
+  sets.forEach((s) => s.rules.forEach((r) => { if (r.on) out.add(r.cat); }));
   return out;
 }
 
@@ -119,7 +115,7 @@ export interface Model {
   memory: number;
   floor: number;
   calibrated: number;
-  /** Engine categories its labels produce. */
+  /** Categories its labels produce. */
   categories: string[];
 }
 
@@ -198,12 +194,9 @@ export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefin
   const model = models.find((m) => m.profile === p.model_profile_id) ?? null;
   const s = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}) } as SchemeJSON;
   const det = p.rules_only || !model ? "rules" : "model";
-  const cats: Preset["cats"] = Object.fromEntries(PRESET_CATEGORIES.map((id) => [id, "off"]));
+  const cats: Preset["cats"] = {};
   const ids = [p.ruleset_id, ...(p.extra_ruleset_ids ?? [])].filter((id) => rulesets.some((r) => r.id === id));
-  for (const [engine, action] of Object.entries(s.category_actions)) {
-    const id = presetCategoryId(engine);
-    if (id !== "org") cats[id] = toTreatment(action) ?? "off";
-  }
+  for (const [id, action] of Object.entries(s.category_actions)) cats[id] = toTreatment(action) ?? "off";
   for (const id of presetCategories({ det, model: model?.id ?? "", rules: ids }, models, rulesets)) {
     // An absent action is disabled, including a category explicitly switched off before saving.
     cats[id] ??= "off";
@@ -220,7 +213,7 @@ export interface Written {
   scheme: string;
   /** `schemeRev` is the stored version of the scheme object this version of the preset goes with. */
   preset: (schemeId: string, schemeRev?: number) => string;
-  /** Screen categories the scheme could not keep because nothing detects them. */
+  /** Categories the scheme could not keep because nothing detects them. */
   dropped: string[];
 }
 
@@ -241,12 +234,10 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
   const dropped: string[] = [];
   const offered = presetCategories(p, models, chosen);
   for (const c of new Set([...Object.keys(p.cats), ...offered])) {
-    if (c === "org") continue;
     const t = presetTreatment(p, c);
     if (t !== "mask" && t !== "ph") continue;
-    const e = presetEngineCategory(c);
-    if (!covered.has(e)) { dropped.push(c); continue; }
-    actions[e] = t === "ph" ? "placeholder" : prevScheme.category_actions[e] === "delete" ? "delete" : "mask";
+    if (!covered.has(c)) { dropped.push(c); continue; }
+    actions[c] = t === "ph" ? "placeholder" : prevScheme.category_actions[c] === "delete" ? "delete" : "mask";
   }
   const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };
   if (prevScheme.human_review?.length) scheme.human_review = prevScheme.human_review.filter((c) => c in actions);
@@ -273,18 +264,53 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
 
 const PACKAGE_VERSION = 1;
 
-/** A rule set as an exchange file: current content only, no ids, no history (FR-19). */
-export function exportRuleset(rs: Pick<Ruleset, "id" | "name" | "rules">): string {
-  return JSON.stringify({ tacet_config: PACKAGE_VERSION, kind: "ruleset", name: rs.name, ...(JSON.parse(rulesetContent(rs)) as object) }, null, 2);
+/** A user category as an exchange file carries it: ids are of the workspace that exported it. */
+export interface CategoryDef { id: string; name: string; placeholder: string; color?: string }
+
+/** The definitions of the user categories among `ids`, so that another workspace can adopt them. */
+function userCategoryDefs(ids: Iterable<string>, catalog: readonly CategoryInfo[]): CategoryDef[] {
+  const want = new Set(ids);
+  return catalog.filter((c) => c.origin === "custom" && want.has(c.id))
+    .map((c) => ({ id: c.id, name: c.name, placeholder: c.placeholder, ...(c.color ? { color: c.color } : {}) }));
+}
+
+/** A rule set as an exchange file: current content only, no ids, no history (FR-19); the user categories it reports go along. */
+export function exportRuleset(rs: Pick<Ruleset, "id" | "name" | "rules">, catalog: readonly CategoryInfo[] = []): string {
+  const categories = userCategoryDefs(rs.rules.map((r) => r.cat), catalog);
+  return JSON.stringify({ tacet_config: PACKAGE_VERSION, kind: "ruleset", name: rs.name, ...(categories.length ? { categories } : {}), ...(JSON.parse(rulesetContent(rs)) as object) }, null, 2);
+}
+
+/** The user category definitions an exchange file carries; malformed entries are left out. */
+export function packageCategories(text: string): CategoryDef[] {
+  let p: { categories?: unknown };
+  try { p = JSON.parse(text); } catch { return []; }
+  if (!Array.isArray(p?.categories)) return [];
+  return (p.categories as Partial<CategoryDef>[]).filter((c): c is CategoryDef =>
+    !!c && typeof c.id === "string" && !!c.id && typeof c.name === "string" && !!c.name.trim() && typeof c.placeholder === "string" && !!c.placeholder);
+}
+
+/**
+ * The exchange file with its category ids replaced as `map` says (the exporting workspace's ids → this
+ * workspace's), in rules and in scheme actions. Ids not in the map stay.
+ */
+export function remapPackageCategories(text: string, map: ReadonlyMap<string, string>): string {
+  const p = JSON.parse(text) as { rules?: RuleJSON[]; scheme?: { category_actions?: Record<string, string>; human_review?: string[] }; categories?: unknown };
+  const to = (id: string) => map.get(id) ?? id;
+  p.rules?.forEach((r) => { if (typeof r?.category === "string") r.category = to(r.category); });
+  if (p.scheme?.category_actions) p.scheme.category_actions = Object.fromEntries(Object.entries(p.scheme.category_actions).map(([k, v]) => [to(k), v]));
+  if (Array.isArray(p.scheme?.human_review)) p.scheme!.human_review = p.scheme!.human_review.map(to);
+  delete p.categories;
+  return JSON.stringify(p);
 }
 
 /** A scheme as an exchange file: rule sets are named, not referenced by id; the model is not included. */
-export function exportScheme(p: Preset, rulesets: Ruleset[], models: Model[] = [{ id: p.model, profile: "", memory: 0, floor: 0, calibrated: p.conf ?? 0.5, categories: Object.keys(p.cats).map(presetEngineCategory) }]): string {
+export function exportScheme(p: Preset, rulesets: Ruleset[], models: Model[] = [{ id: p.model, profile: "", memory: 0, floor: 0, calibrated: p.conf ?? 0.5, categories: Object.keys(p.cats) }], catalog: readonly CategoryInfo[] = []): string {
   const w = presetContents(p, rulesets, models);
   const preset = JSON.parse(w.preset("")) as PresetJSON;
   const names = p.rules.map((id) => rulesets.find((r) => r.id === id)?.name).filter((n): n is string => !!n);
+  const categories = userCategoryDefs(Object.keys((JSON.parse(w.scheme) as SchemeJSON).category_actions), catalog);
   return JSON.stringify({
-    tacet_config: PACKAGE_VERSION, kind: "scheme", name: p.name, rulesets: names, confidence: p.conf, detection: p.det,
+    tacet_config: PACKAGE_VERSION, kind: "scheme", name: p.name, ...(categories.length ? { categories } : {}), rulesets: names, confidence: p.conf, detection: p.det,
     scheme: JSON.parse(w.scheme), settings: { mode: preset.mode, memory_bytes: preset.memory_bytes, dpi: preset.dpi, style: preset.style, retention_days: preset.retention_days },
   }, null, 2);
 }

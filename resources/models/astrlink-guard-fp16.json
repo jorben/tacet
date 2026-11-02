@@ -18,6 +18,10 @@
   "unattended_qualified": false,
   "status": "default_download_not_release_signed",
   "source_checksums": "https://huggingface.co/QuantumNous/astrlink-guard/raw/7216b6a3b897ef903d4b1ba367ae6fb95b0fa5e4/fp16/CHECKSUMS.json",
+  "label_map": {
+    "private_person": "person", "private_address": "address", "private_date": "date", "phone": "phone", "email": "email",
+    "account": "account", "payment_card": "payment_card", "ip_address": "ip_address", "url": "url", "common_secret": "secret"
+  },
   "files": {
     "config.json": {"sha256": "2c20003590d642e273c03c4c7c82d9849fa75f64bf29a71ec0a0c9a20ba4a150", "size": 1804},
     "label_mapping.json": {"sha256": "880cf75052409cd63f6cb234086a3f77f2bc0523197ee417331555fd0609c191", "size": 254},

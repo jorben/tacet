@@ -24,6 +24,10 @@
     "model_quantized.onnx": "onnx/model_quantized.onnx",
     "model_quantized.onnx_data": "onnx/model_quantized.onnx_data"
   },
+  "label_map": {
+    "private_person": "person", "private_address": "address", "private_date": "date", "private_phone": "phone",
+    "private_email": "email", "account_number": "account", "private_url": "url", "secret": "secret"
+  },
   "files": {
     "config.json": {
       "sha256": "b2b26a4a4a000639ad30b0c264adbefe365bdb567fbd7bb27303b8c438375bd1",

@@ -1,16 +1,7 @@
 // Schemes (presets), rule sets and their version history.
-import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
-import { CATEGORIES, PRESET_CATEGORIES } from "./catalog";
-import { engineCategory, uiCategory } from "./live";
+import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Ruleset } from "./types";
+import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
 
-/** Preserve engine ids for categories without a review-specific UI id. */
-export const presetCategoryId = (engine: string): string => {
-  const ui = uiCategory(engine);
-  return ui === "other" ? engine : ui;
-};
-export const presetEngineCategory = (id: string): string => id in CATEGORIES ? engineCategory(id as keyof typeof CATEGORIES) : id;
-const EXTRA_LABELS: Record<string, string> = { employee: "工号" };
-export const presetCategoryLabel = (id: string): string => CATEGORIES[id as keyof typeof CATEGORIES]?.l ?? EXTRA_LABELS[id] ?? id;
 export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
 
 /** What detects a category in a scheme: the selected model, its active rules, or both. */
@@ -19,31 +10,25 @@ export interface CategorySource { model: boolean; rules: boolean }
 export function presetCategorySources(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): Map<string, CategorySource> {
   const out = new Map<string, CategorySource>();
   const mark = (id: string, k: keyof CategorySource) => {
-    if (id === "org") return;
     const s = out.get(id) ?? { model: false, rules: false };
     s[k] = true;
     out.set(id, s);
   };
-  if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => mark(presetCategoryId(c), "model"));
+  if (p.det === "model") models.find((m) => m.id === p.model)?.categories?.forEach((c) => mark(c, "model"));
   rulesets.filter((r) => p.rules.includes(r.id)).forEach((s) => s.rules.forEach((r) => {
-    if (r.on) mark(ruleCategoryId(r), "rules");
+    if (r.on) mark(r.cat, "rules");
   }));
   return out;
 }
 
-/** The scheme category a rule reports: the same id (and so the same name) the scheme lists it under. */
-export const ruleCategoryId = (r: Pick<Rule, "cat" | "ecat">): string => presetCategoryId(r.ecat ?? engineCategory(r.cat));
-
 export const categorySourceLabel = (s: CategorySource | undefined): string => (s?.model ? (s.rules ? "模型 + 规则" : "模型") : s?.rules ? "规则" : "");
 
-/** Only categories detected by the selected model or active rules are offered. */
-export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[]): string[] {
-  const covered = presetCategorySources(p, models, rulesets);
-  const order: string[] = [...PRESET_CATEGORIES, "other"];
-  return [...covered.keys()].sort((a, b) => {
-    const rank = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
-    return rank(a) - rank(b) || a.localeCompare(b);
-  });
+/**
+ * Only categories detected by the selected model or active rules are offered, in catalog order. No list of
+ * categories is fixed: whatever the model's label map or a rule reports (a user category included) is offered.
+ */
+export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[], catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): string[] {
+  return byCatalogOrder(catalog, presetCategorySources(p, models, rulesets).keys());
 }
 
 /** Model scores are not comparable across models: the default (calibrated) value and the floor come from the bound model. */

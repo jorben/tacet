@@ -314,21 +314,21 @@ export function publishValidated(): void {
 
 /* ── Sampling ─────────────────────────────────────────────────────────────── */
 
+/** Masked sample values of the demo, per category; a category without any shows a neutral mask. */
 const SAMPLE_VALUES: Record<CategoryId | "img", string[]> = {
-  org: ["杭州••••科技有限公司", "上海••••贸易有限公司", "••••律师事务所"],
-  name: ["张*桐", "李*轩", "周**", "王*远"],
+  organization: ["杭州••••科技有限公司", "上海••••贸易有限公司", "••••律师事务所"],
+  person: ["张*桐", "李*轩", "周**", "王*远"],
   phone: ["138 •••• 6624", "0571-•••• 2200", "186 •••• 0931"],
   email: ["li••••@163.com", "hr••••@corp.cn"],
-  id: ["3301 •••• •••• ••4827", "4403 •••• •••• ••112X"],
-  addr: ["杭州市西湖区••••", "上海市浦东新区••••"],
-  card: ["6222 •••• •••• 885"],
+  id_number: ["3301 •••• •••• ••4827", "4403 •••• •••• ••112X"],
+  address: ["杭州市西湖区••••", "上海市浦东新区••••"],
+  payment_card: ["6222 •••• •••• 885"],
   date: ["1992 年 3 月 ••", "2026 年 1 月 ••"],
   account: ["E10••••27", "E20••••09"],
   ip_address: ["10.12.•••.••", "192.168.•••.••"],
   url: ["https://intra.••••.cn/••••"],
   secret: ["sk-••••••••", "AKIA••••••••"],
   img: ["证件照", "公章", "截图"],
-  other: [],
 };
 let sampleRound = 0;
 
@@ -339,7 +339,7 @@ export function openSampleDrawer(category: CategoryId | "img", again = false): v
   const files = b.files.filter((f) => f.det && f.st !== "bad");
   const rows: SampleRow[] = Array.from({ length: 8 }, (_, j) => {
     const f = pick(files);
-    const value = pick(SAMPLE_VALUES[category]);
+    const value = pick(SAMPLE_VALUES[category] ?? ["••••••"]);
     const p = randInt(1, f.pages);
     return { fileIndex: f.i, fileName: f.name, location: reviewLocation(f, { p, j }), value };
   });

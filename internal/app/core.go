@@ -291,6 +291,9 @@ type Core interface {
 	Plugins(ctx context.Context) ([]PluginInfo, error)
 	// Models lists the model catalog with each model's download state.
 	Models(ctx context.Context) ([]ModelRuntime, error)
+	// Categories lists the category catalog (standard vocabulary, model-declared and user categories) in
+	// display order: the names, placeholders and colors of the ids rules, schemes and findings carry.
+	Categories(ctx context.Context) ([]CategoryInfo, error)
 	// DownloadModel starts downloading a model (verification, installation and trial follow) and returns;
 	// PauseModel stops it keeping what was received; DiscardModel drops a partial download; PrepareModel
 	// runs an installed model's trial again.

@@ -1,9 +1,9 @@
 // Schemes (presets) and rule sets: editing, versions, import and the menus of the configuration pages.
-import { MODEL_LABELS, PRESET_CATEGORIES } from "../domain/catalog";
+import { MODEL_LABELS } from "../domain/catalog";
 import {
   availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, modelById, presetConfidence, presetCategories, type Versioned,
 } from "../domain/presets";
-import type { Boundary, CategoryId, PresetCategoryId, Preset, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
+import type { Boundary, CategoryId, Preset, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
 import { getState, store, type AppState } from "../store";
 import { closeModal, openMenu, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
@@ -12,7 +12,6 @@ import { isLive } from "./live";
 import { exportLive, finishImportLive, importLive, openVersions, rollbackLive } from "./liveConfig";
 import type { Draft } from "immer";
 
-const allCategories = <T,>(v: T): Record<PresetCategoryId, T> => Object.fromEntries(PRESET_CATEGORIES.map((t) => [t, v])) as Record<PresetCategoryId, T>;
 
 export const selectedPreset = (s: AppState): Preset => s.presets.find((x) => x.id === s.presetSel) || s.presets[0]!;
 export function selectedRuleset(s: AppState): Ruleset {
@@ -44,7 +43,7 @@ export function newPreset(): void {
     const rules = (d.presets.find((p) => p.builtin)?.rules ?? []).filter((r) => d.rulesets.some((x) => x.id === r));
     const fallback = d.rulesets.find((r) => r.builtin && !r.plugin) ?? d.rulesets[0];
     if (!rules.length && fallback) rules.push(fallback.id);
-    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: d.models[0]?.id ?? "astr", conf: 0.5, rules, cats: allCategories<PresetTreatment>("mask"), img: "remove", edited: "刚刚" });
+    d.presets.push({ id, name: "新方案", ver: "v1", det: "model", model: d.models[0]?.id ?? "astr", conf: 0.5, rules, cats: {}, img: "remove", edited: "刚刚" }); // a category without a setting is masked
     d.presetSel = id;
   });
 }
@@ -64,7 +63,7 @@ export function setDetection(det: "model" | "rules"): void {
     if (p.det === det) return;
     bumpVersion(p);
     p.det = det;
-    presetCategories(p as Preset, d.models, d.rulesets as Ruleset[]).forEach((t) => { if (p.cats[t] == null || p.cats[t] === "na") p.cats[t] = "mask"; });
+    presetCategories(p as Preset, d.models, d.rulesets as Ruleset[], d.categories).forEach((t) => { if (p.cats[t] == null || p.cats[t] === "na") p.cats[t] = "mask"; });
     if (det === "model" && p.conf == null) p.conf = confidenceOf(modelById(d.models, p.model)).rec;
   });
 }
@@ -244,7 +243,7 @@ export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult
   store.update((d) => {
     const r = rulesetOf(d);
     bumpVersion(r);
-    if (index != null) Object.assign(r.rules[index]!, x, { n: 0, ecat: old && old.cat === x.cat ? old.ecat : undefined, rid: old?.rid });
+    if (index != null) Object.assign(r.rules[index]!, x, { n: 0, rid: old?.rid });
     else r.rules.push(x);
     ver = r.ver;
   });
@@ -307,7 +306,7 @@ export function rollback(kind: "preset" | "ruleset", index: number): void {
 
 const importSource = {
   preset: (): Pick<Preset, "name" | "det" | "model" | "conf" | "rules" | "cats" | "img"> => ({
-    name: "简历脱敏", det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: allCategories<PresetTreatment>("mask"), img: "remove",
+    name: "简历脱敏", det: "model", model: "astr", conf: 0.5, rules: ["cn"], cats: {}, img: "remove",
   }),
   ruleset: (): Pick<Ruleset, "name" | "rules"> => ({
     name: "企业词条", rules: [{ name: "项目代号", kind: "词表", cat: "other", body: "", n: 40, on: true }],

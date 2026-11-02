@@ -64,6 +64,10 @@ type RenderContent struct {
 	MaskForm    string `json:"mask_form"`
 	DPI         int    `json:"dpi"`
 	Output      string `json:"output"`
+	// Placeholders is the placeholder text of each category the run can write, frozen from the category
+	// catalog so that renaming a category later does not change what this run writes. Absent in
+	// snapshots frozen before categories were data; the standard vocabulary applies to those.
+	Placeholders map[string]string `json:"placeholders,omitempty"`
 }
 
 // PluginRef pins one plugin version and its environment.

@@ -30,11 +30,11 @@ export async function runPresetTest(text: string): Promise<TestResult> {
     await flushConfig(); // the test runs the scheme as stored: unsaved edits are written first
     const stored = selected()?.stored?.id;
     if (!stored) throw new Error("NOT_FOUND");
-    return testFromEngine(await e.testPreset(stored, text));
+    return testFromEngine(await e.testPreset(stored, text), getState().categories);
   }
   const s = getState();
   const p = selected();
   if (!p) throw new Error("NOT_FOUND");
   if (p.det === "model" && s.models.find((m) => m.id === p.model)?.status !== "ready") throw new Error("MODEL_NOT_INSTALLED");
-  return simulateTest(p, availableRulesets(s.rulesets, s.plugins), s.models, text);
+  return simulateTest(p, availableRulesets(s.rulesets, s.plugins), s.models, text, s.categories);
 }

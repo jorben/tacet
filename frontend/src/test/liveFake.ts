@@ -1,4 +1,5 @@
-import type { EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EnginePresetTest, EngineService, EngineUnit } from "../services/types";
+import { STANDARD_CATEGORIES } from "../domain/categories";
+import type { EngineCategory, EngineModelRuntime, EnginePlugin, EngineSettings, ConfigItem, ConfigVersion, EngineBatch, EngineFile, EngineFinding, EnginePagePreview, EnginePresetTest, EngineService, EngineUnit } from "../services/types";
 
 export const cleanBatchStub = true;
 
@@ -102,6 +103,16 @@ export class FakeEngine implements EngineService {
   async plugins() { return this.pluginList; }
   modelList: EngineModelRuntime[] = [];
   async models() { this.calls.push("models"); return this.modelList.map((m) => ({ ...m })); }
+  /** The engine's category catalog: the standard vocabulary unless a test changes it, then the stored user categories. */
+  categoryList: EngineCategory[] = STANDARD_CATEGORIES.map((c) => ({ ...c }));
+  async categories() {
+    this.calls.push("categories");
+    const user = this.items.filter((i) => i.kind === "category").map((i): EngineCategory => {
+      const c = JSON.parse(i.content) as { placeholder: string; color?: string };
+      return { id: i.id, name: i.name, placeholder: c.placeholder, ...(c.color ? { color: c.color } : {}), manual: true, origin: "custom", version: i.version };
+    });
+    return [...this.categoryList.map((c) => ({ ...c })), ...user];
+  }
   modelFails: Error | null = null;
   /** A model, or the build part of the model whose accelerated build it is. */
   private model(id: string) { return (this.modelList.find((m) => m.id === id) ?? this.modelList.find((m) => m.accel?.id === id)?.accel)! as { state: string; code: string; downloaded: number }; }
@@ -133,6 +144,7 @@ export class FakeEngine implements EngineService {
   async configCreate(kind: string, name: string, note: string, content: string) {
     this.calls.push("configCreate:" + kind);
     if (this.configFails) throw this.configFails;
+    if (this.items.some((i) => i.kind === kind && i.name === name) || (kind === "category" && this.categoryList.some((c) => c.name === name))) throw new Error("CONFIG_NAME_CONFLICT");
     const it: ConfigItem = { id: "cfg_" + (this.items.length + 1), kind, name, note, version: 1, readOnly: false, content };
     this.items.push(it);
     return it;

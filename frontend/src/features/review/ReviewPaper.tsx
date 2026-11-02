@@ -77,11 +77,11 @@ export function ReviewPaper({ group: g, file: f, item: it, view, decision }: Rev
           {line(
             "证件号码",
             original ? (
-              <span className="hit tgt" style={categoryColor("id")}>
+              <span className="hit tgt" style={categoryColor("id_number")}>
                 {d.id}
               </span>
             ) : blocked ? (
-              <span className="rd tgt" style={categoryColor("id")}>
+              <span className="rd tgt" style={categoryColor("id_number")}>
                 {d.id}
               </span>
             ) : (

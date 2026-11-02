@@ -4,7 +4,7 @@ import { GROUP_DEFINITIONS, STRICT_GROUP_ID, SUPPORTED_EXTENSIONS } from "./cata
 import { extOf, fmt } from "./format";
 import { pick, randInt, reseed } from "./random";
 import type {
-  Batch, BatchFile, BatchSummary, ExceptionGroup, FileFilter, FileStatus, KeepDays, ManifestFile, OfficeCategoryId, ReviewRecord,
+  Batch, BatchFile, BatchSummary, ExceptionGroup, FileFilter, FileStatus, KeepDays, ManifestFile, ReviewRecord,
 } from "./types";
 
 export type FileCounts = Record<"queue" | "proc" | "wait" | "held" | "ready" | "done" | "partial" | "bad" | "skip", number>;
@@ -37,12 +37,10 @@ export function createBatch(names: string[], opt: NewBatchOptions): Batch {
     const ext = extOf(name);
     const supported = SUPPORTED_EXTENSIONS.includes(ext);
     const pages = randInt(1, 36);
-    const h = {
-      org: randInt(1, 12), name: randInt(4, 40), phone: randInt(1, 14), email: randInt(0, 6),
-      id: randInt(0, 4), addr: randInt(0, 7), card: randInt(0, 2), date: randInt(1, 10),
-      // the demo documents carry none of these; drawing for them would change every other synthetic number
-      account: 0, ip_address: 0, url: 0, secret: 0,
-    } satisfies Record<OfficeCategoryId, number>;
+    const h: BatchFile["h"] = {
+      organization: randInt(1, 12), person: randInt(4, 40), phone: randInt(1, 14), email: randInt(0, 6),
+      id_number: randInt(0, 4), address: randInt(0, 7), payment_card: randInt(0, 2), date: randInt(1, 10),
+    };
     const imgs = randInt(0, 5);
     return {
       i, id: "T" + String(i + 1).padStart(4, "0"), name, ext, pages, h, imgs, st: supported ? "queue" : "bad", t: 0,

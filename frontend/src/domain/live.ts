@@ -1,28 +1,8 @@
 // Mapping between what the real engine reports and the shapes the screens draw. Pure: no store, no service.
 import type { EngineFile, EngineFinding, EngineUnit } from "../services/types";
-import { CATEGORY_IDS } from "./catalog";
 import type { DocLocation,
-  Block, BatchFile, CategoryId, DocContent, ExceptionGroup, FileStatus, Hit, LiveSingle, OfficeCategoryId,
+  Block, BatchFile, DocContent, ExceptionGroup, FileStatus, Hit, LiveSingle,
 } from "./types";
-
-const UI_CATEGORY: Record<string, CategoryId> = {
-  phone: "phone", email: "email", id_number: "id", payment_card: "card", date: "date",
-  person: "name", address: "addr", organization: "org",
-  account: "account", ip_address: "ip_address", url: "url", secret: "secret",
-};
-const ENGINE_CATEGORY: Record<CategoryId, string> = {
-  phone: "phone", email: "email", id: "id_number", card: "payment_card", date: "date",
-  name: "person", addr: "address", org: "organization",
-  account: "account", ip_address: "ip_address", url: "url", secret: "secret", other: "other",
-};
-
-/** The screen category of an engine category; anything without a own place is “其他”. */
-export const uiCategory = (c: string): CategoryId => UI_CATEGORY[c] ?? "other";
-export const engineCategory = (c: CategoryId): string => ENGINE_CATEGORY[c];
-
-const OFFICE: OfficeCategoryId[] = CATEGORY_IDS.filter((c): c is OfficeCategoryId => c !== "other");
-export const zeroHits = (): Record<OfficeCategoryId, number> =>
-  Object.fromEntries(OFFICE.map((c) => [c, 0])) as Record<OfficeCategoryId, number>;
 
 const SOURCE_LABEL: Record<string, string> = { rule: "规则", model: "模型", dictionary: "词表", manual: "人工" };
 
@@ -95,12 +75,13 @@ export function groupOf(f: EngineFile): string | null {
 
 /** A batch row from an engine row; the identity and the names the person gave stay as they were. */
 export function toBatchFile(prev: BatchFile, f: EngineFile): BatchFile {
-  const h = zeroHits();
+  // counts per engine category, whatever categories the scheme has; screens name them from the catalog
+  const h: BatchFile["h"] = {};
   let hits = 0;
   for (const [c, n] of Object.entries(f.categories ?? {})) {
-    const k = uiCategory(c);
-    hits += n ?? 0;
-    if (k !== "other") h[k] += n ?? 0;
+    if (!n) continue;
+    hits += n;
+    h[c] = (h[c] ?? 0) + n;
   }
   const st = fileStatus(f);
   const group = groupOf(f);
@@ -201,7 +182,7 @@ function docxAt(u: EngineUnit, page: number, texts: Map<string, string>): DocLoc
 }
 
 function hitOf(f: EngineFinding, text: string, at: DocLocation, id: number, prev?: Hit): Hit {
-  const type = uiCategory(f.category);
+  const type = f.category;
   const manual = f.source === "manual";
   const src = f.low ? (SOURCE_LABEL[f.source] ?? f.source) + " · 低置信" : (SOURCE_LABEL[f.source] ?? f.source);
   return {

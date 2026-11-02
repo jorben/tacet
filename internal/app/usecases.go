@@ -377,6 +377,12 @@ func (e *Engine) resolveContent(tx store.Tx, preset string, refsByFormat map[str
 	if len(report.Blocking) > 0 {
 		return snapshot.Content{}, fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
 	}
+	// the placeholder text of the enabled and hand-markable categories is frozen with the run
+	cat, err := e.categoryCatalog(tx)
+	if err != nil {
+		return snapshot.Content{}, err
+	}
+	content.Render.Placeholders = cat.Placeholders(content.Detect.Categories)
 	if content.Detect.ModelID != "" && !content.Detect.RulesOnly {
 		m := e.modelByID(content.Detect.ModelID)
 		if m == nil || !avail[m.id] {

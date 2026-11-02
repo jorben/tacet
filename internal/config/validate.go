@@ -29,6 +29,12 @@ type RuleContent struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
+// CategoryContent is a user category's content; its name is the object's name.
+type CategoryContent struct {
+	Placeholder string `json:"placeholder"`
+	Color       string `json:"color,omitempty"`
+}
+
 type RulesContent struct {
 	Rules []RuleContent `json:"rules"`
 }
@@ -107,7 +113,7 @@ func NewValidator(budget rules.Budget) (*Validator, error) {
 		return nil, ErrSchema
 	}
 	validator := &Validator{schemas: map[Kind]*jsonschema.Schema{}, budget: budget}
-	for _, kind := range []Kind{RuleSet, Scheme, Preset, ModelProfile} {
+	for _, kind := range []Kind{RuleSet, Scheme, Preset, ModelProfile, Category} {
 		schema, err := compiler.Compile(base + "#/$defs/" + string(kind))
 		if err != nil {
 			return nil, ErrSchema

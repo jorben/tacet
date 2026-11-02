@@ -1,6 +1,6 @@
 // The single-file task: detection, review decisions, undo and export.
 import { current, isDraft, type Draft } from "immer";
-import { CATEGORIES } from "../domain/catalog";
+import { categoryName, categoryPlaceholder } from "../domain/categories";
 import { extOf, locAt, outputKind } from "../domain/format";
 import { presetModelId } from "../domain/presets";
 import { buildDocument } from "../domain/sampleDocument";
@@ -221,7 +221,7 @@ export function setSameAll(on: boolean): void {
 /** Mask the selected text by hand. */
 export function addManualRedaction(type: CategoryId, sel: ManualSelection): void {
   if (getState().single?.live) {
-    void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + CATEGORIES[type].l, undoSingle); });
+    void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + categoryName(getState().categories, type), undoSingle); });
     window.getSelection()?.removeAllRanges();
     closePop();
     return;
@@ -229,7 +229,7 @@ export function addManualRedaction(type: CategoryId, sel: ManualSelection): void
   decide((s) => addManualHit(s, sel, type));
   window.getSelection()?.removeAllRanges();
   closePop();
-  toast("已涂抹 · " + CATEGORIES[type].l, undoSingle);
+  toast("已涂抹 · " + categoryName(getState().categories, type), undoSingle);
 }
 
 /* ── View ─────────────────────────────────────────────────────────────────── */
@@ -255,13 +255,14 @@ export function setSinglePhase(phase: "result" | "manifest"): void {
 
 export function openCategoryMenu(anchor: PopAnchor, t: CategoryId): void {
   const s = getState().single!;
+  const name = categoryName(getState().categories, t);
   // the kernel writes one fixed placeholder form per category; the form cannot be chosen per document yet
   const items: MenuEntry[] = s.live
-    ? [{ h: CATEGORIES[t].l }, { l: "全部保留", k: "keepAll" }]
+    ? [{ h: name }, { l: "全部保留", k: "keepAll" }]
     : [
-      { h: CATEGORIES[t].l },
+      { h: name },
       { l: "涂抹", s: "■■■", k: "mask", on: treatmentOf(s, t) === "mask" },
-      { l: "占位符", s: "［" + CATEGORIES[t].ph + "］", k: "ph", on: treatmentOf(s, t) === "ph" },
+      { l: "占位符", s: categoryPlaceholder(getState().categories, t), k: "ph", on: treatmentOf(s, t) === "ph" },
       "-",
       { l: "全部保留", k: "keepAll" },
     ];
@@ -273,7 +274,7 @@ export function openCategoryMenu(anchor: PopAnchor, t: CategoryId): void {
         if (x.mode === "orig" && it.k === "ph") x.mode = "fx";
       }
     });
-    if (it.k === "keepAll") toast("保留全部" + CATEGORIES[t].l, undoSingle);
+    if (it.k === "keepAll") toast("保留全部" + name, undoSingle);
   }, { alignRight: true });
 }
 

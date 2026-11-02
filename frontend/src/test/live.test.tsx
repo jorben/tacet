@@ -136,11 +136,11 @@ describe("真实引擎：单文件", () => {
     act(() => store.update((d) => { d.single!.hits[0]!.state = "keep"; d.undo = [{} as never]; }));
     // after the load the kernel also knows the manual candidate
     fake.afterManual = [unit(1, "😀张三 电话 13812345678", [{ id: 11, start: 8, end: 19, category: "phone" }, { id: 12, start: 2, end: 4, category: "person", source: "manual" }])];
-    addManualRedaction("name", { k: "0.0.0", st: 2, en: 4, text: "张三" });
+    addManualRedaction("person", { k: "0.0.0", st: 2, en: 4, text: "张三" });
     await waitFor(() => expect(fake.manual).toBeTruthy());
     expect(fake.manual).toEqual({ job: "j1", seq: 1, start: 2, end: 4, category: "person" });
     await waitFor(() => expect(single().hits).toHaveLength(2));
-    expect(single().hits.map((h) => [h.type, h.state, !!h.manual])).toEqual([["name", "redact", true], ["phone", "keep", false]]);
+    expect(single().hits.map((h) => [h.type, h.state, !!h.manual])).toEqual([["person", "redact", true], ["phone", "keep", false]]);
     // what can be undone now is the selection itself (earlier snapshots no longer match the document)
     expect(getState().undo.map((u) => u.manual)).toEqual([12]);
   });
@@ -152,7 +152,7 @@ describe("真实引擎：单文件", () => {
     await fake.emit("ready_to_publish");
     await waitFor(() => expect(single().phase).toBe("review"));
     fake.afterManual = [unit(1, "😀张三 电话 13812345678", [{ id: 11, start: 8, end: 19, category: "phone" }, { id: 12, start: 2, end: 4, category: "person", source: "manual" }])];
-    addManualRedaction("name", { k: "0.0.0", st: 2, en: 4, text: "张三" });
+    addManualRedaction("person", { k: "0.0.0", st: 2, en: 4, text: "张三" });
     await waitFor(() => expect(single().hits).toHaveLength(2));
     act(() => store.update((d) => { d.single!.hits.find((h) => h.type === "phone")!.state = "keep"; }));
     fake.withdrawFails = new Error("ACTION_NOT_ALLOWED");

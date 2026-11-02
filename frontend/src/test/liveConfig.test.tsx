@@ -7,6 +7,7 @@ import { downloadAccel, downloadModel } from "../actions/models";
 import { exportLive, flushConfig, saveSettingsNow, importLive, loadConfig, openVersions, stopConfigSync } from "../actions/liveConfig";
 import { takePaths } from "../actions/live";
 import { runPresetTest, testErrorText } from "../actions/presetTest";
+import { createCategory } from "../actions/categories";
 import { overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -237,6 +238,31 @@ describe("方案与规则集的存储同步", () => {
     expect(getState().rulesets).toHaveLength(1);
   });
 
+  it("自建类别：由内核保存并重新读出目录；导出的规则集带上类别定义，导入时同名沿用、其余新建并改写编号", async () => {
+    const made = await createCategory("项目代号");
+    if (!("id" in made)) throw new Error(JSON.stringify(made));
+    expect(fake.calls).toContain("configCreate:category");
+    expect(fake.items.find((i) => i.id === made.id)).toMatchObject({ kind: "category", name: "项目代号", content: JSON.stringify({ placeholder: "[项目代号]" }) });
+    expect(getState().categories.at(-1)).toMatchObject({ id: made.id, name: "项目代号", origin: "custom", version: 1 });
+    expect(await createCategory("电话")).toEqual({ error: "taken" });
+    // a rule set reporting it is exported with the category's definition
+    act(() => newRuleset());
+    act(() => saveRule(null, { name: "代号", kind: "词表", cat: made.id, bd: "", body: "北斗" }));
+    await flushConfig();
+    const rs = getState().rulesets.find((r) => r.rules.some((x) => x.cat === made.id))!;
+    await exportLive("ruleset", rs.id);
+    const file = JSON.parse(fake.saved!.text);
+    expect(file.categories).toEqual([{ id: made.id, name: "项目代号", placeholder: "[项目代号]" }]);
+    // another workspace's file: its 项目代号 is ours by name, its 客户代号 is new, its ids are rewritten
+    fake.openText = JSON.stringify({ ...file, name: "外来词条", categories: [...file.categories.map((c: object) => ({ ...c, id: "cfg_far1" })), { id: "cfg_far2", name: "客户代号", placeholder: "[客户]" }],
+      rules: [{ id: "a", category: "cfg_far1", terms: ["北斗"] }, { id: "b", category: "cfg_far2", terms: ["甲方"] }] });
+    await importLive("ruleset");
+    const client = getState().categories.find((c) => c.name === "客户代号")!;
+    expect(client).toMatchObject({ placeholder: "[客户]", origin: "custom" });
+    const imported = getState().rulesets.find((r) => r.name === "外来词条")!;
+    expect(imported.rules.map((r) => r.cat)).toEqual([made.id, client.id]);
+  });
+
   it("批次开始时也带上所选方案的存储编号", async () => {
     takePaths(["/d/a.txt", "/d/b.txt"]);
     await waitFor(() => expect(getState().batch?.live?.id).toBe("b0001"));
@@ -446,7 +472,7 @@ describe("方案与规则集的存储同步", () => {
     expect(fake.calls.indexOf("configCreate:preset")).toBeLessThan(fake.calls.indexOf("testPreset:" + stored));
     expect(fake.tested).toEqual({ preset: stored, text: "13812345678 王小明" });
     expect(r.minConfidence).toBe(0.8);
-    expect(r.hits.map((h) => [h.cat, h.rules, h.model?.score, h.model?.below])).toEqual([["phone", ["手机号"], 0.93, false], ["name", [], 0.61, true]]);
+    expect(r.hits.map((h) => [h.cat, h.rules, h.model?.score, h.model?.below])).toEqual([["phone", ["手机号"], 0.93, false], ["person", [], 0.61, true]]);
     fake.testFails = new Error("MODEL_NOT_INSTALLED");
     await expect(runPresetTest("x")).rejects.toThrow("MODEL_NOT_INSTALLED");
     expect(testErrorText(new Error("MODEL_NOT_INSTALLED"))).toContain("模型尚未就绪");

@@ -6,8 +6,11 @@ import {
   schemeIdOf, versionLabel, type Model,
 } from "../domain/liveConfig";
 import type { Preset, Ruleset } from "../domain/types";
-import { presetCategoryLabel } from "../domain/presets";
-import { pluginFromEngine, settingsFromEngine, settingsToEngine, exportRuleset, exportScheme, importPackage, type Imported } from "../domain/liveConfig";
+import { applyCategoryColors, categoryName, type CategoryInfo } from "../domain/categories";
+import {
+  pluginFromEngine, settingsFromEngine, settingsToEngine, exportRuleset, exportScheme, importPackage, packageCategories, remapPackageCategories, type Imported,
+} from "../domain/liveConfig";
+import { adoptCategories } from "./categories";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { importNameClashes } from "./presets";
 import { nextId } from "./timers";
@@ -59,6 +62,7 @@ export async function loadConfig(): Promise<void> {
   const e = liveEngine();
   if (!e) return;
   const [rs, sc, pr, mp] = await Promise.all(["ruleset", "scheme", "preset", "model_profile"].map((k) => e.configList(k)));
+  await loadCategories();
   synced = new Map([...rs, ...sc, ...pr, ...mp].map((i) => [i.id, i]));
   // the catalog decides the order (its first model is the default one); a profile without an entry keeps its place last
   const rts = mp.length ? await e.models().catch(() => []) : [];
@@ -91,6 +95,16 @@ export async function loadConfig(): Promise<void> {
   last = { presets: getState().presets, rulesets: getState().rulesets };
   if (!unsubscribe) unsubscribe = store.subscribe(onStore);
   watchModels();
+}
+
+/** Reads the category catalog. Until it answers (or if it fails) the screens keep the standard vocabulary. */
+export async function loadCategories(): Promise<void> {
+  const e = liveEngine();
+  const list = e ? await e.categories().catch(() => null) : null;
+  if (!list?.length) return;
+  const cats: CategoryInfo[] = list.map((c) => ({ ...c }));
+  applyCategoryColors(cats);
+  store.update((d) => { d.categories = cats; });
 }
 
 const MODEL_POLL_MS = 700;
@@ -261,7 +275,7 @@ async function writeChanges(): Promise<void> {
     }
     markKnown(getState().presets.find((q) => q.id === preset!.id));
   }
-  if (dropped.size) toast("以下类别没有规则或模型检测，未写入方案：" + [...dropped].map(presetCategoryLabel).join("、"));
+  if (dropped.size) toast("以下类别没有规则或模型检测，未写入方案：" + [...dropped].map((c) => categoryName(getState().categories, c)).join("、"));
   last = { presets: getState().presets, rulesets: getState().rulesets };
 }
 
@@ -330,12 +344,12 @@ export async function exportLive(kind: "preset" | "ruleset", id: string): Promis
       const rs = s.rulesets.find((r) => r.id === id);
       if (!rs) return;
       name = rs.name;
-      text = exportRuleset(rs);
+      text = exportRuleset(rs, s.categories);
     } else {
       const p = s.presets.find((x) => x.id === id);
       if (!p) return;
       name = p.name;
-      text = exportScheme(p, s.rulesets, models);
+      text = exportScheme(p, s.rulesets, models, s.categories);
     }
     if (await e.saveConfigFile(fileName(name), text)) toast("已导出「" + name + "」（不含模型）");
   } catch (err) { toast(configErrorText(err)); }
@@ -350,8 +364,11 @@ const IMPORT_ERRORS = { format: "不是 Tacet 的配置文件", kind: "文件类
 export async function importLive(kind: "preset" | "ruleset"): Promise<void> {
   const e = liveEngine()!;
   try {
-    const text = await e.openConfigFile();
+    let text = await e.openConfigFile();
     if (!text) return;
+    // user categories it brings become this workspace's: same name, same category; others are created
+    const defs = packageCategories(text);
+    if (defs.length) text = remapPackageCategories(text, await adoptCategories(defs));
     const got = importPackage(text, kind, getState().rulesets, models);
     if ("error" in got) {
       toast(IMPORT_ERRORS[got.error] + (got.detail ? "：" + got.detail : ""));

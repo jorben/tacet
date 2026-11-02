@@ -5,6 +5,7 @@ import { Rail } from "./features/shell/Rail";
 import { MainView } from "./features/shell/MainView";
 import { OverlayHost } from "./features/shell/OverlayHost";
 import { TitleBar } from "./features/shell/TitleBar";
+import { applyCategoryColors } from "./domain/categories";
 import { getService } from "./services";
 import { store, useAppState } from "./store";
 
@@ -28,10 +29,13 @@ function usePreventFileNavigation() {
 function useDocumentAttributes() {
   const theme = useAppState((s) => s.theme);
   const redact = useAppState((s) => s.settings.redact);
+  const categories = useAppState((s) => s.categories);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.redact = redact || "black";
   }, [theme, redact]);
+  // every category's color is a custom property, so categories created later are colored like the shipped ones
+  useEffect(() => applyCategoryColors(categories), [categories]);
 }
 
 /** Window chrome. On a desktop host the system draws the window frame and the title bar is the draggable region;

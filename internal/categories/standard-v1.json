@@ -1,0 +1,19 @@
+{
+  "id": "standard-v1",
+  "description": "Tacet's standard category vocabulary: the ids models map their labels to and rules report, so that switching models leaves rules and schemes as they are. Display order is the order below. Models may declare further categories in their manifest; users create their own in the workspace.",
+  "categories": [
+    {"id": "person", "name": "人名", "placeholder": "[姓名]", "color": "#6550C8", "manual": true},
+    {"id": "phone", "name": "电话", "placeholder": "[手机号]", "color": "#0B7A8F", "manual": true},
+    {"id": "email", "name": "邮箱", "placeholder": "[邮箱]", "color": "#2F6FB5"},
+    {"id": "id_number", "name": "身份证", "placeholder": "[证件号]", "color": "#B4570B", "manual": true},
+    {"id": "address", "name": "地址", "placeholder": "[地址]", "color": "#4E7A12", "manual": true},
+    {"id": "payment_card", "name": "银行卡", "placeholder": "[银行卡]", "color": "#B0234F"},
+    {"id": "date", "name": "日期", "placeholder": "[日期]", "color": "#8A4FC2"},
+    {"id": "account", "name": "账号", "placeholder": "[账号]", "color": "#9C3D7A"},
+    {"id": "ip_address", "name": "IP 地址", "placeholder": "[IP]", "color": "#2D7A5C"},
+    {"id": "url", "name": "网址", "placeholder": "[链接]", "color": "#3D5A99"},
+    {"id": "secret", "name": "凭证", "placeholder": "[凭证]", "color": "#A03E1F"},
+    {"id": "organization", "name": "公司名", "placeholder": "[机构]", "color": "#8C6A1F", "manual": true},
+    {"id": "other", "name": "其他", "placeholder": "[已处理]", "color": "#5B6470", "manual": true}
+  ]
+}

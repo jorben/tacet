@@ -12,7 +12,7 @@ import (
 )
 
 // EngineVersion is part of the resolution key; bump it when Resolve changes.
-const EngineVersion = "1"
+const EngineVersion = "2" // 2: hand marks of a category without action are placeholders
 
 // Action is the handling of a target. Strength orders removal actions when
 // overlapping targets merge: delete > placeholder > mask (FR-13).
@@ -214,7 +214,7 @@ func Resolve(in Input) Output {
 			t.rank = rank(t.basis, false)
 			if dec.Keep {
 				t.action = Keep
-			} else if a, ok := p.CategoryAction[c.Category]; ok && a != Keep {
+			} else if a, ok := categoryAction(p, c); ok && a != Keep {
 				t.action = a
 			} else {
 				t.action = Delete // a person chose to redact a category with no removal action
@@ -222,7 +222,7 @@ func Resolve(in Input) Output {
 		case c.KeepByPolicy:
 			t.action, t.basis, t.rank = Keep, AutoPolicy, rank(AutoPolicy, true)
 		default:
-			a, ok := p.CategoryAction[c.Category]
+			a, ok := categoryAction(p, c)
 			if !ok {
 				draft(exceptions.PolicyReview, scopeOf(c), "no_action_for_category")
 				continue
@@ -297,6 +297,19 @@ func Resolve(in Input) Output {
 		return a.ScopeKey < b.ScopeKey
 	})
 	return out
+}
+
+// categoryAction is the scheme's action for the candidate's category. A hand mark of a category the scheme
+// has no action for (any category: no detection source, hence often no scheme entry) is a placeholder: the
+// mark itself asks for removal, the placeholder names what was removed.
+func categoryAction(p Policy, c Candidate) (Action, bool) {
+	if a, ok := p.CategoryAction[c.Category]; ok {
+		return a, true
+	}
+	if c.Source == kernel.SourceManual {
+		return Placeholder, true
+	}
+	return "", false
 }
 
 func humanBasis(d Decision) Basis {

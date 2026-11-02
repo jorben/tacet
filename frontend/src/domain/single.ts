@@ -35,8 +35,8 @@ export interface CategoryStat {
   /** Low-confidence hits not looked at yet. */
   unseen: number;
 }
-export function categoryStats(s: Pick<Single, "hits">): Partial<Record<CategoryId, CategoryStat>> {
-  const m: Partial<Record<CategoryId, CategoryStat>> = {};
+export function categoryStats(s: Pick<Single, "hits">): Record<CategoryId, CategoryStat> {
+  const m: Record<CategoryId, CategoryStat> = {};
   s.hits.forEach((h) => {
     const o = (m[h.type] ||= { redacted: 0, kept: 0, unseen: 0 });
     if (h.state === "redact") o.redacted++;

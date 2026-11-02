@@ -326,6 +326,25 @@
         ]
       },
       "additionalProperties": false
+    },
+    "category": {
+      "type": "object",
+      "required": [
+        "placeholder"
+      ],
+      "properties": {
+        "placeholder": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[^\\r\\n]+$"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

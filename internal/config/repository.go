@@ -31,10 +31,13 @@ const (
 	Scheme       Kind = "scheme"
 	Preset       Kind = "preset"
 	ModelProfile Kind = "model_profile"
+	// Category is a user-defined category: its id is what rules report, its name is how it is shown, its
+	// content the placeholder text (and color). Shipped and model-declared categories are not stored here.
+	Category Kind = "category"
 )
 
 func validKind(kind Kind) bool {
-	return kind == RuleSet || kind == Scheme || kind == Preset || kind == ModelProfile
+	return kind == RuleSet || kind == Scheme || kind == Preset || kind == ModelProfile || kind == Category
 }
 
 func Module() store.Module {
@@ -522,7 +525,32 @@ func (r *Repository) Import(tx store.Tx, p Package) (Object, error) {
 	return r.Create(tx, id, p.Kind, p.Name, p.Note, p.Content)
 }
 
-// ErrInUse says a preset still refers to the object.
+// categoryInUse reports whether a rule of any rule set reports the category.
+func categoryInUse(t *store.Txn, id string) (bool, error) {
+	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(RuleSet))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var content []byte
+		if err = rows.Scan(&content); err != nil {
+			return false, err
+		}
+		var rs RulesContent
+		if json.Unmarshal(content, &rs) != nil {
+			continue
+		}
+		for _, rule := range rs.Rules {
+			if rule.Category == id {
+				return true, nil
+			}
+		}
+	}
+	return false, rows.Err()
+}
+
+// ErrInUse says a preset still refers to the object (or a rule to a category).
 var ErrInUse = errors.New("CONFIG_IN_USE")
 
 // Delete removes a user object and its history. Built-in objects stay, and so does an object a preset
@@ -543,7 +571,15 @@ func (r *Repository) Delete(tx store.Tx, id string, expectedVersion uint64) erro
 	if err != nil {
 		return err
 	}
-	if object.Kind != Preset {
+	if object.Kind == Category {
+		if used, err := categoryInUse(t, id); err != nil || used {
+			if err == nil {
+				err = ErrInUse
+			}
+			return err
+		}
+	}
+	if object.Kind != Preset && object.Kind != Category {
 		rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(Preset))
 		if err != nil {
 			return err

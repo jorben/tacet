@@ -204,6 +204,18 @@ export interface EngineInfo {
   problem?: string;
 }
 
+/** One entry of the engine's category catalog (internal/app CategoryInfo). */
+export interface EngineCategory {
+  id: string;
+  name: string;
+  placeholder: string;
+  color?: string;
+  manual?: boolean;
+  origin: "standard" | "model" | "custom";
+  /** Version of a user category's stored object. */
+  version?: number;
+}
+
 /** The real kernel behind the Wails host. Every call returns a closed error code on failure, never a path or content. */
 export interface EngineService {
   info(): Promise<EngineInfo>;
@@ -239,6 +251,8 @@ export interface EngineService {
   plugins(): Promise<EnginePlugin[]>;
   /** The model catalog with each model's download state. */
   models(): Promise<EngineModelRuntime[]>;
+  /** The category catalog in display order (standard vocabulary, model-declared and user categories). */
+  categories(): Promise<EngineCategory[]>;
   /** Starts downloading a model or an accelerated build (verification, installation and trial follow in the background). */
   downloadModel(id: string): Promise<void>;
   /** Stops a download, keeping what was received. */

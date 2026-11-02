@@ -2,12 +2,15 @@ import { useRef, useState } from "react";
 import {
   deleteRule, finishImport, importNameClashes, rollback, saveRule, versionTarget, type RuleDraft,
 } from "../../actions/presets";
-import { CATEGORIES, RULE_CATEGORIES } from "../../domain/catalog";
+import { createCategory, defaultPlaceholder } from "../../actions/categories";
+import { categoryOf } from "../../domain/categories";
 import type { Boundary, RuleKind } from "../../domain/types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState } from "../../store";
-import { Button, Field, List, Segmented, Swatch, Tag, TextArea, pushLeft } from "../../ui";
+import { Button, Field, Icon, List, Segmented, Swatch, Tag, TextArea, pushLeft } from "../../ui";
+
+const CREATE_ERRORS = { name: "请填写类别名称（至多 32 个字）", placeholder: "占位符至多 64 个字，且不能换行", taken: "已有同名类别", failed: "未能创建，请重试" } as const;
 
 const BOUNDARY_OPTIONS: { value: Boundary; label: string }[] = [
   { value: "", label: "不限" }, { value: "digit", label: "不紧邻数字" }, { value: "word", label: "不紧邻字母或数字" },
@@ -19,6 +22,19 @@ export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; inde
   const [draft, setDraft] = useState<RuleDraft>(() => ({
     name: existing?.name ?? "", kind: existing?.kind ?? "词表", cat: existing?.cat ?? "other", bd: existing?.bd ?? "", body: existing?.body ?? "",
   }));
+  // every category of the catalog can be reported by a rule; a stored category the catalog lacks stays selectable
+  const catalog = useAppState((s) => s.categories);
+  const choices = catalog.some((c) => c.id === draft.cat) ? catalog : [...catalog, categoryOf(catalog, draft.cat)];
+  // a category the catalog lacks is made here, while writing the rule that reports it
+  const [creating, setCreating] = useState<{ name: string; placeholder: string; error?: string } | null>(null);
+  const create = async () => {
+    if (!creating) return;
+    const got = await createCategory(creating.name, creating.placeholder.trim() || defaultPlaceholder(creating.name));
+    if ("id" in got) {
+      set("cat", got.id);
+      setCreating(null);
+    } else setCreating({ ...creating, error: CREATE_ERRORS[got.error] });
+  };
   const nameRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const set = <K extends keyof RuleDraft>(k: K, v: RuleDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -55,13 +71,32 @@ export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; inde
           命中归类
         </div>
         <div className="typegrid" style={{ padding: 0 }}>
-          {RULE_CATEGORIES.map((t) => (
-            <button key={t} type="button" aria-pressed={draft.cat === t} onClick={() => set("cat", t)}>
-              <Swatch category={t} />
-              {CATEGORIES[t].l}
+          {choices.map((c) => (
+            <button key={c.id} type="button" aria-pressed={draft.cat === c.id} onClick={() => set("cat", c.id)}>
+              <Swatch category={c.id} />
+              {c.name}
             </button>
           ))}
+          {!creating && (
+            <button type="button" className="typegrid-add" onClick={() => setCreating({ name: "", placeholder: "" })}>
+              <Icon name="plus" size={12} />
+              新建类别
+            </button>
+          )}
         </div>
+        {creating && (
+          <div className="newcat" role="group" aria-label="新建类别">
+            <Field id="rdCatName" placeholder="类别名称，如 项目代号" aria-label="类别名称" maxLength={32} value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value, error: undefined })} />
+            <Field id="rdCatPh" placeholder={"占位符，默认 " + defaultPlaceholder(creating.name || "类别名称")} aria-label="占位符" maxLength={64} value={creating.placeholder} onChange={(e) => setCreating({ ...creating, placeholder: e.target.value, error: undefined })} />
+            <div className="newcat-actions">
+              {creating.error && <span className="newcat-err">{creating.error}</span>}
+              <Button variant="ghost" onClick={() => setCreating(null)}>
+                取消
+              </Button>
+              <Button onClick={() => void create()}>创建</Button>
+            </div>
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         {index != null && (

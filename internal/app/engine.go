@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jorben/tacet/internal/categories"
 	"github.com/jorben/tacet/internal/config"
 	"github.com/jorben/tacet/internal/coverage"
 	"github.com/jorben/tacet/internal/exceptions"
@@ -82,8 +83,9 @@ type modelInfo struct {
 	variant, languages  string
 	repository          string // "owner/name" on Hugging Face, from the manifest; empty when not well formed
 	floor, recommended  float64
-	categories          []string
-	labels              map[string]string
+	categories          []string              // what its labels produce, sorted
+	labels              map[string]string     // label -> category, from the manifest
+	declared            []categories.Category // categories the manifest adds to the standard vocabulary
 	plug                plugin
 	opt                 *ModelOption
 	kind                modelKind

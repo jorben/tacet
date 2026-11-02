@@ -1,6 +1,6 @@
 import type { ReactNode, MouseEvent } from "react";
 import { returnToBatch, exportSingle, focusHit, focusNextOfType, openAllImagesMenu, openCategoryMenu, openOutputMenu, openSingleSchemeMenu, reviewBatchFileExceptions } from "../../actions/single";
-import { REVIEW_CATEGORY_ORDER, CATEGORIES } from "../../domain/catalog";
+import { byCatalogOrder, categoryName } from "../../domain/categories";
 import { locAt, outputKind } from "../../domain/format";
 import { findPresetByName, formatConfidence, presetConfidence } from "../../domain/presets";
 import { categoryStats, imageSummary, isPartialResult, orderedHitIds, treatmentOf, unseenLowHits } from "../../domain/single";
@@ -102,7 +102,9 @@ function Summary({ single, batch }: { single: Single; batch: Batch | null }) {
 /** Low-confidence hits that still deserve a look, then the per-category list. */
 function Categories({ single }: { single: Single }) {
   const stats = categoryStats(single);
-  const order = REVIEW_CATEGORY_ORDER.filter((t) => stats[t]);
+  const catalog = useAppState((s) => s.categories);
+  // the categories this document has hits of, whatever they are, in catalog order
+  const order = byCatalogOrder(catalog, Object.keys(stats));
   const lowIds = orderedHitIds(single).filter((i) => single.hits[i]!.low);
   const left = unseenLowHits(single).length;
   return (
@@ -152,12 +154,12 @@ function Categories({ single }: { single: Single }) {
           <div className="cat" style={categoryColor(t)} key={t}>
             <button type="button" className="cat-main" onClick={() => focusNextOfType(t)}>
               <span className="sw" />
-              <span>{CATEGORIES[t].l}</span>
+              <span>{categoryName(catalog, t)}</span>
               {o.unseen > 0 && <span className="dot" style={DOT} />}
               <span className="n num">{o.redacted}</span>
               {o.kept > 0 && <span className="kept">保留 {o.kept}</span>}
             </button>
-            <button type="button" className="sel sm" aria-label={CATEGORIES[t].l + " 处理方式"} onClick={(e) => openCategoryMenu(e.currentTarget, t)}>
+            <button type="button" className="sel sm" aria-label={categoryName(catalog, t) + " 处理方式"} onClick={(e) => openCategoryMenu(e.currentTarget, t)}>
               {treatmentOf(single, t) === "ph" ? "占位" : "涂抹"}
               <Icon name="chev-d" size={12} />
             </button>

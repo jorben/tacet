@@ -1,8 +1,9 @@
 import { memo, useEffect, useRef } from "react";
 import { clickHit } from "../../../actions/single";
 import { ensureRasterPage } from "../../../actions/live";
-import { CATEGORIES } from "../../../domain/catalog";
+import { categoryName } from "../../../domain/categories";
 import type { Single } from "../../../domain/types";
+import { useAppState } from "../../../store";
 import { categoryColor } from "../../../ui";
 
 interface Props {
@@ -23,6 +24,7 @@ export const RasterPage = memo(function RasterPage({ single, pageIndex, revealed
   const page = live.raster!.pages[pageIndex];
   const failed = live.raster!.failed[pageIndex];
   const box = useRef<HTMLDivElement>(null);
+  const catalog = useAppState((s) => s.categories);
   // A long document is not rendered all at once: a page is asked for when it comes near the viewport.
   // Without IntersectionObserver (old webviews, tests) every page is asked for at once.
   useEffect(() => {
@@ -71,7 +73,7 @@ export const RasterPage = memo(function RasterPage({ single, pageIndex, revealed
                 className={cls}
                 data-hit={id}
                 id={hitIds && first ? "h" + id : undefined}
-                aria-label={CATEGORIES[hit.type].l + (hit.state === "keep" ? "（保留）" : "（涂抹）")}
+                aria-label={categoryName(catalog, hit.type) + (hit.state === "keep" ? "（保留）" : "（涂抹）")}
                 style={{
                   ...categoryColor(hit.type),
                   position: "absolute",

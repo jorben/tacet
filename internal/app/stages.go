@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jorben/tacet/internal/categories"
 	"github.com/jorben/tacet/internal/coverage"
 	"github.com/jorben/tacet/internal/detect"
 	"github.com/jorben/tacet/internal/exceptions"
@@ -319,12 +320,7 @@ func policyOf(c snapshot.Content) policy.Policy {
 	for cat, a := range c.Dispose.CategoryAction {
 		p.CategoryAction[cat] = policy.Action(a)
 	}
-	// categories a person can mark by hand have no detection rule, hence no scheme entry
-	for _, cat := range []string{"person", "address", "organization", "other"} {
-		if _, ok := p.CategoryAction[cat]; !ok {
-			p.CategoryAction[cat] = policy.Placeholder
-		}
-	}
+	// a hand-marked category the scheme has no action for is replaced by its placeholder (policy.Resolve)
 	for _, cat := range c.Dispose.HumanReview {
 		p.HumanReview[cat] = true
 	}
@@ -352,10 +348,15 @@ func (e *Engine) resolve(ctx sched.StageContext) sched.StageOutcome {
 
 // -- plan --------------------------------------------------------------------
 
-func renderer() plan.Renderer {
-	return plan.Renderer{Placeholders: map[string]string{"phone": "[手机号]", "email": "[邮箱]", "id_number": "[证件号]", "payment_card": "[银行卡]", "account": "[账号]",
-		"ip_address": "[IP]", "url": "[链接]", "secret": "[凭证]", "date": "[日期]", "person": "[姓名]", "address": "[地址]", "organization": "[机构]"},
-		Fallback: "[已处理]", MaskHead: 3, MaskTail: 4, MaskChar: '*'}
+// renderer writes the placeholder text the snapshot froze for each category; a category without one (or
+// a snapshot from before placeholders were frozen, read with the standard vocabulary) gets the fallback.
+func renderer(c snapshot.Content) plan.Renderer {
+	ph := c.Render.Placeholders
+	if len(ph) == 0 {
+		std := categories.Catalog(categories.StandardVocabulary())
+		ph = std.Placeholders(std.IDs())
+	}
+	return plan.Renderer{Placeholders: ph, Fallback: "[已处理]", MaskHead: 3, MaskTail: 4, MaskChar: '*'}
 }
 
 type built struct {
@@ -396,7 +397,7 @@ func (e *Engine) buildPlan(ctx context.Context, l loaded) (built, error) {
 	}); err != nil {
 		return built{}, err
 	}
-	rd := renderer()
+	rd := renderer(l.snap.Content())
 	text := map[string]string{} // unit id -> body, loaded on demand
 	original := func(unit string, s, en int) (string, error) {
 		body, ok := text[unit]

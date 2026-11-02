@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jorben/tacet/internal/categories"
 	"github.com/jorben/tacet/internal/detect"
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/models"
@@ -34,10 +35,10 @@ var (
 	ErrModelUnknown      = errors.New("MODEL_UNKNOWN")
 )
 
-// modelKind is what the application adds to a model's manifest: how its labels become Tacet categories,
-// its built-in configuration objects, the memory a run reserves for it and its trial sample.
+// modelKind is what the application adds to a model's manifest: its built-in configuration objects, the
+// memory a run reserves for it and its trial sample. How its labels become categories is the manifest's
+// label_map, so a model with the same adapter needs no change here to report other categories.
 type modelKind struct {
-	labels                          map[string]string
 	profileID, schemeID, presetID   string
 	profileName, schemeName, preset string
 	memory                          int64 // what a run reserves for the model
@@ -55,10 +56,6 @@ const (
 
 var modelKinds = map[string]modelKind{
 	"astrlink-guard": {
-		labels: map[string]string{
-			"private_person": "person", "private_address": "address", "private_date": "date", "phone": "phone", "email": "email",
-			"account": "account", "payment_card": "payment_card", "ip_address": "ip_address", "url": "url", "common_secret": "secret",
-		},
 		profileID: ModelProfileID, schemeID: ModelSchemeID, presetID: ModelPresetID,
 		profileName: "AstrLink Guard（固定版本）", schemeName: "占位符方案（含模型类别）", preset: "办公外发（规则 + 模型）",
 		// the measured peak of the model (about 175 MB resident, docs/v1/backend/m0-progress.md) with headroom
@@ -67,10 +64,6 @@ var modelKinds = map[string]modelKind{
 		trialWant: map[string]string{"private_person": "张伟", "phone": "13812345678", "email": "zhangwei@example.com"},
 	},
 	"privacy-filter": {
-		labels: map[string]string{
-			"private_person": "person", "private_address": "address", "private_date": "date", "private_phone": "phone",
-			"private_email": "email", "account_number": "account", "private_url": "url", "secret": "secret",
-		},
 		profileID: "builtin-model-privacy-filter", schemeID: "builtin-scheme-privacy-filter", presetID: "builtin-preset-privacy-filter",
 		profileName: "OpenAI Privacy Filter（固定版本）", schemeName: "占位符方案（Privacy Filter 类别）", preset: "办公外发（规则 + Privacy Filter）",
 		// measured peak 2.2-2.3 GiB with 512-token windows, flat up to 100k tokens (docs/v1/backend/m0-decisions.md)
@@ -97,7 +90,11 @@ type modelManifest struct {
 	Accelerates string            `json:"accelerates"`
 	SourceDir   *string           `json:"source_dir"`   // folder of the files in the repository; default the variant
 	SourcePaths map[string]string `json:"source_paths"` // per-file path in the repository, where it differs
-	Files       map[string]struct {
+	// LabelMap maps each model label to a category id: a standard one or one Categories declares.
+	LabelMap map[string]string `json:"label_map"`
+	// Categories declares categories the standard vocabulary does not have.
+	Categories []categories.Decl `json:"categories"`
+	Files      map[string]struct {
 		SHA256 string `json:"sha256"`
 	} `json:"files"`
 }
@@ -113,6 +110,35 @@ func readManifest(path string) ([]byte, modelManifest, models.Entry, error) {
 		return nil, m, models.Entry{}, ErrOptions
 	}
 	return raw, m, entry, nil
+}
+
+// modelCategories checks a manifest's label map: every label maps to a standard category or to one the
+// manifest declares, and the trial sample's labels are mapped. It returns the declared categories and the
+// sorted categories the labels produce.
+func modelCategories(man modelManifest, kind modelKind) ([]categories.Category, []string, error) {
+	declared, err := categories.FromDecls(man.Categories, categories.Model)
+	if err != nil || len(man.LabelMap) == 0 {
+		return nil, nil, ErrOptions
+	}
+	known := categories.Merge(categories.StandardVocabulary(), declared)
+	seen := map[string]bool{}
+	var cats []string
+	for label, c := range man.LabelMap {
+		if label == "" || !known.Has(c) {
+			return nil, nil, ErrOptions
+		}
+		if !seen[c] {
+			seen[c] = true
+			cats = append(cats, c)
+		}
+	}
+	for label := range kind.trialWant {
+		if _, ok := man.LabelMap[label]; !ok {
+			return nil, nil, ErrOptions
+		}
+	}
+	sort.Strings(cats)
+	return declared, cats, nil
 }
 
 // registerModels reads every manifest of the catalog and registers the detection plugins.
@@ -141,6 +167,10 @@ func (e *Engine) registerModels(tx store.Tx) error {
 		if recommended <= 0 || recommended > 1 || floor <= 0 || floor > recommended {
 			return ErrOptions
 		}
+		declared, cats, err := modelCategories(man, kind)
+		if err != nil {
+			return err
+		}
 		p, err := e.registerPlugin(tx, o.Plugin)
 		if err != nil {
 			return err
@@ -151,18 +181,11 @@ func (e *Engine) registerModels(tx store.Tx) error {
 		}
 		m := &modelInfo{id: man.ID + "-" + man.Variant, digest: "sha256:" + hexSum(raw), backend: man.Backend, name: name, version: man.Version,
 			variant: strings.ToUpper(man.Variant), languages: man.Languages, repository: hubRepository(man.Repository),
-			floor: floor, recommended: recommended, labels: kind.labels, plug: p, opt: o, kind: kind, entry: entry, minMemory: man.MinMemory}
+			floor: floor, recommended: recommended, labels: man.LabelMap, categories: cats, declared: declared, plug: p, opt: o, kind: kind, entry: entry,
+			minMemory: man.MinMemory}
 		if m.languages == "" {
 			m.languages = "中文 / 中英混排"
 		}
-		seen := map[string]bool{}
-		for _, c := range kind.labels {
-			if !seen[c] {
-				seen[c] = true
-				m.categories = append(m.categories, c)
-			}
-		}
-		sort.Strings(m.categories)
 		if o.Accel != nil {
 			m.accel = readVariant(raw, o.Accel)
 		}

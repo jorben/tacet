@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetCategoryLabel, presetModelId, presetNeedsModel, ruleCategoryId, ruleSummary } from "../presets";
-import { RULE_CATEGORIES } from "../catalog";
+import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
+import { STANDARD_CATEGORIES, type CategoryInfo } from "../categories";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
 import type { Rule } from "../types";
 
@@ -24,32 +24,28 @@ describe("方案", () => {
     const models = seedModels();
     const rules = seedRulesets();
     const cats = presetCategories(p, models, rules);
-    expect(cats).toEqual(["name", "phone", "email", "id", "addr", "card", "date", "account", "ip_address", "url", "secret"]);
-    expect(cats).not.toContain("org");
-    // a rule reporting “其他” brings “其他” into the scheme, listed last
-    expect(presetCategories({ ...p, rules: ["cn", "corp"] }, models, rules).at(-1)).toBe("other");
+    expect(cats).toEqual(["person", "phone", "email", "id_number", "address", "payment_card", "date", "account", "ip_address", "url", "secret"]);
+    expect(cats).not.toContain("organization"); // no source of this scheme detects organization names
+    // the enterprise terms report organization names and “其他”: both are offered, in catalog order
+    expect(presetCategories({ ...p, rules: ["cn", "corp"] }, models, rules).slice(-2)).toEqual(["organization", "other"]);
     models.push({ ...models[0]!, id: "pf", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
     const minimal = [{ ...rules[0]!, rules: rules[0]!.rules.filter((r) => r.cat === "phone") }];
     expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("ip_address");
-    expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("card");
+    expect(presetCategories({ ...p, model: "pf" }, models, minimal)).not.toContain("payment_card");
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual(["phone"]);
     minimal[0]!.rules.forEach((r) => { r.on = false; });
     expect(presetCategories({ ...p, det: "rules" }, models, minimal)).toEqual([]);
   });
 
-  it("规则的每个命中归类在仅规则方案中都有同名的一项；规则不再归入公司名", () => {
-    expect(RULE_CATEGORIES).not.toContain("org");
-    expect(RULE_CATEGORIES).toEqual(expect.arrayContaining(["account", "ip_address", "url", "secret", "other"]));
+  it("没有固定类别表：规则或模型报告的任何类别（自建类别、模型新声明的类别、公司名）都列出，按目录顺序", () => {
     const p = { ...seedPresets()[0]!, det: "rules" as const, rules: ["all"] };
-    const rules: Rule[] = RULE_CATEGORIES.map((cat) => ({ name: cat, kind: "正则", cat, body: "x", on: true }));
-    const cats = presetCategories(p, [], [{ id: "all", name: "all", ver: "v1", rules }]);
-    expect(cats).toHaveLength(RULE_CATEGORIES.length);
-    for (const r of rules) {
-      expect(cats).toContain(ruleCategoryId(r));
-      expect(presetCategoryLabel(ruleCategoryId(r))).not.toBe(r.cat === "other" ? "" : "其他");
-    }
-    // engine categories without a screen id keep their own name on both pages
-    expect(presetCategoryLabel(ruleCategoryId({ cat: "other", ecat: "employee" }))).toBe("工号");
+    const custom: CategoryInfo = { id: "cfg_0123456789abcdef01234567", name: "项目代号", placeholder: "[项目代号]", origin: "custom" };
+    const catalog = [...STANDARD_CATEGORIES, custom];
+    const rule = (cat: string): Rule => ({ name: cat, kind: "正则", cat, body: "x", on: true });
+    const sets = [{ id: "all", name: "all", ver: "v1", rules: [rule(custom.id), rule("organization"), rule("phone")] }];
+    expect(presetCategories(p, [], sets, catalog)).toEqual(["phone", "organization", custom.id]);
+    const plates = { id: "plates", categories: ["license_plate", "person"] };
+    expect(presetCategories({ ...p, det: "model", model: "plates" }, [plates], sets, catalog)).toEqual(["person", "phone", "organization", custom.id, "license_plate"]);
   });
 
   it("类别的检测来源：模型、规则或两者", () => {
@@ -57,11 +53,11 @@ describe("方案", () => {
     const models = [...seedModels(), { ...seedModels()[0]!, id: "pf", categories: ["person", "phone"] }];
     const rules = seedRulesets();
     const astr = presetCategorySources(p, models, rules);
-    expect(categorySourceLabel(astr.get("card"))).toBe("模型 + 规则");
-    expect(categorySourceLabel(astr.get("name"))).toBe("模型");
-    expect(categorySourceLabel(astr.get("id"))).toBe("规则");
-    expect(astr.has("org")).toBe(false);
-    expect(categorySourceLabel(presetCategorySources({ ...p, model: "pf" }, models, rules).get("card"))).toBe("规则");
+    expect(categorySourceLabel(astr.get("payment_card"))).toBe("模型 + 规则");
+    expect(categorySourceLabel(astr.get("person"))).toBe("模型");
+    expect(categorySourceLabel(astr.get("id_number"))).toBe("规则");
+    expect(astr.has("organization")).toBe(false);
+    expect(categorySourceLabel(presetCategorySources({ ...p, model: "pf" }, models, rules).get("payment_card"))).toBe("规则");
     expect(categorySourceLabel(presetCategorySources({ ...p, det: "rules" }, models, rules).get("phone"))).toBe("规则");
   });
 
@@ -107,8 +103,8 @@ describe("版本", () => {
     const p = seedPresets()[0]!;
     const c = duplicate(p, "p2");
     expect(c).toMatchObject({ id: "p2", name: "办公外发 副本", ver: "v1", builtin: false, hist: [] });
-    c.cats.name = "off";
-    expect(p.cats.name).toBe("mask");
+    c.cats.person = "off";
+    expect(p.cats.person).toBe("mask");
   });
 });
 

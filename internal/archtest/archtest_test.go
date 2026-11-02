@@ -19,7 +19,7 @@ var domain = []string{
 	"preflight", "extract", "detect", "rules", "findings", "coverage",
 	"policy", "exceptions", "review", "plan", "preview",
 	"export", "validate", "verdict", "publish", "report",
-	"config", "registry", "pluginmgr", "envs", "models",
+	"config", "registry", "pluginmgr", "envs", "models", "categories",
 }
 
 func plus(base []string, more ...string) []string {
@@ -62,6 +62,7 @@ var allowed = map[string][]string{
 	"extract":    {"workspace", "sched", "snapshot", "host", "refs", "store", "detect", "coverage", "findings"},
 	"detect":     {"rules", "host", "snapshot"},
 	"rules":      {},
+	"categories": {}, // the category catalog: pure data and checks
 	"findings":   {"store", "keys"},
 	"coverage":   {"store"},
 	"policy":     {"workspace", "sched", "snapshot", "store", "findings", "coverage", "exceptions", "review"},

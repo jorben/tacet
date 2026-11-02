@@ -16,7 +16,7 @@ describe("方案测试：内核结果", () => {
     });
     expect(r.minConfidence).toBe(0.5);
     expect(r.hits.map((h) => [h.start, h.cat, h.label, testSourceLabel(h), h.rules])).toEqual([
-      [0, "name", "人名", "模型", []],
+      [0, "person", "人名", "模型", []],
       [3, "phone", "电话", "模型 + 规则", ["手机号"]],
       [20, "other", "其他", "规则", ["corp_terms"]],
       [30, "account", "账号", "模型", []],
@@ -56,7 +56,7 @@ describe("方案测试：浏览器模拟", () => {
     expect(testSourceLabel(by["13812345678"]!)).toBe("模型 + 规则");
     expect(by["13812345678"]!.rules).toEqual(["手机号"]);
     expect(testSourceLabel(by["11010519491231002X"]!)).toBe("规则");
-    expect(by["6222020200112233446"]!.cat).toBe("card");
+    expect(by["6222020200112233446"]!.cat).toBe("payment_card");
     expect(r.hits.some((h) => at(h) === "11010519491231002")).toBe(false);
     expect(r.minConfidence).toBe(0.5);
   });

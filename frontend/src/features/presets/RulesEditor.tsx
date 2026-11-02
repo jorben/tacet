@@ -2,7 +2,8 @@ import { useAppState } from "../../store";
 import { copyRuleset, newRuleset, openRulesetMoreMenu, selectRuleset, startImport, toggleRule } from "../../actions/presets";
 import { openModal } from "../../overlay/store";
 import { BOUNDARY_LABELS } from "../../domain/catalog";
-import { availableRulesets, presetCategoryLabel, ruleCategoryId, ruleSummary } from "../../domain/presets";
+import { categoryName } from "../../domain/categories";
+import { availableRulesets, ruleSummary } from "../../domain/presets";
 import { Button, Empty, IconButton, List, Switch, Swatch, Tag, categoryColor, tip } from "../../ui";
 import { ConfigHeader } from "./ConfigHeader";
 import { ItemList } from "./ItemList";
@@ -10,6 +11,7 @@ import { ItemList } from "./ItemList";
 /** Rule sets: the list on the left, the rules of the selected set on the right. */
 export function RulesEditor() {
   const rulesets = useAppState((s) => s.rulesets);
+  const catalog = useAppState((s) => s.categories);
   const plugins = useAppState((s) => s.plugins);
   const presets = useAppState((s) => s.presets);
   const selected = useAppState((s) => s.rulesetSel);
@@ -52,8 +54,8 @@ export function RulesEditor() {
                   </div>
                 </div>
                 <span className="rv">
-                  {/* the name the scheme lists this category under, also for engine categories the screens have no id for */}
-                  <span className="muted sm">{presetCategoryLabel(ruleCategoryId(x))}</span>
+                  {/* the category's catalog name: the same name the scheme lists it under */}
+                  <span className="muted sm">{categoryName(catalog, x.cat)}</span>
                   {!locked && <IconButton icon="edit" size={15} label="编辑" onClick={() => openModal({ type: "ruleEditor", rulesetId: r.id, index: i })} />}
                   <Switch checked={x.on} disabled={locked} label={"启用 " + x.name} onChange={() => toggleRule(i)} />
                 </span>

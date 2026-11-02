@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ConfigItem } from "../../services/types";
 import {
-  exportRuleset, exportScheme, importPackage, modelFromItem, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
+  exportRuleset, exportScheme, importPackage, modelFromItem, packageCategories, presetContents, presetFromItems, remapPackageCategories, rulesetContent, rulesetFromItem, sameContent,
 } from "../liveConfig";
+import { STANDARD_CATEGORIES } from "../categories";
 
 const item = (kind: string, id: string, content: unknown, extra: Partial<ConfigItem> = {}): ConfigItem => ({
   id, kind, name: id, note: "", version: 1, readOnly: false, content: JSON.stringify(content), ...extra,
@@ -32,7 +33,7 @@ describe("规则集 ↔ 存储内容", () => {
 
   it("屏幕上新增的规则得到不与其他规则重复的编号，已有编号不变", () => {
     const rs = rulesetFromItem(item("ruleset", "rs1", { rules: [{ id: "rs1.1", category: "phone", pattern: "1" }] }));
-    rs.rules.push({ name: "新", kind: "词表", cat: "name", body: "甲\n 乙 \n", on: true }, { name: "又新", kind: "正则", cat: "other", body: "Q+", bd: "word", on: true });
+    rs.rules.push({ name: "新", kind: "词表", cat: "person", body: "甲\n 乙 \n", on: true }, { name: "又新", kind: "正则", cat: "other", body: "Q+", bd: "word", on: true });
     const out = JSON.parse(rulesetContent(rs)).rules;
     expect(out.map((r: { id: string }) => r.id)).toEqual(["rs1.1", "rs1.2", "rs1.3"]);
     expect(out[1]).toMatchObject({ name: "新", category: "person", terms: ["甲", "乙"] });
@@ -44,16 +45,18 @@ describe("规则集 ↔ 存储内容", () => {
     expect(sameContent(rulesetContent(rulesetFromItem(stored)), stored.content)).toBe(true);
   });
 
-  it("账号、IP、网址、凭证规则按自己的类别显示；旧的公司名规则按“其他”显示并保存", () => {
+  it("规则的类别原样读出、原样写回：标准类别、公司名、自建类别都不改写", () => {
     const rs = rulesetFromItem(item("ruleset", "rs3", { rules: [
       { id: "staff", category: "account", pattern: "E[0-9]{6}" },
       { id: "ip", category: "ip_address", pattern: "[0-9.]+" },
       { id: "url", category: "url", pattern: "https?://\\S+" },
       { id: "key", category: "secret", pattern: "sk-[A-Za-z0-9]{20,}" },
       { id: "partner", category: "organization", terms: ["星河"] },
+      { id: "codes", category: "cfg_0123456789abcdef01234567", terms: ["北斗"] },
     ] }));
-    expect(rs.rules.map((r) => r.cat)).toEqual(["account", "ip_address", "url", "secret", "other"]);
-    expect(JSON.parse(rulesetContent(rs)).rules.map((r: { category: string }) => r.category)).toEqual(["account", "ip_address", "url", "secret", "other"]);
+    const ids = ["account", "ip_address", "url", "secret", "organization", "cfg_0123456789abcdef01234567"];
+    expect(rs.rules.map((r) => r.cat)).toEqual(ids);
+    expect(JSON.parse(rulesetContent(rs)).rules.map((r: { category: string }) => r.category)).toEqual(ids);
   });
 
   it("sameContent 与键顺序、空白无关，对值敏感", () => {
@@ -71,14 +74,16 @@ describe("方案 ↔ 存储对象", () => {
   it("两个存储对象显示为一个方案：处理方式、规则集、置信度、图像默认值", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     expect(p).toMatchObject({ det: "model", conf: 0.7, rules: ["cn", "co"], img: "keep", ver: "v1", stored: { id: "pr", schemeId: "sc" } });
-    expect(p.cats).toMatchObject({ phone: "ph", card: "mask", name: "ph", email: "off" });
-    expect(p.cats).not.toHaveProperty("org");
+    expect(p.cats).toMatchObject({ phone: "ph", payment_card: "mask", person: "ph" });
+    expect(p.cats).not.toHaveProperty("email"); // its only rule is off and the model has no such label: nothing offers it
+    // a rule set covers organization names: the scheme offers them (off until set)
+    expect(p.cats.organization).toBe("off");
   });
 
   it("没有模型时按仅规则显示，模型才能找的类别为“不适用”", () => {
     const p = presetFromItems({ ...preset, content: JSON.stringify({ ...JSON.parse(preset.content), rules_only: true }) }, scheme, rs, []);
     expect(p).toMatchObject({ det: "rules", conf: null });
-    expect(p.cats.name).toBe("ph"); // stored as handled; the screen shows what is stored
+    expect(p.cats.person).toBe("ph"); // stored as handled; the screen shows what is stored
   });
 
   it("写回：保留屏幕没有开关的设置，类别按规则/模型的覆盖取舍", () => {
@@ -91,9 +96,9 @@ describe("方案 ↔ 存储对象", () => {
 
   it("没有任何规则或模型检测的类别不写入，并报告", () => {
     const p = presetFromItems(preset, scheme, rs, models);
-    p.cats.addr = "mask";
+    p.cats.address = "mask";
     const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
-    expect(w.dropped.sort()).toEqual(["addr", "name"]);
+    expect(w.dropped.sort()).toEqual(["address", "person"]);
     const s = JSON.parse(w.scheme);
     expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "phone"]);
     expect(JSON.parse(w.preset("sc"))).toMatchObject({ rules_only: true, ruleset_id: "cn" });
@@ -129,7 +134,7 @@ describe("方案 ↔ 存储对象", () => {
   it("屏幕上改的类别处理方式反映到方案内容", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.cats.phone = "mask";
-    p.cats.card = "off";
+    p.cats.payment_card = "off";
     const a = JSON.parse(presetContents(p, rs, models, { scheme, preset }).scheme).category_actions;
     expect(a).toMatchObject({ phone: "mask", person: "placeholder" });
     expect(a.payment_card).toBeUndefined();
@@ -177,5 +182,27 @@ describe("交换文件", () => {
     expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, models), rs), "ruleset", rs, [])).toEqual({ error: "kind" });
     expect(importPackage(exportScheme(presetFromItems(preset, scheme, rs, models), rs), "preset", [rs[0]!], models)).toEqual({ error: "rulesets", detail: "企业词条" });
     expect(importPackage('{"tacet_config":1,"kind":"ruleset","name":"n","rules":[{"id":"a","category":"phone"}]}', "ruleset", rs, [])).toMatchObject({ error: "content" });
+  });
+});
+
+describe("交换文件里的自建类别", () => {
+  const custom = { id: "cfg_1", name: "项目代号", placeholder: "[项目]", origin: "custom" as const };
+  const catalog = [...STANDARD_CATEGORIES, custom];
+
+  it("只带上用到的自建类别；读出时跳过不完整的定义", () => {
+    const rs = { id: "r", name: "词条", rules: [{ name: "代号", kind: "词表" as const, cat: "cfg_1", body: "北斗", on: true }, { name: "电话", kind: "正则" as const, cat: "phone", body: "1", on: true }] };
+    const text = exportRuleset(rs, catalog);
+    expect(JSON.parse(text).categories).toEqual([{ id: "cfg_1", name: "项目代号", placeholder: "[项目]" }]);
+    expect(JSON.parse(exportRuleset({ ...rs, rules: [rs.rules[1]!] }, catalog))).not.toHaveProperty("categories");
+    expect(packageCategories(JSON.stringify({ categories: [{ id: "a", name: "A", placeholder: "[A]" }, { id: "b", name: "" }, null] }))).toEqual([{ id: "a", name: "A", placeholder: "[A]" }]);
+    expect(packageCategories("{")).toEqual([]);
+  });
+
+  it("改写规则与方案动作里的类别编号，未映射的保持原样", () => {
+    const text = JSON.stringify({ kind: "scheme", categories: [{}], rules: [{ id: "a", category: "x1" }, { id: "b", category: "phone" }], scheme: { category_actions: { x1: "placeholder", phone: "mask" }, human_review: ["x1"] } });
+    const out = JSON.parse(remapPackageCategories(text, new Map([["x1", "cfg_9"]])));
+    expect(out.rules.map((r: { category: string }) => r.category)).toEqual(["cfg_9", "phone"]);
+    expect(out.scheme).toEqual({ category_actions: { cfg_9: "placeholder", phone: "mask" }, human_review: ["cfg_9"] });
+    expect(out).not.toHaveProperty("categories");
   });
 });
