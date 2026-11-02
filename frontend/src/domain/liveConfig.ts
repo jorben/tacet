@@ -166,6 +166,7 @@ export function modelStateFromEngine(rt: EngineModelRuntime): Pick<ModelPlugin, 
     runtime: {
       dir: rt.dir, backend: rt.backend, device: rt.device === "auto" ? "auto" : rt.device === "gpu" ? "gpu" : "cpu", repository: rt.repository ?? "",
       detecting: rt.device === "auto" && !!rt.detecting,
+      ...(rt.device === "auto" && rt.deviceCode ? { deviceCode: rt.deviceCode } : {}),
       accelerable: !!rt.accelerable, accelerated: !!rt.accelerated,
       ...(rt.accel ? { accel: { id: rt.accel.id, variant: rt.accel.variant, weightMiB: Math.round(rt.accel.bytes / 2 ** 20), ...downloadState(rt.accel) } } : {}),
     },

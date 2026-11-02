@@ -184,6 +184,8 @@ export interface EngineModelRuntime {
   device: "cpu" | "gpu" | "auto";
   /** device is auto and the engine's start-up probe is about to confirm it. */
   detecting?: boolean;
+  /** device is auto and the start-up probe could not confirm it: its reason code, e.g. PLUGIN_HANDSHAKE_TIMEOUT. */
+  deviceCode?: string;
   /** The model's Hugging Face id ("owner/name") from its integrity manifest; empty when unknown. */
   repository: string;
   /** This model uses GPU-compatible weights. */

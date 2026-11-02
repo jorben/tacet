@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
@@ -457,12 +457,53 @@ describe("方案与规则集的存储同步", () => {
     expect(fake.calls).not.toContain("downloadModel:astrlink-guard-int8");
   });
 
-  it("启动时确认推理设备：检测期间持续刷新，确认后得到 GPU 结论", async () => {
-    fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
-    await loadConfig();
-    expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
-    Object.assign(fake.modelList[0]!, { backend: "CoreMLExecutionProvider", device: "gpu", accelerated: true, detecting: false });
-    await waitFor(() => expect(getState().models[0]!.runtime).toMatchObject({ device: "gpu", backend: "CoreMLExecutionProvider", detecting: false }), { timeout: 2000 });
+  const modelReads = () => fake.calls.filter((c) => c === "models").length;
+
+  it("启动时确认推理设备：只等检测时放慢刷新，确认后得到 GPU 结论并停止刷新", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
+      const n = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(700));
+      expect(modelReads()).toBe(n); // nothing but the probe to wait for: the slower interval
+      Object.assign(fake.modelList[0]!, { backend: "CoreMLExecutionProvider", device: "gpu", accelerated: true, detecting: false });
+      await act(() => vi.advanceTimersByTimeAsync(1300));
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "gpu", backend: "CoreMLExecutionProvider", detecting: false });
+      const settled = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(modelReads()).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检测期间读取失败一次：仍继续刷新，直到得到结论（检测未完成带原因码）", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failed = false;
+      fake.models = async () => {
+        if (failed) return read();
+        failed = true;
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(failed).toBe(true);
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
+      Object.assign(fake.modelList[0]!, { detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      const settled = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(modelReads()).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("GPU 版本校验未通过：重新下载前先丢弃残留；试运行失败时重新准备", async () => {

@@ -113,6 +113,8 @@ export async function loadCategories(): Promise<void> {
 }
 
 const MODEL_POLL_MS = 700;
+/** The start-up device probe takes a model load: when it is all there is to wait for, ask less often. */
+const PROBE_POLL_MS = 2000;
 const modelBusy = (st: string): boolean => st === "downloading" || st === "verifying" || st === "loading";
 
 /** Reads the download state of every model; while one is busy, again shortly. A model that became ready says so. */
@@ -120,7 +122,10 @@ export async function refreshModels(): Promise<void> {
   const e = liveEngine();
   if (!e) return;
   const rts = await e.models().catch(() => null);
-  if (!rts) return;
+  if (!rts) {
+    watchModels(); // a failed read is asked again while something is still under way
+    return;
+  }
   const became: string[] = [];
   store.update((d) => {
     d.models.forEach((m) => {
@@ -141,8 +146,11 @@ export async function refreshModels(): Promise<void> {
 /** Keeps the model states fresh while a download, verification, trial or the start-up device probe runs. */
 export function watchModels(): void {
   clearTimeout(modelTimer);
-  if (!loaded || !getState().models.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? "") || !!m.runtime?.detecting)) return;
-  modelTimer = setTimeout(() => void refreshModels(), MODEL_POLL_MS);
+  if (!loaded) return;
+  const ms = getState().models;
+  const busy = ms.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""));
+  if (!busy && !ms.some((m) => !!m.runtime?.detecting)) return;
+  modelTimer = setTimeout(() => void refreshModels(), busy ? MODEL_POLL_MS : PROBE_POLL_MS);
 }
 
 export function stopConfigSync(): void {

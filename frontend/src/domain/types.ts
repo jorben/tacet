@@ -178,6 +178,8 @@ export interface ModelRuntime {
   device: "cpu" | "gpu" | "auto";
   /** device is auto and the engine is confirming it right now (start-up probe). */
   detecting?: boolean;
+  /** device is auto and the start-up probe could not confirm it: why (a reason code). */
+  deviceCode?: string;
   /** Hugging Face id ("owner/name"); empty when unknown. */
   repository: string;
   accelerable: boolean;
