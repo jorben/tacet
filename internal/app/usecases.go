@@ -359,6 +359,14 @@ func (e *Engine) resolveContent(tx store.Tx, preset string, refsByFormat map[str
 	}
 	sort.Strings(env.Formats)
 	digests := map[string]string{}
+	cat, err := e.categoryCatalog(tx)
+	if err != nil {
+		return snapshot.Content{}, err
+	}
+	env.Categories = map[string]bool{}
+	for _, id := range cat.IDs() {
+		env.Categories[id] = true
+	}
 	for _, m := range e.models {
 		env.Models[m.id] = snapshot.Model{Categories: m.categories, AdapterFloor: m.floor, MemoryBytes: m.kind.memory}
 		digests[m.id] = m.digest
@@ -378,10 +386,6 @@ func (e *Engine) resolveContent(tx store.Tx, preset string, refsByFormat map[str
 		return snapshot.Content{}, fmt.Errorf("%w: %s", ErrNotReady, report.Blocking[0].Code)
 	}
 	// the placeholder text of the enabled and hand-markable categories is frozen with the run
-	cat, err := e.categoryCatalog(tx)
-	if err != nil {
-		return snapshot.Content{}, err
-	}
 	content.Render.Placeholders = cat.Placeholders(content.Detect.Categories)
 	if content.Detect.ModelID != "" && !content.Detect.RulesOnly {
 		m := e.modelByID(content.Detect.ModelID)

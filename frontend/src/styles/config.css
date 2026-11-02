@@ -50,3 +50,8 @@
 .pt-row .pt-main{flex:1 1 auto;min-width:0}
 .pt-row .pt-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pt-row .rv{flex:none;white-space:nowrap;gap:6px}
+/* models tab: labels and the categories they count as */
+.mapping-hint{margin:2px 0 12px}
+.mapping-warn{margin:0 0 12px;padding:10px 12px;border-radius:9px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.mapping-row .rl{display:flex;align-items:baseline;gap:8px;min-width:0}
+.mapping-row .rl .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

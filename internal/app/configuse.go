@@ -17,7 +17,7 @@ const maxConfigObjects = 1000
 
 func configKind(k string) (config.Kind, bool) {
 	switch config.Kind(k) {
-	case config.RuleSet, config.Scheme, config.Preset, config.ModelProfile, config.Category:
+	case config.RuleSet, config.Scheme, config.Preset, config.ModelProfile, config.Category, config.ModelMapping:
 		return config.Kind(k), true
 	}
 	return "", false
@@ -97,10 +97,8 @@ func (e *Engine) ConfigCreate(ctx context.Context, kind, name, note, content str
 	}
 	var out config.Object
 	err = e.ws.Commit(ctx, func(tx store.Tx) (err error) {
-		if k == config.Category {
-			if err = e.checkCategory(tx, id, name, []byte(content)); err != nil {
-				return err
-			}
+		if err = e.checkKind(tx, k, id, name, []byte(content)); err != nil {
+			return err
 		}
 		out, err = e.cfg.Create(tx, id, k, name, note, []byte(content))
 		return
@@ -114,8 +112,8 @@ func (e *Engine) ConfigCreate(ctx context.Context, kind, name, note, content str
 func (e *Engine) ConfigSave(ctx context.Context, id string, expected uint64, name, note, content string) (ConfigItem, error) {
 	var out config.Object
 	err := e.ws.Commit(ctx, func(tx store.Tx) (err error) {
-		if o, gerr := e.cfg.Get(tx, id); gerr == nil && o.Kind == config.Category {
-			if err = e.checkCategory(tx, id, name, []byte(content)); err != nil {
+		if o, gerr := e.cfg.Get(tx, id); gerr == nil {
+			if err = e.checkKind(tx, o.Kind, id, name, []byte(content)); err != nil {
 				return err
 			}
 		}
@@ -131,8 +129,11 @@ func (e *Engine) ConfigSave(ctx context.Context, id string, expected uint64, nam
 func (e *Engine) ConfigCopy(ctx context.Context, id, name string) (ConfigItem, error) {
 	var out config.Object
 	err := e.ws.Commit(ctx, func(tx store.Tx) (err error) {
-		if o, gerr := e.cfg.Get(tx, id); gerr == nil && o.Kind == config.Category {
-			if err = e.checkCategory(tx, "", name, o.Content); err != nil {
+		if o, gerr := e.cfg.Get(tx, id); gerr == nil {
+			if o.Kind == config.ModelMapping {
+				return config.ErrContent // one mapping per model: a copy would be a second
+			}
+			if err = e.checkKind(tx, o.Kind, "", name, o.Content); err != nil {
 				return err
 			}
 		}

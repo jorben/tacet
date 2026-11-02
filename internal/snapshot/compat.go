@@ -32,6 +32,8 @@ type Env struct {
 	Formats            []string                   // member formats of the batch
 	FormatActions      map[string]map[string]bool // format -> supported dispose action
 	ThirdPartyDigests  map[string]bool            // plugin digests that are not built in
+	// Categories are the ids of the category catalog: a model mapping may map labels to any of them.
+	Categories map[string]bool
 }
 
 func issue(code string, kv ...string) Issue {

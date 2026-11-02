@@ -3,7 +3,7 @@ import { MODEL_LABELS } from "../domain/catalog";
 import {
   availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, modelById, presetConfidence, presetCategories, type Versioned,
 } from "../domain/presets";
-import type { Boundary, CategoryId, Preset, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
+import type { Boundary, CategoryId, Preset, PresetTab, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
 import { getState, store, type AppState } from "../store";
 import { closeModal, openMenu, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
@@ -26,7 +26,7 @@ const rulesetOf = (d: Draft<AppState>): Draft<Ruleset> => {
   return d.rulesets.find((x) => x.id === id)!;
 };
 
-export function setPresetTab(tab: "scheme" | "rules"): void {
+export function setPresetTab(tab: PresetTab): void {
   store.update((d) => { d.presetTab = tab; });
 }
 

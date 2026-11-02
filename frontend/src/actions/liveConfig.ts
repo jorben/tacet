@@ -61,13 +61,13 @@ export function engineSchemeId(name: string): string | undefined {
 export async function loadConfig(): Promise<void> {
   const e = liveEngine();
   if (!e) return;
-  const [rs, sc, pr, mp] = await Promise.all(["ruleset", "scheme", "preset", "model_profile"].map((k) => e.configList(k)));
+  const [rs, sc, pr, mp, mm] = await Promise.all(["ruleset", "scheme", "preset", "model_profile", "model_mapping"].map((k) => e.configList(k)));
   await loadCategories();
   synced = new Map([...rs, ...sc, ...pr, ...mp].map((i) => [i.id, i]));
   // the catalog decides the order (its first model is the default one); a profile without an entry keeps its place last
   const rts = mp.length ? await e.models().catch(() => []) : [];
   const order = (id: string) => { const i = rts.findIndex((r) => r.id === id); return i < 0 ? rts.length : i; };
-  const mi = mp.map((it) => { const x = modelFromItem(it); return x && modelFromItem(it, rts.find((r) => r.id === x.model.id)); })
+  const mi = mp.map((it) => { const x = modelFromItem(it); return x && modelFromItem(it, rts.find((r) => r.id === x.model.id), mm); })
     .filter((x): x is NonNullable<typeof x> => !!x)
     .sort((a, b) => order(a.model.id) - order(b.model.id));
   models = mi.map((x) => x.model);
@@ -95,6 +95,11 @@ export async function loadConfig(): Promise<void> {
   last = { presets: getState().presets, rulesets: getState().rulesets };
   if (!unsubscribe) unsubscribe = store.subscribe(onStore);
   watchModels();
+}
+
+/** After a model's mapping changed: the categories the scheme screens offer for it follow. */
+export function setModelCategories(modelId: string, categories: string[]): void {
+  models = models.map((m) => (m.id === modelId ? { ...m, categories } : m));
 }
 
 /** Reads the category catalog. Until it answers (or if it fails) the screens keep the standard vocabulary. */

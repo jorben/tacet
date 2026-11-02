@@ -8,6 +8,8 @@ import { exportLive, flushConfig, saveSettingsNow, importLive, loadConfig, openV
 import { takePaths } from "../actions/live";
 import { runPresetTest, testErrorText } from "../actions/presetTest";
 import { createCategory } from "../actions/categories";
+import { resetModelMapping, setLabelCategory } from "../actions/modelMapping";
+import { unhandledCategories } from "../features/presets/ModelMappingEditor";
 import { overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -261,6 +263,33 @@ describe("方案与规则集的存储同步", () => {
     expect(client).toMatchObject({ placeholder: "[客户]", origin: "custom" });
     const imported = getState().rulesets.find((r) => r.name === "外来词条")!;
     expect(imported.rules.map((r) => r.cat)).toEqual([made.id, client.id]);
+  });
+
+  it("模型映射：首次改动新建映射对象，再改保存新版本，恢复默认删除；内建方案对新类别为关闭并给出提示", async () => {
+    const model = () => getState().models[0]!;
+    expect(model().labels).toEqual({ private_person: "person", private_address: "address", phone: "phone", email: "email" });
+    await setLabelCategory(model().id, "private_person", "organization");
+    expect(fake.calls).toContain("configCreate:model_mapping");
+    const stored = fake.items.find((i) => i.kind === "model_mapping")!;
+    expect(stored.name).toBe("astrlink-guard-int8");
+    expect(JSON.parse(stored.content)).toEqual({ model_id: "astrlink-guard-int8", label_map: { private_person: "organization", private_address: "address", phone: "phone", email: "email" } });
+    expect(model().categories).toEqual(["address", "email", "organization", "phone"]);
+    // the read-only office scheme stores no action for it: off, and the models tab says so
+    const office = getState().presets.find((p) => p.builtin)!;
+    expect(office.cats.organization).toBe("off");
+    expect(unhandledCategories(office, model().categories!)).toEqual(["organization"]);
+    await setLabelCategory(model().id, "email", null);
+    expect(fake.calls).toContain("configSave:" + stored.id);
+    expect(JSON.parse(fake.items.find((i) => i.id === stored.id)!.content).label_map).not.toHaveProperty("email");
+    // a restart reads the stored mapping
+    await loadConfig();
+    expect(model().mapping?.stored).toEqual({ id: stored.id, version: 2 });
+    expect(model().categories).toEqual(["address", "organization", "phone"]);
+    await resetModelMapping(model().id);
+    expect(fake.calls).toContain("configDelete:" + stored.id);
+    expect(fake.items.some((i) => i.kind === "model_mapping")).toBe(false);
+    expect(model().mapping).toBeUndefined();
+    expect(model().categories).toEqual(["address", "email", "person", "phone"]);
   });
 
   it("批次开始时也带上所选方案的存储编号", async () => {

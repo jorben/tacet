@@ -29,6 +29,13 @@ type RuleContent struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
+// MappingContent is a model mapping's content: model label -> category id. A label it leaves out is not
+// used (its findings are dropped as unmapped).
+type MappingContent struct {
+	ModelID  string            `json:"model_id"`
+	LabelMap map[string]string `json:"label_map"`
+}
+
 // CategoryContent is a user category's content; its name is the object's name.
 type CategoryContent struct {
 	Placeholder string `json:"placeholder"`
@@ -113,7 +120,7 @@ func NewValidator(budget rules.Budget) (*Validator, error) {
 		return nil, ErrSchema
 	}
 	validator := &Validator{schemas: map[Kind]*jsonschema.Schema{}, budget: budget}
-	for _, kind := range []Kind{RuleSet, Scheme, Preset, ModelProfile, Category} {
+	for _, kind := range []Kind{RuleSet, Scheme, Preset, ModelProfile, Category, ModelMapping} {
 		schema, err := compiler.Compile(base + "#/$defs/" + string(kind))
 		if err != nil {
 			return nil, ErrSchema

@@ -34,10 +34,30 @@ const (
 	// Category is a user-defined category: its id is what rules report, its name is how it is shown, its
 	// content the placeholder text (and color). Shipped and model-declared categories are not stored here.
 	Category Kind = "category"
+	// ModelMapping is the user's mapping of one model's labels to categories, replacing the default the
+	// model profile carries (from the model's manifest). Its name is the model id: one per model.
+	ModelMapping Kind = "model_mapping"
 )
 
 func validKind(kind Kind) bool {
-	return kind == RuleSet || kind == Scheme || kind == Preset || kind == ModelProfile || kind == Category
+	return kind == RuleSet || kind == Scheme || kind == Preset || kind == ModelProfile || kind == Category || kind == ModelMapping
+}
+
+// GetByName returns the object of this kind with this name (names are unique per kind).
+func (r *Repository) GetByName(tx store.Tx, kind Kind, name string) (Object, bool, error) {
+	t, _, err := transaction(tx)
+	if err != nil {
+		return Object{}, false, err
+	}
+	var id string
+	switch err = t.QueryRow("SELECT id FROM config_object WHERE kind=? AND name=?", string(kind), name).Scan(&id); {
+	case errors.Is(err, sql.ErrNoRows):
+		return Object{}, false, nil
+	case err != nil:
+		return Object{}, false, err
+	}
+	o, err := r.Get(tx, id)
+	return o, err == nil, err
 }
 
 func Module() store.Module {
@@ -525,8 +545,15 @@ func (r *Repository) Import(tx store.Tx, p Package) (Object, error) {
 	return r.Create(tx, id, p.Kind, p.Name, p.Note, p.Content)
 }
 
-// categoryInUse reports whether a rule of any rule set reports the category.
+// categoryInUse reports whether a rule of any rule set reports the category, a model mapping maps a label
+// to it, or a scheme handles it (that scheme could not start once nothing detects it).
 func categoryInUse(t *store.Txn, id string) (bool, error) {
+	if used, err := mappedInUse(t, id); err != nil || used {
+		return used, err
+	}
+	if used, err := handledInUse(t, id); err != nil || used {
+		return used, err
+	}
 	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(RuleSet))
 	if err != nil {
 		return false, err
@@ -550,7 +577,53 @@ func categoryInUse(t *store.Txn, id string) (bool, error) {
 	return false, rows.Err()
 }
 
-// ErrInUse says a preset still refers to the object (or a rule to a category).
+func handledInUse(t *store.Txn, id string) (bool, error) {
+	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(Scheme))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var content []byte
+		if err = rows.Scan(&content); err != nil {
+			return false, err
+		}
+		var s SchemeContent
+		if json.Unmarshal(content, &s) != nil {
+			continue
+		}
+		if _, ok := s.CategoryActions[id]; ok {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func mappedInUse(t *store.Txn, id string) (bool, error) {
+	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(ModelMapping))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var content []byte
+		if err = rows.Scan(&content); err != nil {
+			return false, err
+		}
+		var m MappingContent
+		if json.Unmarshal(content, &m) != nil {
+			continue
+		}
+		for _, c := range m.LabelMap {
+			if c == id {
+				return true, nil
+			}
+		}
+	}
+	return false, rows.Err()
+}
+
+// ErrInUse says a preset still refers to the object (or a rule or model mapping to a category).
 var ErrInUse = errors.New("CONFIG_IN_USE")
 
 // Delete removes a user object and its history. Built-in objects stay, and so does an object a preset
@@ -579,7 +652,7 @@ func (r *Repository) Delete(tx store.Tx, id string, expectedVersion uint64) erro
 			return err
 		}
 	}
-	if object.Kind != Preset && object.Kind != Category {
+	if object.Kind != Preset && object.Kind != Category && object.Kind != ModelMapping {
 		rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(Preset))
 		if err != nil {
 			return err

@@ -270,6 +270,42 @@ describe("规则", () => {
     expect(cat?.querySelector("[data-source]")!.textContent).toBe("规则");
   });
 
+  it("模型页签：逐个标签改计入的类别、不使用、恢复默认；方案页的类别随之变化", async () => {
+    go("presets");
+    press("模型", "[role=tablist]");
+    expect(win()).toContain("AstrLink Guard");
+    expect(win()).toContain("默认映射");
+    const row = (label: string) => $$(".mapping-row").find((r) => r.querySelector(".mono")?.textContent === label)!;
+    expect(row("private_person").querySelector(".rv")!.textContent).toBe("人名");
+    // a label sent to another category
+    await act(async () => { click(row("private_person").querySelector("button")!); });
+    await act(async () => { pick("公司名"); });
+    const astr = () => getState().models.find((m) => m.id === "astr")!;
+    expect(astr().mapping?.map.private_person).toBe("organization");
+    expect(row("private_person").textContent).toContain("默认：人名");
+    expect(win()).toContain("已自定义");
+    // a label not used
+    await act(async () => { click(row("private_address").querySelector("button")!); });
+    await act(async () => { pick("不使用"); });
+    expect(astr().mapping?.map).not.toHaveProperty("private_address");
+    expect(astr().categories).toContain("organization");
+    expect(astr().categories).not.toContain("person");
+    expect(astr().categories).not.toContain("address");
+    // the scheme lists what the model produces now
+    press("方案", "[role=tablist]");
+    press("办公外发", ".plist");
+    const names = $$(".row .rl").map((e) => e.textContent);
+    expect(names).toContain("公司名");
+    expect(names).not.toContain("人名");
+    expect(names).not.toContain("地址");
+    // back to the default
+    press("模型", "[role=tablist]");
+    await act(async () => { press("恢复默认"); });
+    expect(astr().mapping).toBeUndefined();
+    expect(astr().categories).toContain("person");
+    expect(win()).toContain("默认映射");
+  });
+
   it("名称与内容必填", () => {
     go("presets");
     press("规则", "[role=tablist]");

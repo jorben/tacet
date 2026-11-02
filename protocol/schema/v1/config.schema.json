@@ -345,6 +345,26 @@
         }
       },
       "additionalProperties": false
+    },
+    "model_mapping": {
+      "type": "object",
+      "required": [
+        "model_id",
+        "label_map"
+      ],
+      "properties": {
+        "model_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "label_map": {
+          "type": "object",
+          "maxProperties": 128,
+          "additionalProperties": {
+            "$ref": "#/$defs/ID"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

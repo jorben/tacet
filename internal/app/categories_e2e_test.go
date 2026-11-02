@@ -86,11 +86,17 @@ func TestAUserCategoryIsCreatedUsedByARuleAndWrittenAsItsPlaceholder(t *testing.
 		t.Fatalf("renamed: %+v", list[len(list)-1])
 	}
 
-	// a category a rule reports cannot go; once no rule reports it, it can
+	// a category a rule reports or a scheme handles cannot go; once nothing uses it, it can
 	if err = e.ConfigDelete(ctx, cat.ID, 2); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("in use: %v", err)
 	}
 	if _, err = e.ConfigSave(ctx, rs.ID, 1, "项目", "", `{"rules":[{"id":"p","category":"other","terms":["北斗"]}]}`); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.ConfigDelete(ctx, cat.ID, 2); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("still handled by the scheme: %v", err)
+	}
+	if _, err = e.ConfigSave(ctx, sch.ID, 1, "含项目", "", `{"category_actions":{"phone":"placeholder"},"image_default":"remove"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.ConfigDelete(ctx, cat.ID, 2); err != nil {

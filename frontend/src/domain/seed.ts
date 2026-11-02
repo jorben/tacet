@@ -4,7 +4,15 @@ import type { ModelPlugin, PluginInfo, Preset, Ruleset, Settings } from "./types
 export const DEFAULT_PRESET_NAME = "办公外发";
 
 export const seedModels = (): ModelPlugin[] => [
-  { id: "astr", categories: ["person", "address", "date", "phone", "email", "account", "payment_card", "ip_address", "url", "secret"], name: "AstrLink Guard", version: "0.1.3", variant: "FP16", languages: "中文 / 中英混排", weightMiB: 72, recommended: true, confRec: 0.5, confMin: 0.3, status: "ready", progress: 100, error: null },
+  {
+    id: "astr", categories: ["person", "address", "date", "phone", "email", "account", "payment_card", "ip_address", "url", "secret"],
+    // the default mapping of its labels (resources/models/astrlink-guard-*.json)
+    labels: {
+      private_person: "person", private_address: "address", private_date: "date", phone: "phone", email: "email",
+      account: "account", payment_card: "payment_card", ip_address: "ip_address", url: "url", common_secret: "secret",
+    },
+    name: "AstrLink Guard", version: "0.1.3", variant: "FP16", languages: "中文 / 中英混排", weightMiB: 72, recommended: true, confRec: 0.5, confMin: 0.3, status: "ready", progress: 100, error: null,
+  },
 ];
 
 export const seedPresets = (): Preset[] => [

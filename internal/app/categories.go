@@ -87,6 +87,54 @@ func (e *Engine) checkCategory(tx store.Tx, id, name string, content []byte) err
 	return nil
 }
 
+// checkKind runs the checks a kind needs beyond its schema before it is stored.
+func (e *Engine) checkKind(tx store.Tx, kind config.Kind, id, name string, content []byte) error {
+	switch kind {
+	case config.Category:
+		return e.checkCategory(tx, id, name, content)
+	case config.ModelMapping:
+		return e.checkMapping(tx, name, content)
+	}
+	return nil
+}
+
+// checkMapping validates a model mapping: it is named after a model of the catalog, maps only labels that
+// model emits, and maps them to categories of the catalog. Labels left out are not used.
+func (e *Engine) checkMapping(tx store.Tx, name string, content []byte) error {
+	var m config.MappingContent
+	if json.Unmarshal(content, &m) != nil || m.ModelID != name {
+		return config.ErrContent
+	}
+	model := e.modelByID(m.ModelID)
+	if model == nil {
+		return config.ErrContent
+	}
+	cat, err := e.categoryCatalog(tx)
+	if err != nil {
+		return err
+	}
+	for label, c := range m.LabelMap {
+		if _, known := model.labels[label]; !known || !cat.Has(c) {
+			return config.ErrContent
+		}
+	}
+	return nil
+}
+
+// effectiveLabels is the label map a model runs with now: the user's mapping when there is one, else the
+// default from the manifest.
+func (e *Engine) effectiveLabels(tx store.Tx, m *modelInfo) (map[string]string, error) {
+	o, ok, err := e.cfg.GetByName(tx, config.ModelMapping, m.id)
+	if err != nil || !ok {
+		return m.labels, err
+	}
+	var mc config.MappingContent
+	if json.Unmarshal(o.Content, &mc) != nil {
+		return nil, config.ErrContent
+	}
+	return mc.LabelMap, nil
+}
+
 // Categories lists the category catalog in display order.
 func (e *Engine) Categories(ctx context.Context) ([]CategoryInfo, error) {
 	var cat categories.Catalog

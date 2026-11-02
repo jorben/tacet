@@ -18,17 +18,19 @@ type ConfigRef struct {
 // DetectContent is read by extraction/detection, supplement scans and the
 // re-detection of validation.
 type DetectContent struct {
-	ModelID         string            `json:"model_id"`     // empty in rules-only mode
-	ModelDigest     string            `json:"model_digest"` // from the signed integrity manifest
-	Backend         string            `json:"backend"`
-	LabelMap        map[string]string `json:"label_map"`     // model label -> Tacet category
-	AdapterFloor    float64           `json:"adapter_floor"` // lowest score the adapter returns
-	Calibrated      float64           `json:"calibrated"`    // default minimum confidence of the model
-	RuleSetDigest   string            `json:"rule_set_digest"`
-	RuleSet         ConfigRef         `json:"ruleset"`
-	ExtraRuleSets   []ConfigRef       `json:"extra_rulesets,omitempty"` // further rule sets merged into RuleContent
-	RuleContent     json.RawMessage   `json:"rule_content"`
-	ModelProfile    ConfigRef         `json:"model_profile"`
+	ModelID       string            `json:"model_id"`     // empty in rules-only mode
+	ModelDigest   string            `json:"model_digest"` // from the signed integrity manifest
+	Backend       string            `json:"backend"`
+	LabelMap      map[string]string `json:"label_map"`     // model label -> Tacet category
+	AdapterFloor  float64           `json:"adapter_floor"` // lowest score the adapter returns
+	Calibrated    float64           `json:"calibrated"`    // default minimum confidence of the model
+	RuleSetDigest string            `json:"rule_set_digest"`
+	RuleSet       ConfigRef         `json:"ruleset"`
+	ExtraRuleSets []ConfigRef       `json:"extra_rulesets,omitempty"` // further rule sets merged into RuleContent
+	RuleContent   json.RawMessage   `json:"rule_content"`
+	ModelProfile  ConfigRef         `json:"model_profile"`
+	// LabelMapping is the user's mapping of the model's labels LabelMap was taken from; nil: the profile's.
+	LabelMapping    *ConfigRef        `json:"label_mapping,omitempty"`
 	RulePacks       map[string]string `json:"rule_packs"` // pack id -> version digest
 	Categories      []string          `json:"categories"` // enabled
 	RulesOnly       bool              `json:"rules_only"`

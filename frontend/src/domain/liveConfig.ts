@@ -6,7 +6,7 @@ import type { ConfigItem, EngineModelRuntime, EnginePlugin, EngineSettings } fro
 import type { CategoryInfo } from "./categories";
 import { presetCategories, presetTreatment } from "./presets";
 import type {
-  KeepDays, PluginInfo, RedactStyle, Settings, ThemePref,
+  KeepDays, ModelMapping, PluginInfo, RedactStyle, Settings, ThemePref,
   Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, Preset, PresetTreatment, Rule, Ruleset,
 } from "./types";
 
@@ -115,8 +115,26 @@ export interface Model {
   memory: number;
   floor: number;
   calibrated: number;
-  /** Categories its labels produce. */
+  /** Categories its labels produce now (the user's mapping, else the default). */
   categories: string[];
+}
+
+/** The label map a model runs with: the user's mapping when there is one, else the default. */
+export const effectiveLabels = (m: Pick<ModelPlugin, "labels" | "mapping">): Record<string, string> => m.mapping?.map ?? m.labels ?? {};
+
+/** The categories a label map produces, sorted. */
+export const mappedCategories = (map: Record<string, string>): string[] => [...new Set(Object.values(map))].sort();
+
+/** Two label maps are the same mapping. */
+export const sameMapping = (a: Record<string, string>, b: Record<string, string>): boolean =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
+
+/** The user's mapping of a model from its stored object, if it is one of this model's. */
+export function mappingFromItem(it: ConfigItem | undefined, modelId: string): ModelMapping | undefined {
+  if (!it) return undefined;
+  const c = parse<{ model_id?: string; label_map?: Record<string, string> }>(it.content, {});
+  if (c.model_id !== modelId || !c.label_map) return undefined;
+  return { map: { ...c.label_map }, stored: { id: it.id, version: it.version } };
 }
 
 const MODEL_STATUS: Record<string, ModelStatus> = {
@@ -154,17 +172,19 @@ export function modelStateFromEngine(rt: EngineModelRuntime): Pick<ModelPlugin, 
 }
 
 /** A stored model profile and, when the engine lists it, the model's catalog entry. */
-export function modelFromItem(it: ConfigItem, rt?: EngineModelRuntime): { plugin: ModelPlugin; model: Model } | null {
+export function modelFromItem(it: ConfigItem, rt?: EngineModelRuntime, mappings: ConfigItem[] = []): { plugin: ModelPlugin; model: Model } | null {
   const c = parse<{ model_id?: string; adapter_floor?: number; calibrated?: number; label_map?: Record<string, string>; memory_bytes?: number }>(it.content, {});
   if (!c.model_id || c.adapter_floor == null || c.calibrated == null) return null;
+  const labels = { ...(c.label_map ?? {}) };
+  const mapping = mappingFromItem(mappings.find((m) => m.name === c.model_id), c.model_id);
   const model: Model = {
     id: c.model_id, profile: it.id, memory: c.memory_bytes ?? 0, floor: c.adapter_floor, calibrated: c.calibrated,
-    categories: [...new Set(Object.values(c.label_map ?? {}))],
+    categories: mappedCategories(effectiveLabels({ labels, mapping })),
   };
   const base: ModelPlugin = {
     id: c.model_id, name: rt?.name || it.name, version: rt?.version ?? "", variant: rt?.variant ?? "", languages: rt?.languages ?? "",
     weightMiB: rt ? Math.round(rt.bytes / 2 ** 20) : 0, recommended: it.id === BUILTIN_MODEL_PROFILE,
-    categories: model.categories,
+    categories: model.categories, labels, ...(mapping ? { mapping } : {}),
     confRec: c.calibrated, confMin: c.adapter_floor, status: "ready", progress: 100, error: null,
   };
   return { model, plugin: rt ? { ...base, ...modelStateFromEngine(rt) } : base };

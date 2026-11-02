@@ -3,6 +3,7 @@
 import type { EnginePresetTest } from "../services/types";
 import type { CategoryId, ModelPlugin, Preset, Rule, Ruleset } from "./types";
 import { categoryName, STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
+import { effectiveLabels } from "./liveConfig";
 import { presetCategories, presetConfidence, presetTreatment } from "./presets";
 
 /** The kernel refuses longer texts; the screen says so before asking. */
@@ -147,8 +148,11 @@ export function simulateTest(p: Preset, rulesets: Ruleset[], models: ModelPlugin
   const min = presetConfidence(p, models);
   if (useModel) {
     const model = models.find((m) => m.id === p.model);
-    for (const category of model?.categories ?? []) {
-      const pat = MODEL_PATTERNS[category];
+    // what a label finds is what it means by default; it is reported as the category it is mapped to now
+    const labels = model ? effectiveLabels(model) : {};
+    const pairs = model?.labels ? Object.entries(labels).map(([label, category]) => [model.labels![label]!, category] as const) : (model?.categories ?? []).map((c) => [c, c] as const);
+    for (const [meaning, category] of pairs) {
+      const pat = MODEL_PATTERNS[meaning];
       if (!pat || !on.has(category)) continue;
       for (const m of matches(text, pat.re, pat.group, pat.ok)) {
         raw.push({ ...m, category, model: { score: pat.score, low: pat.score < (model?.confRec ?? 0.5), below: pat.score < min } });

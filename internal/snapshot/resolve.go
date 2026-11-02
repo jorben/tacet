@@ -136,6 +136,26 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 		if json.Unmarshal(modelObject.Content, &model) != nil {
 			return Content{}, CompatReport{}, ErrBinding
 		}
+		// The user's mapping of this model's labels, when there is one, replaces the profile's default.
+		labels := model.LabelMap
+		mapping, mapped, err := repo.GetByName(tx, config.ModelMapping, model.ModelID)
+		if err != nil {
+			return Content{}, CompatReport{}, err
+		}
+		if mapped {
+			var m config.MappingContent
+			if json.Unmarshal(mapping.Content, &m) != nil || m.ModelID != model.ModelID {
+				return Content{}, CompatReport{}, ErrBinding
+			}
+			for label := range m.LabelMap {
+				if _, known := model.LabelMap[label]; !known {
+					return Content{}, CompatReport{}, ErrBinding // a label this model does not emit
+				}
+			}
+			labels = m.LabelMap
+			ref := configRef(mapping)
+			content.Detect.LabelMapping = &ref
+		}
 		if !preset.RulesOnly {
 			if b.ModelDigests[model.ModelID] != model.ManifestDigest {
 				return Content{}, CompatReport{}, ErrBinding
@@ -144,17 +164,31 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 			if !ok || catalog.AdapterFloor != model.AdapterFloor {
 				return Content{}, CompatReport{}, ErrBinding
 			}
-			for _, category := range model.LabelMap {
-				if !contains(catalog.Categories, category) {
+			// every category it maps to exists: one of the model's own, or of the category catalog
+			produced := []string{}
+			for _, category := range labels {
+				if !contains(catalog.Categories, category) && !environment.Categories[category] {
 					return Content{}, CompatReport{}, ErrBinding
 				}
+				if !contains(produced, category) {
+					produced = append(produced, category)
+				}
 			}
+			sort.Strings(produced)
+			// coverage is what the labels map to now, not what the manifest maps them to
+			models := make(map[string]Model, len(environment.Models))
+			for id, m := range environment.Models {
+				models[id] = m
+			}
+			catalog.Categories = produced
+			models[model.ModelID] = catalog
+			environment.Models = models
 		}
 		content.Detect.ModelID = model.ModelID
 		content.Detect.ModelProfile = configRef(modelObject)
 		content.Detect.ModelDigest = model.ManifestDigest
 		content.Detect.Backend = model.Backend
-		content.Detect.LabelMap = model.LabelMap
+		content.Detect.LabelMap = labels
 		content.Detect.AdapterFloor = model.AdapterFloor
 		content.Detect.Calibrated = model.Calibrated
 	}

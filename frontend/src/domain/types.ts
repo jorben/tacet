@@ -135,10 +135,22 @@ export interface LiveSingle {
 export type ModelStatus = "missing" | "downloading" | "paused" | "verifying" | "loading" | "ready" | "error";
 export type ModelErrorKind = "offline" | "disk" | "integrity" | "load";
 
+/** The user's mapping of a model's labels to categories (stored as a "model_mapping" object). */
+export interface ModelMapping {
+  /** model label → category id; a label left out is not used. */
+  map: Record<string, string>;
+  /** Stored object, once written. */
+  stored?: { id: string; version: number };
+}
+
 export interface ModelPlugin {
   id: string;
-  /** Engine categories produced by this model's label map. */
+  /** Categories this model's labels produce now: from the user's mapping, else from the default. */
   categories?: string[];
+  /** The default mapping of every label the model emits (from its manifest): label → category id. */
+  labels?: Record<string, string>;
+  /** The user's mapping, when the default was changed. */
+  mapping?: ModelMapping;
   name: string;
   version: string;
   variant: string;
@@ -260,7 +272,7 @@ export interface PluginInfo {
   refs?: number;
 }
 
-export type PresetTab = "scheme" | "rules";
+export type PresetTab = "scheme" | "rules" | "models";
 
 /* ── Batches ──────────────────────────────────────────────────────────────── */
 
