@@ -104,6 +104,9 @@ var restricted = map[string][]string{
 	"github.com/ncruces/go-sqlite3": {"store"},
 	"github.com/mattn/go-sqlite3":   {"store"},
 	"modernc.org/sqlite":            {"store"},
+	// netgate keeps test binaries on loopback (testing.Testing); nothing else
+	// in production code behaves differently under test. testenv is test support.
+	"testing": {"netgate", "testenv"},
 }
 
 func repoInternal(t *testing.T) string {
