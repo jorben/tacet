@@ -92,8 +92,9 @@ func TestEndToEndWriteFreezeThenReadWithTheIssuedKey(t *testing.T) {
 	if err != nil || !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 {
 		t.Fatalf("freeze: %q %v", digest, err)
 	}
-	if info, _ := os.Stat(g.rec.path); info.Mode().Perm() != 0o400 {
-		t.Fatalf("frozen file is writable: %v", info.Mode())
+	// Windows can only mark a file read-only, which shows as 0444
+	if perm := statPerm(t, g.rec.path); perm&0o222 != 0 || (runtime.GOOS != "windows" && perm != 0o400) {
+		t.Fatalf("frozen file is writable: %v", perm)
 	}
 	// A later attempt reads the very bytes with the same derived key.
 	rg, err := m.IssueRead(att("j1", "a2"), g.ResourceID())
@@ -641,4 +642,13 @@ func TestReadBackRefusesAnAlteredFile(t *testing.T) {
 	if _, err := g.ReadBack(1 << 20); !errors.Is(err, ErrTampered) {
 		t.Fatalf("%v", err)
 	}
+}
+
+func statPerm(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }
