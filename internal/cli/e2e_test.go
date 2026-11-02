@@ -14,6 +14,7 @@ import (
 
 	"github.com/jorben/tacet/internal/app"
 	"github.com/jorben/tacet/internal/keys"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 type memKey struct{ b []byte }
@@ -37,9 +38,7 @@ type rig struct {
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	if _, err := os.Stat(filepath.Join(root, "python", ".venv", "bin", "python")); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	testenv.Python(t)
 	t.Setenv("TACET_ROOT", root)
 	return &rig{t: t, ws: filepath.Join(t.TempDir(), "ws"), out: t.TempDir(), key: &memKey{}}
 }
@@ -240,10 +239,10 @@ open(sys.argv[2], 'wb').write(encrypted(sized(package('<w:p><w:r><w:t>电话 138
 func TestCLIUnlockReadsPasswordsOnATerminalOnly(t *testing.T) {
 	r := newRig(t)
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	py := filepath.Join(root, "python", ".venv", "bin", "python")
+	py := testenv.Python(t)
 	locked := filepath.Join(t.TempDir(), "enc.docx")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(root, "python", "tests"), locked).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	plain := r.file("a.txt", "电话 13812345678\n")
 	code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, plain, locked)

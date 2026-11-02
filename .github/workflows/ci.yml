@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
 
+# A pull request's run is replaced by its next push; a run on master always
+# finishes, so every master commit has a result of its own.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 permissions:
   contents: read
 
@@ -16,29 +22,91 @@ jobs:
       matrix:
         os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # The cross-language tests fail instead of skipping when python/.venv is
+      # missing (internal/testenv). Without it they all skipped here, and a
+      # green run said nothing about the plugins (LESSONS.md).
+      TACET_REQUIRE_PLUGINS: '1'
+      # The macOS Keychain tests are opt-in on a person's machine; a runner's
+      # login Keychain is thrown away with it.
+      TACET_REAL_KEYCHAIN: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # The build cache is saved only when its key is new. Keyed on go.sum
+          # alone, it was saved before this workflow ran -race and never again,
+          # so every run compiled the race build from scratch. The flags live
+          # here, so this file is part of the key.
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/ci.yml
+      - uses: astral-sh/setup-uv@v6
+      - name: Install the plugin environment
+        working-directory: python
+        run: uv sync --locked --all-packages
+      # The frontend is the same on both systems, so it is built and tested once,
+      # on Windows, whose job is the shorter. The Go packages only embed
+      # frontend/dist, so macOS gives them a placeholder, as task ensure:dist does.
       - uses: actions/setup-node@v4
+        if: runner.os == 'Windows'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install Wails CLI
+        if: runner.os == 'Windows'
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
       - name: Install frontend dependencies
+        if: runner.os == 'Windows'
         working-directory: frontend
         run: npm ci
       - name: Generate bindings
+        if: runner.os == 'Windows'
         run: wails3 generate bindings -clean=true -ts -i ./cmd/tacet-desktop
       - name: Build frontend
+        if: runner.os == 'Windows'
         working-directory: frontend
         run: npm run build
+      - name: Frontend tests
+        if: runner.os == 'Windows'
+        working-directory: frontend
+        run: npm test
+      - name: Placeholder frontend build
+        if: runner.os != 'Windows'
+        shell: bash
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Tacet</title>' > frontend/dist/index.html
+      # macOS only: Windows checks the files out with CRLF line endings
+      - name: Gofmt
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bad=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$bad" ]; then echo "not gofmt'd:"; echo "$bad"; exit 1; fi
       - run: go vet ./...
+      # -count=1: a cached result is not a run of this commit. macOS runs the
+      # suite under the race detector, Windows without it.
+      #
+      # The race detector leaves out SQLite (go-sqlite3-wasm, SQLite translated
+      # from WebAssembly to Go): instrumenting every access of its interpreter
+      # made the shutdown test take 125s instead of 43s locally. Tacet's own
+      # code, ncruces' driver and database/sql stay instrumented; a race planted
+      # in internal/app is still reported. Taskfile's test:race does the same.
       - name: Test (includes module dependency rules)
-        run: go test ./...
+        shell: bash
+        env:
+          RACE: -race -gcflags=github.com/ncruces/go-sqlite3-wasm/v6=-race=false
+        run: |
+          if [ "$RUNNER_OS" != macOS ]; then
+            go test -count=1 -timeout 30m ./...
+            exit 0
+          fi
+          go test $RACE -count=1 -timeout 30m $(go list ./... | grep -v '/internal/app$')
+          # internal/app's tests run one at a time (t.Setenv rules out
+          # t.Parallel); split them over one process per core instead.
+          go test $RACE -c -o "$RUNNER_TEMP/app.race" ./internal/app
+          build/race-shards.sh internal/app "$RUNNER_TEMP/app.race" "$(getconf _NPROCESSORS_ONLN)" -test.timeout=30m
       - name: Backend requirement trace
         run: python tools/backend_trace.py --check
 

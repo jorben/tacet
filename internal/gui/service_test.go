@@ -284,7 +284,7 @@ func TestPreviewPagesAreServedDecryptedWithoutCachingAndOnlyByToken(t *testing.T
 	s := NewService(opener(core, nil), &fakeHost{})
 	s.AppInfo()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("app asset")) })
-	h := s.AssetHandler(next)
+	h := AssetHandler(s, next)
 	if rec := serve(h, "GET", "/index.html"); rec.Body.String() != "app asset" {
 		t.Fatalf("other paths must reach the app: %q", rec.Body.String())
 	}
@@ -315,7 +315,7 @@ func TestPreviewPagesAreServedDecryptedWithoutCachingAndOnlyByToken(t *testing.T
 
 func TestPreviewServiceWithoutAnEngineOrWithAnEngineThatCannotServeImages(t *testing.T) {
 	s := NewService(nil, nil)
-	h := s.AssetHandler(http.NotFoundHandler())
+	h := AssetHandler(s, http.NotFoundHandler())
 	if rec := serve(h, "GET", PreviewPath+"0123456789abcdef01234567.png"); rec.Code != 404 {
 		t.Fatalf("%d", rec.Code)
 	}

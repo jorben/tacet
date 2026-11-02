@@ -37,7 +37,10 @@ func validToken(t string) bool {
 // AssetHandler serves rendered pages under PreviewPath and everything else from next. A
 // page is sent decrypted from memory, never cached by the webview (no-store), never
 // sniffed, and only to GET requests; nothing about the document appears in the URL.
-func (s *Service) AssetHandler(next http.Handler) http.Handler {
+//
+// It is a function, not a method: every exported method of Service is bound to the
+// frontend, and an http.Handler cannot cross that bridge.
+func AssetHandler(s *Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, PreviewPath) {
 			next.ServeHTTP(w, r)

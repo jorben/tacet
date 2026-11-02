@@ -69,6 +69,13 @@ func (l *Lease) HTTPClient(o Options) (*http.Client, error) {
 			if err := l.WhileHeld(func() error { return nil }); err != nil {
 				return nil, err
 			}
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
+			if err := refuseInTests(host); err != nil {
+				return nil, err
+			}
 			return dialer.DialContext(ctx, network, addr)
 		},
 	}
@@ -92,6 +99,9 @@ type guard struct {
 
 func (g *guard) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := g.check(req.URL); err != nil {
+		return nil, err
+	}
+	if err := refuseInTests(req.URL.Hostname()); err != nil {
 		return nil, err
 	}
 	if err := g.lease.WhileHeld(func() error { return nil }); err != nil {

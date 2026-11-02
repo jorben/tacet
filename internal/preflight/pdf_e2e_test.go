@@ -17,6 +17,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/refs"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const pdfFixtures = `
@@ -39,13 +40,10 @@ type pdfRig struct {
 
 func newPDFRig(t *testing.T) *pdfRig {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	dir := t.TempDir()
 	if out, err := exec.Command(python, "-X", "utf8", "-c", pdfFixtures, filepath.Join(root, "python", "tests"), dir).CombinedOutput(); err != nil {
-		t.Skipf("cannot build fixtures: %v %s", err, out)
+		testenv.Missing(t, "fixtures, which the plugin interpreter builds: %v %s", err, out)
 	}
 	return &pdfRig{t: t, python: python, dir: dir}
 }

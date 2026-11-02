@@ -13,6 +13,7 @@ import (
 
 	"github.com/jorben/tacet/internal/envs"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
@@ -27,9 +28,7 @@ func TestRealPluginStartsFromAnEnvironmentLaunchSpecWithoutImportingPlantedModul
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(repoPython, ".venv", "bin", "python")); err != nil {
-		t.Skip("requires uv sync --all-packages")
-	}
+	testenv.Python(t)
 	trap := t.TempDir()   // used as the working directory of the plugin
 	pypath := t.TempDir() // the parent's PYTHONPATH
 	for _, dir := range []string{trap, pypath} {
@@ -68,7 +67,7 @@ func TestRealPluginStartsFromAnEnvironmentLaunchSpecWithoutImportingPlantedModul
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := repo.BeginDeploy(tx, id, filepath.Join(repoPython, ".venv"), "bin/python", true)
+	digest, err := repo.BeginDeploy(tx, id, filepath.Join(repoPython, ".venv"), testenv.VenvPython, true)
 	if err != nil {
 		t.Fatal(err)
 	}

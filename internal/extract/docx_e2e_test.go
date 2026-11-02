@@ -17,6 +17,7 @@ import (
 	"github.com/jorben/tacet/internal/coverage"
 	"github.com/jorben/tacet/internal/host"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const (
@@ -54,11 +55,7 @@ func docxBytes(t *testing.T, body string, extra map[string]string) []byte {
 // A real plugin process reads an encrypted input through an inherited handle;
 // the pipeline persists its units, findings and coverage with real rules.
 func TestRealDOCXPluginThroughThePipelineEndToEnd(t *testing.T) {
-	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	e := setup(t, nil)
 	body := `<w:p><w:r><w:t>联系人张三，电话 13812345678。</w:t></w:r></w:p>` +
 		`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>备用 13900000000</w:t></w:r></w:p></w:tc></w:tr></w:tbl>` +

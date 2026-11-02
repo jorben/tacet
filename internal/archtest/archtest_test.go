@@ -1,6 +1,7 @@
 package archtest
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -87,6 +88,10 @@ var allowed = map[string][]string{
 	"netgate":    {"platform"},
 	"platform":   {},
 	"archtest":   {},
+	// testenv is test support, not a module of the design: only _test.go files
+	// import it, which TestInternalImportsFollowTheDesign holds (no module
+	// lists it, and test files are not read there).
+	"testenv": {},
 }
 
 // restricted maps an import path prefix to the only modules that may use it.
@@ -99,6 +104,9 @@ var restricted = map[string][]string{
 	"github.com/ncruces/go-sqlite3": {"store"},
 	"github.com/mattn/go-sqlite3":   {"store"},
 	"modernc.org/sqlite":            {"store"},
+	// netgate keeps test binaries on loopback (testing.Testing); nothing else
+	// in production code behaves differently under test. testenv is test support.
+	"testing": {"netgate", "testenv"},
 }
 
 func repoInternal(t *testing.T) string {
@@ -196,6 +204,59 @@ func TestRestrictedImports(t *testing.T) {
 					t.Errorf("internal/%s imports %s, which only %v may use", pkg, imp, owners)
 				}
 			}
+		}
+	}
+}
+
+// Every package with tests runs them in a temporary home (internal/testenv),
+// so no test reads or writes the files of the person running it.
+func TestEveryTestedPackageRunsInATestHome(t *testing.T) {
+	root := repoInternal(t)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(root, e.Name(), "*_test.go"))
+		if len(files) == 0 {
+			continue
+		}
+		isolated := false
+		for _, f := range files {
+			af, err := parser.ParseFile(fset, f, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range af.Decls {
+				fn, ok := d.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil || fn.Name.Name != "TestMain" || fn.Body == nil {
+					continue
+				}
+				ast.Inspect(fn.Body, func(n ast.Node) bool {
+					call, ok := n.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					switch fun := call.Fun.(type) {
+					case *ast.SelectorExpr: // testenv.Main(m), testenv.Run(m)
+						if x, ok := fun.X.(*ast.Ident); ok && x.Name == "testenv" && (fun.Sel.Name == "Main" || fun.Sel.Name == "Run") {
+							isolated = true
+						}
+					case *ast.Ident: // inside testenv itself
+						if e.Name() == "testenv" && (fun.Name == "Main" || fun.Name == "Run") {
+							isolated = true
+						}
+					}
+					return true
+				})
+			}
+		}
+		if !isolated {
+			t.Errorf("internal/%s has tests but no TestMain calling testenv.Main or testenv.Run: add func TestMain(m *testing.M) { testenv.Main(m) }", e.Name())
 		}
 	}
 }

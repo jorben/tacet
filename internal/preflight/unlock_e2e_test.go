@@ -17,6 +17,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/refs"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const encryptFixture = `
@@ -35,14 +36,11 @@ func enc(key []byte, id string) *refs.Encryption {
 // handles; the password crosses only as a host Secret.
 func TestRealDOCXUnlockThroughInheritedHandles(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	dir := t.TempDir()
 	raw := filepath.Join(dir, "enc.docx")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", encryptFixture, filepath.Join(root, "python", "tests"), raw).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the encrypted fixture: %v %s", err, out)
+		testenv.Missing(t, "the encrypted fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	original, _ := os.ReadFile(raw)
 

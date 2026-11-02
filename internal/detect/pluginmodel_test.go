@@ -18,6 +18,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/rules"
 	"github.com/jorben/tacet/internal/snapshot"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 var attemptSeq atomic.Int64
@@ -201,13 +202,11 @@ func TestPluginModelRequiresASessionAndAttemptSource(t *testing.T) {
 // with a minimal environment and launch arguments, speaking the real protocol.
 func TestRealAstrLinkModelThroughTheProtocolFindsEntitiesAndRulesAgree(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
+	python := testenv.Python(t)
 	modelDir := filepath.Join(root, ".pi", "m0-resources", "astrlink-guard-int8")
 	manifest := filepath.Join(root, "resources", "models", "astrlink-guard-int8.json")
-	for _, p := range []string{python, filepath.Join(modelDir, "model_int8.onnx")} {
-		if _, err := os.Stat(p); err != nil {
-			t.Skip("needs uv sync --all-packages and the fixed M0 model resource")
-		}
+	if _, err := os.Stat(filepath.Join(modelDir, "model_int8.onnx")); err != nil {
+		t.Skip("needs the fixed M0 model resource")
 	}
 	worker, err := host.Start(host.Spec{Path: python,
 		Args:       []string{"-I", "-m", "tacet_detect_astrlink", "--model-dir", modelDir, "--manifest", manifest},
@@ -271,13 +270,11 @@ func TestRealAstrLinkModelThroughTheProtocolFindsEntitiesAndRulesAgree(t *testin
 // synthetic context surrounds the body.
 func TestRealModelCandidatesSliceTheBodyExactlyAcrossAwkwardText(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
+	python := testenv.Python(t)
 	modelDir := filepath.Join(root, ".pi", "m0-resources", "astrlink-guard-int8")
 	manifest := filepath.Join(root, "resources", "models", "astrlink-guard-int8.json")
-	for _, p := range []string{python, filepath.Join(modelDir, "model_int8.onnx")} {
-		if _, err := os.Stat(p); err != nil {
-			t.Skip("needs uv sync --all-packages and the fixed M0 model resource")
-		}
+	if _, err := os.Stat(filepath.Join(modelDir, "model_int8.onnx")); err != nil {
+		t.Skip("needs the fixed M0 model resource")
 	}
 	worker, err := host.Start(host.Spec{Path: python,
 		Args: []string{"-I", "-m", "tacet_detect_astrlink", "--model-dir", modelDir, "--manifest", manifest},

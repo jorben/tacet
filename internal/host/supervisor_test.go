@@ -6,24 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/jorben/tacet/internal/kernel"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 func fixtureSpec(t *testing.T) Spec {
 	t.Helper()
-	python, err := filepath.Abs(filepath.Join("..", "..", "python", ".venv", "bin", "python"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = os.Stat(python); err != nil {
-		t.Skip("requires uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	fixture, _ := filepath.Abs(filepath.Join("..", "..", "python", "tests", "worker_fixture.py"))
 	return Spec{Path: python, Args: []string{"-I", fixture}, Env: []string{"PATH=/usr/bin:/bin"}}
 }

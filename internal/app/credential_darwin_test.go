@@ -8,11 +8,14 @@ import (
 	"testing"
 
 	"github.com/jorben/tacet/internal/platform"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 // Through the real Keychain, as the desktop app and the CLI open a workspace (no memory key): it is created,
-// closed and opened again with the same key. The test's own entry is deleted afterwards.
+// closed and opened again with the same key. The test's own entry is deleted afterwards. Opt-in, as it
+// writes to the login Keychain: TACET_REAL_KEYCHAIN=1.
 func TestAWorkspaceOpensWithTheRealCredentialStore(t *testing.T) {
+	testenv.UseRealKeychain(t)
 	r, _ := root(t)
 	t.Setenv("TACET_ROOT", r)
 	ws := filepath.Join(t.TempDir(), "ws")

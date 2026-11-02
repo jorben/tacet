@@ -16,6 +16,7 @@ import (
 	"github.com/jorben/tacet/internal/host"
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/refs"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const previewFixture = `
@@ -31,13 +32,10 @@ func taskKey(string) ([]byte, error) { return bytes.Repeat([]byte{7}, 32), nil }
 // transient write, decodes it, and finds the marked range placed on the page.
 func TestRealPDFPagePreviewThroughInheritedHandles(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	pdf := filepath.Join(t.TempDir(), "in.pdf")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", previewFixture, filepath.Join(root, "python", "tests"), pdf).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, out)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	raw, _ := os.ReadFile(pdf)
 	dir := t.TempDir()

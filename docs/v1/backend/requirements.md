@@ -213,6 +213,7 @@
 | sched | internal/sched |
 | snapshot | internal/snapshot |
 | store | internal/store |
+| testenv | internal/testenv |
 | update | internal/update |
 | validate | internal/validate |
 | verdict | internal/verdict |

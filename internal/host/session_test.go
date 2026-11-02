@@ -6,14 +6,13 @@ import (
 	"errors"
 	"io"
 	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jorben/tacet/internal/kernel"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 type pipeTransport struct {
@@ -50,10 +49,7 @@ func TestSessionHandshakeDeadlineUnblocksUnreadTransport(t *testing.T) {
 }
 
 func TestSessionRealPythonWorkerContract(t *testing.T) {
-	python := filepath.Join("..", "..", "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("run cross-language test after uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, python, "-I", "../../python/tests/worker_fixture.py")
