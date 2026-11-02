@@ -91,21 +91,7 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
-	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     app.Name,
-		Width:     1180,
-		Height:    760,
-		MinWidth:  960,
-		MinHeight: 600,
-		// The frontend draws the title bar and marks it draggable (--wails-draggable);
-		// only the system traffic lights are native.
-		Mac: application.MacWindow{
-			TitleBar: application.MacTitleBarHiddenInset,
-		},
-		EnableFileDrop:   true,
-		BackgroundColour: application.NewRGB(250, 250, 248),
-		URL:              "/",
-	})
+	win := a.Window.NewWithOptions(windowOptions())
 	app.OnSystemEnding(func() { gui.SystemEnding(svc) }) // logout, restart, shutdown (macOS)
 	host.Bind(a, win)
 	gui.InterceptClose(a, win, svc)
@@ -137,5 +123,28 @@ func main() {
 	a.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { go gui.Woke(svc) })
 	if err := a.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// windowOptions is the main window. The frontend draws the title bar and marks it draggable
+// (--wails-draggable); only the system traffic lights are native, so the two must agree on height.
+func windowOptions() application.WebviewWindowOptions {
+	titleBar := application.MacTitleBarHiddenInset
+	// AppKit places the traffic lights by the toolbar style, not by the page: the default (unified)
+	// centres them 26px from the top, below the middle of the bar the frontend draws for macOS
+	// (host.css). Unified compact centres them at 20px, 12px from the left edge.
+	titleBar.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
+	return application.WebviewWindowOptions{
+		Title:     app.Name,
+		Width:     1180,
+		Height:    760,
+		MinWidth:  960,
+		MinHeight: 600,
+		Mac: application.MacWindow{
+			TitleBar: titleBar,
+		},
+		EnableFileDrop:   true,
+		BackgroundColour: application.NewRGB(250, 250, 248),
+		URL:              "/",
 	}
 }

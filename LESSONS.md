@@ -102,3 +102,15 @@
 - 修复：fix/model-device-probe。应用启动时，对已安装的 GPU 兼容模型在后台起 worker，握手后立即结束，不试运行；探测期间返回 `Detecting`。新测试 `TestTheDeviceOfAnInstalledModelIsConfirmedAtStartUp` 用假 worker 回报 Core ML，不依赖模型资源。旧代码上失败：`before the handshake: device "auto" detecting false, want auto and detecting`。
 - 规则：一个显示值只要依赖内存里的状态，测试就要把引擎关掉、用同一个工作区重新打开，再检查显示；不能只测同一个会话里的流程。
 - 出现：1 次（2026-11-02）
+
+## 原生窗口
+
+**网页画的界面要和系统控件对齐时，先在真机截图里量出两边的位置，再定尺寸；不按预设名或文档推断。**
+- 7b60ffe（2026-10-30）接入桌面外壳：窗口用 Wails 的 `MacTitleBarHiddenInset`，网页沿用原型 44px 的标题栏，左边留 84px 给红绿灯。真机上红绿灯明显偏下（2026-11-02 Jorben 报告），CI 没有任何检查覆盖这件事。
+- 量出来的原因有两层：
+  - `HiddenInset` 带一个工具栏，没设样式就按 unified 处理：AppKit 把红绿灯中心放在距顶 26pt，而 44px 标题栏的中线在 22pt；
+  - Wails v3.0.0 的内容视图是 宽-1 × 高-1，WKWebView 是 宽 × 高，原点都在左下角，所以网页顶上 1px 落在窗口外面，页面 y = 窗口 y + 1。只把标题栏改成 40px 时，截图里边框在 38pt，中线比红绿灯高 1pt。
+- 测量方法：用 Swift 建一个同样配置的 NSWindow，读 `standardWindowButton` 的 frame，各工具栏样式的红绿灯中心依次是 automatic/unified 26、unified compact 20、expanded 16；再用 `screencapture -l` 截构建出来的应用，按像素量红绿灯和标题栏边框；用一个原生对照窗口确认截图本身没有裁剪。
+- 修复：fix/titlebar-traffic-lights。工具栏改为 unified compact；macOS 下标题栏为 42px（1px 在窗口外，40px 可见，1px 边框），顶部内边距 1px。`cmd/tacet-desktop/titlebar_test.go` 核对红绿灯中心与可见标题栏、标题栏内容的中线一致，Wails 版本变了就失败，提醒重新测量。
+- 规则：原生控件的位置取决于系统版本、窗口样式和框架怎么摆放 WebView，三者都要在截图里核实；改对齐时给测试写下实测值和测量方法。
+- 出现：1 次（2026-11-02）
