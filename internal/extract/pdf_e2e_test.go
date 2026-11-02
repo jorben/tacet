@@ -16,6 +16,7 @@ import (
 	"github.com/jorben/tacet/internal/coverage"
 	"github.com/jorben/tacet/internal/host"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const pdfFixture = `
@@ -32,14 +33,11 @@ open(sys.argv[2], 'wb').write(raw)
 // handle; units, findings and the coverage gaps (image, metadata) are persisted.
 func TestRealPDFPluginThroughThePipelineEndToEnd(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	e := setup(t, nil)
 	file := filepath.Join(t.TempDir(), "in.pdf")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", pdfFixture, filepath.Join(root, "python", "tests"), file).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, out)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	doc, _ := os.ReadFile(file)
 	key := make([]byte, 32)

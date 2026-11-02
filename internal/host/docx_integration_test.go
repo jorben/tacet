@@ -18,13 +18,11 @@ import (
 
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 func TestRealDOCXInventoryOverEncryptedInheritedHandle(t *testing.T) {
-	python := filepath.Join("..", "..", "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("requires uv sync --all-packages for real plugin contract")
-	}
+	python := testenv.Python(t)
 	var archive bytes.Buffer
 	z := zip.NewWriter(&archive)
 	parts := map[string]string{

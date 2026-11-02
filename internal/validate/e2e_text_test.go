@@ -10,6 +10,7 @@ import (
 
 	"github.com/jorben/tacet/internal/export"
 	"github.com/jorben/tacet/internal/plan"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const xlsxInput = `
@@ -25,13 +26,10 @@ open(sys.argv[2], 'wb').write(book([('One', 'visible', rows)], ['<t>电话 13812
 func xlsxFixture(t *testing.T) []byte {
 	t.Helper()
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	file := filepath.Join(t.TempDir(), "in.xlsx")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", xlsxInput, filepath.Join(root, "python", "tests"), file).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, out)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	raw, _ := os.ReadFile(file)
 	return raw
@@ -60,10 +58,7 @@ var textCases = []textCase{
 
 func (c textCase) rig(t *testing.T) *rig {
 	t.Helper()
-	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	if _, err := os.Stat(filepath.Join(root, "python", ".venv", "bin", "python")); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	testenv.Python(t)
 	r := newRigFor(t, c.input(t), c.module, c.plugin)
 	r.extractInput()
 	if len(r.found) != c.wantFindings {
@@ -148,10 +143,7 @@ func TestRealTextFamilyIncompleteCandidateLeavesResiduals(t *testing.T) {
 // A number stored as a number cannot become text without authorisation: the export fails and names the reason.
 func TestRealXLSXNumberCellFindingFailsTheExportInsteadOfBeingIgnored(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	script := `
 import sys
 sys.path.insert(0, sys.argv[1])
@@ -161,7 +153,7 @@ open(sys.argv[2], 'wb').write(book([('One', 'visible', '<row r="1">' + cell('A1'
 `
 	file := filepath.Join(t.TempDir(), "n.xlsx")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", script, filepath.Join(root, "python", "tests"), file).CombinedOutput(); err != nil {
-		t.Skipf("%v %s", err, out)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	raw, _ := os.ReadFile(file)
 	r := newRigFor(t, raw, "tacet_format_xlsx", "tacet.xlsx")

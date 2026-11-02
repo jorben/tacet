@@ -18,6 +18,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/rules"
 	"github.com/jorben/tacet/internal/snapshot"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 // Per-category detection evaluation on the synthetic corpus of
@@ -155,7 +156,7 @@ func TestEvaluateDetectionOnTheSyntheticCorpus(t *testing.T) {
 		t.Skip("set TACET_EVAL_CORPUS and TACET_EVAL_REPORT to run the evaluation")
 	}
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
+	python := testenv.Python(t)
 	modelDir := filepath.Join(root, ".pi", "m0-resources", "astrlink-guard-int8")
 	manifest := filepath.Join(root, "resources", "models", "astrlink-guard-int8.json")
 	data, err := os.ReadFile(filepath.Join(root, "resources", "rules", "cn-office-v1.json"))

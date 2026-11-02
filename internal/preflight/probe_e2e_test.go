@@ -15,6 +15,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/refs"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const probeFixtures = `
@@ -36,13 +37,10 @@ open(d + '/notes.docx', 'wb').write(b'this is plain text with a docx extension')
 // The real plugin classifies by content, then Decide judges the result.
 func TestRealDOCXProbeThenDecide(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	dir := t.TempDir()
 	if out, err := exec.Command(python, "-X", "utf8", "-c", probeFixtures, filepath.Join(root, "python", "tests"), dir).CombinedOutput(); err != nil {
-		t.Skipf("cannot build fixtures: %v %s", err, out)
+		testenv.Missing(t, "fixtures, which the plugin interpreter builds: %v %s", err, out)
 	}
 	probe := func(name string) (Probe, error) {
 		raw, _ := os.ReadFile(filepath.Join(dir, name))

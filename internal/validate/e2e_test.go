@@ -31,6 +31,7 @@ import (
 	"github.com/jorben/tacet/internal/rules"
 	"github.com/jorben/tacet/internal/snapshot"
 	"github.com/jorben/tacet/internal/store"
+	"github.com/jorben/tacet/internal/testenv"
 	"github.com/jorben/tacet/internal/workspace"
 	_ "github.com/ncruces/go-sqlite3/driver"
 )
@@ -115,11 +116,7 @@ func newRig(t *testing.T, input []byte) *rig {
 
 func newRigFor(t *testing.T, input []byte, module, pluginID string) *rig {
 	t.Helper()
-	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	dir := t.TempDir()
 	raw, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(filepath.Join(dir, "v.db")))
 	if err != nil {

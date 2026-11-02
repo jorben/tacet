@@ -29,6 +29,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/jorben/tacet/internal/keys"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 type memKey struct{ b []byte }
@@ -45,10 +46,7 @@ func (m *memKey) Delete() error       { m.b = nil; return nil }
 func root(t *testing.T) (string, string) {
 	t.Helper()
 	r, _ := filepath.Abs(filepath.Join("..", ".."))
-	py := filepath.Join(r, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(py); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	py := testenv.Python(t)
 	return r, py
 }
 
@@ -268,7 +266,7 @@ func TestPasswordProtectedFileWaitsThenContinuesAfterUnlock(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	locked := filepath.Join(in, "enc.docx")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(r, "python", "tests"), locked).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	plain := filepath.Join(in, "p.txt")
 	os.WriteFile(plain, []byte("电话 13900000000\n"), 0o600)
@@ -367,7 +365,7 @@ func TestEveryBuiltinFormatRunsThroughTheEngine(t *testing.T) {
 			args = append(args, fix)
 		}
 		if o, err := exec.Command(py, append(args, p)...).CombinedOutput(); err != nil {
-			t.Skipf("cannot build %s: %v %s", name, err, o)
+			testenv.Missing(t, "%s, which the plugin interpreter builds: %v %s", name, err, o)
 		}
 		return p
 	}
@@ -591,7 +589,7 @@ func TestWaitDoesNotReturnWhileAnUnlockedFileIsAboutToJoinTheBatch(t *testing.T)
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	locked := filepath.Join(in, "enc.docx")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(r, "python", "tests"), locked).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	e := openEngine(t, ws, &memKey{}, true)
 	defer e.Close()
@@ -643,7 +641,7 @@ func TestPDFPagePreviewShowsCandidatesAndRefusesOtherStates(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	pdf := filepath.Join(in, "a.pdf")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", pdfFixture, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	txt := filepath.Join(in, "b.txt")
 	os.WriteFile(txt, []byte("电话 13812345678\n"), 0o600)
@@ -1511,7 +1509,7 @@ func TestResumeJoinsAnInspectedFileToItsStartedBatch(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	locked := filepath.Join(in, "enc.docx")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(r, "python", "tests"), locked).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	e := openEngine(t, ws, &memKey{}, true)
 	defer e.Close()
@@ -1580,7 +1578,7 @@ func TestThePDFIsPaintedInTheStyleFrozenAtStart(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	pdf := filepath.Join(in, "a.pdf")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", pdfFixture, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	e := openEngine(t, ws, &memKey{}, true)
 	defer e.Close()
@@ -2008,7 +2006,7 @@ func TestAWaitingFileCanBeSkippedAndIsNotExported(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	locked := filepath.Join(in, "enc.docx")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", encryptedDocx, filepath.Join(r, "python", "tests"), locked).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	a, b := filepath.Join(in, "a.txt"), filepath.Join(in, "b.txt")
 	os.WriteFile(a, []byte("电话 13812345678\n"), 0o600)
@@ -2181,7 +2179,7 @@ func TestImagesOnAPDFPageArePaintedOverByDefault(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	pdf := filepath.Join(in, "a.pdf")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", imagePDF, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	if o, err := exec.Command(py, "-X", "utf8", "-c", countGray, pdf).Output(); err != nil || strings.TrimSpace(string(o)) == "0" {
 		t.Fatalf("setup: the input shows its image: %q %v", o, err)
@@ -2226,7 +2224,7 @@ func TestATextPDFLaidOutAsATableIsDelivered(t *testing.T) {
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
 	pdf := filepath.Join(in, "t.pdf")
 	if o, err := exec.Command(py, "-X", "utf8", "-c", tablePDF, filepath.Join(r, "python", "tests"), pdf).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, o)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, o)
 	}
 	e := openEngine(t, ws, &memKey{}, true)
 	defer e.Close()

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jorben/tacet/internal/export"
 	"github.com/jorben/tacet/internal/plan"
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 const pdfInput = `
@@ -23,13 +24,10 @@ open(sys.argv[2], 'wb').write(build(['Call 13812345678 today', 'Second 139000000
 func pdfRig(t *testing.T) *rig {
 	t.Helper()
 	root, _ := filepath.Abs(filepath.Join("..", ".."))
-	python := filepath.Join(root, "python", ".venv", "bin", "python")
-	if _, err := os.Stat(python); err != nil {
-		t.Skip("needs uv sync --all-packages")
-	}
+	python := testenv.Python(t)
 	file := filepath.Join(t.TempDir(), "in.pdf")
 	if out, err := exec.Command(python, "-X", "utf8", "-c", pdfInput, filepath.Join(root, "python", "tests"), file).CombinedOutput(); err != nil {
-		t.Skipf("cannot build the fixture: %v %s", err, out)
+		testenv.Missing(t, "the fixture, which the plugin interpreter builds: %v %s", err, out)
 	}
 	raw, _ := os.ReadFile(file)
 	r := newRigFor(t, raw, "tacet_format_pdf", "tacet.pdf")
