@@ -70,7 +70,7 @@ func main() {
 			application.NewService(svc),
 		},
 		Assets: application.AssetOptions{
-			Handler: svc.AssetHandler(application.AssetFileServerFS(assets)),
+			Handler: gui.AssetHandler(svc, application.AssetFileServerFS(assets)),
 		},
 		// One GUI instance per OS user and build mode (architecture 6.2).
 		// Development and production use separate instance identities.
