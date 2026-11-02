@@ -160,7 +160,7 @@ Jorben 指出：下载模型应归模型管理，“启用 GPU 加速”只表�
 - 环境允许时优先 GPU。macOS Apple Silicon 使用 Core ML；Windows 依赖安装 `onnxruntime-directml` 提供 DirectML（而非只有 CPU 的 Windows ONNX Runtime 包）。没有可用 GPU provider 或 GPU 会话初始化失败时，使用同一图和外部数据创建 CPU 会话。关闭加速时直接 CPU。
 - 降级不替换模型、版本、revision、FP16 精度、文件摘要或安装目录，不回退 INT8；每个模型仅一个下载入口。文件完整性或 CPU 加载也失败则阻塞任务，不能伪装为未发现敏感内容。
 - 批次快照冻结准确模型 ID、清单摘要与设备策略（`auto` / `CPUExecutionProvider`），恢复允许同模型切换设备但不允许替换权重。历史快照不改写。
-- 插件在 initialize capabilities 回报实际 provider；宿主依据回报显示设备。未启动时显示“GPU 优先 · 启动时检测”，不提前声称 GPU 已生效。
+- 插件在 initialize capabilities 回报实际 provider；宿主依据回报显示设备，不提前声称 GPU 已生效。下载后的试运行、每次任务启动 worker 时都会确认；应用启动时，若开启 GPU 加速，再对已安装的 GPU 兼容模型在后台各起一次 worker，握手后立即结束（不试运行、不读文档），使重启后的模型卡直接显示确认过的 GPU 或 CPU。探测期间显示“GPU 优先 · 正在检测”；探测失败或启动后才开启加速而尚未确认时，显示“GPU 优先 · 启动时检测”，到下次任务或启动时确认。关闭加速时不探测，直接显示 CPU。（2026-11-02，Jorben 修订：下载后必须给出明确结论）
 - 当前应用拥有的内置 ModelProfile 在目录变更时更新为默认 FP16；用户配置与已冻结任务不被改写。用户复制过的旧模型配置仍须选择受支持模型，不能静默替换。
 - 本轮本机验证：AstrLink FP16 的 GPU / CPU 两条路径均通过真实文件脱敏端到端测试，快照模型 ID 与摘要一致，且握手分别确认 Core ML / CPU。Privacy Filter FP16 在本机确认使用 `CoreMLExecutionProvider`，固定样例找到人名、电话、邮箱；与同一 FP16 权重的 CPU 结果一致。一次独立进程加载加推理约 8.86 秒、峰值 RSS 约 2.69 GiB；这是单个合成样例，不能作为代表设备预算或质量验收。
 - 验证通过：`go test ./... -count=1`、`go vet ./...`、前端 TypeScript 检查及全量 264 项测试（设备刷新修改后另复验 51 项）、Python 全量 475 项测试、需求追踪表与 diff 检查。Windows DirectML 已锁定依赖并验证选择策略，未在 Windows 设备上实测。

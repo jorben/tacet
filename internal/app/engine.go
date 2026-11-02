@@ -163,6 +163,8 @@ type Engine struct {
 	plugins       map[string]plugin // extension -> plugin
 	detect        map[string]*detectCache
 	modelBackends map[string]string // actual providers, keyed by model digest and requested policy
+	probing       map[string]bool   // models whose device the start-up probe has yet to confirm
+	probeDone     chan struct{}     // closed when the start-up probe has ended
 	cancel        context.CancelFunc
 	done          chan struct{}
 	closed        bool

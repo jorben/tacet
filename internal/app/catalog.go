@@ -451,6 +451,7 @@ func (e *Engine) Models(ctx context.Context) ([]ModelRuntime, error) {
 		rt.Build, rt.Backend = m.id, e.reportedBackend(m, accelOn)
 		rt.Device = deviceOf(rt.Backend)
 		rt.Accelerable, rt.Accelerated = deviceOf(m.backend) == "gpu", rt.Device == "gpu"
+		rt.Detecting = rt.Device == "auto" && rt.Dir != "" && e.isProbing(m.id)
 		rt.Accel = nil
 		out = append(out, rt)
 	}

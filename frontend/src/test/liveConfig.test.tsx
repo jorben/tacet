@@ -457,6 +457,14 @@ describe("方案与规则集的存储同步", () => {
     expect(fake.calls).not.toContain("downloadModel:astrlink-guard-int8");
   });
 
+  it("启动时确认推理设备：检测期间持续刷新，确认后得到 GPU 结论", async () => {
+    fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+    await loadConfig();
+    expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
+    Object.assign(fake.modelList[0]!, { backend: "CoreMLExecutionProvider", device: "gpu", accelerated: true, detecting: false });
+    await waitFor(() => expect(getState().models[0]!.runtime).toMatchObject({ device: "gpu", backend: "CoreMLExecutionProvider", detecting: false }), { timeout: 2000 });
+  });
+
   it("GPU 版本校验未通过：重新下载前先丢弃残留；试运行失败时重新准备", async () => {
     fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL, state: "error", code: "MODEL_VERIFY_FAILED" } })];
     await loadConfig();

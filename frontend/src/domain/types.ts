@@ -176,6 +176,8 @@ export interface ModelRuntime {
   dir: string;
   backend: string;
   device: "cpu" | "gpu" | "auto";
+  /** device is auto and the engine is confirming it right now (start-up probe). */
+  detecting?: boolean;
   /** Hugging Face id ("owner/name"); empty when unknown. */
   repository: string;
   accelerable: boolean;

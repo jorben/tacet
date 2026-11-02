@@ -182,6 +182,8 @@ export interface EngineModelRuntime {
   /** ONNX Runtime execution provider, e.g. CPUExecutionProvider. */
   backend: string;
   device: "cpu" | "gpu" | "auto";
+  /** device is auto and the engine's start-up probe is about to confirm it. */
+  detecting?: boolean;
   /** The model's Hugging Face id ("owner/name") from its integrity manifest; empty when unknown. */
   repository: string;
   /** This model uses GPU-compatible weights. */

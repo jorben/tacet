@@ -138,10 +138,10 @@ export async function refreshModels(): Promise<void> {
   watchModels();
 }
 
-/** Keeps the model states fresh while a download, verification or trial runs. */
+/** Keeps the model states fresh while a download, verification, trial or the start-up device probe runs. */
 export function watchModels(): void {
   clearTimeout(modelTimer);
-  if (!loaded || !getState().models.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""))) return;
+  if (!loaded || !getState().models.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? "") || !!m.runtime?.detecting)) return;
   modelTimer = setTimeout(() => void refreshModels(), MODEL_POLL_MS);
 }
 

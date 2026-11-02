@@ -78,7 +78,13 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 		}},
 		// the dispatcher's context ends the stages it runs; whatever is not at a boundary after the grace
 		// period is reclaimed by the next steps
-		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error { e.cancel(); waitDone(ctx); e.act.stop(); return nil }},
+		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error {
+			e.cancel()
+			waitDone(ctx)
+			e.waitProbe(ctx)
+			e.act.stop()
+			return nil
+		}},
 		{Name: lifecycle.ExitCheckpoint, Run: e.recoverJobs},
 		{Name: lifecycle.ExitReap, Run: func(ctx context.Context) error {
 			err := e.reapPrevious(ctx)

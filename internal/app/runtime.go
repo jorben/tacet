@@ -270,6 +270,7 @@ func (e *Engine) startDispatch(context.Context) error {
 		defer close(e.done)
 		e.disp.Run(ctx, e.complete)
 	}()
+	e.startProbe(ctx)
 	return nil
 }
 

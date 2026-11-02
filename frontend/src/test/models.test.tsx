@@ -137,11 +137,16 @@ describe("模型准备状态", () => {
     expect(getState().settings.gpu).toBe(true);
   });
 
-  it("插件页只有一份 FP16 模型；启动前显示 GPU 优先，降级后显示 CPU", () => {
+  it("插件页只有一份 FP16 模型；启动前显示 GPU 优先，检测后显示确认的 GPU，降级后显示 CPU", () => {
     go("model-catalog");
     expect($("#modelPlugins .model-accel")).toBeNull();
     expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("FP16");
     expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("GPU 优先 · 启动时检测");
+    act(() => store.update((d) => { d.models[0]!.runtime!.detecting = true; }));
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("GPU 优先 · 正在检测");
+    act(() => store.update((d) => { Object.assign(d.models[0]!.runtime!, { detecting: false, device: "gpu", backend: "CoreMLExecutionProvider", accelerated: true }); }));
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("GPU · Core ML");
+    expect($('#modelPlugins [data-model="astr"]')!.textContent).not.toContain("GPU 优先");
     act(() => store.update((d) => { d.models[0]!.runtime!.device = "cpu"; d.models[0]!.runtime!.backend = "CPUExecutionProvider"; }));
     expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("CPU · ONNX Runtime");
     expect($('#modelPlugins [data-model="astr"]')!.textContent).toContain("FP16");
