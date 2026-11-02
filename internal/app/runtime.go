@@ -257,9 +257,12 @@ func (e *Engine) markerPrefix() string { return workspacePrefix(e.opt.Dir) }
 // reapPrevious is the second step: worker processes an earlier run left behind (a crash, a kill) are gone
 // before anything is recovered. The workspace lock is ours and no worker of this run exists yet.
 func (e *Engine) reapPrevious(context.Context) error {
-	_, err := platform.ReapMarkedPrefix(e.markerPrefix())
+	_, err := e.reapWorkers()
 	return err
 }
+
+// reapWorkers ends every worker process of this workspace and tells how many it ended.
+func (e *Engine) reapWorkers() (int, error) { return platform.ReapMarkedPrefix(e.markerPrefix()) }
 
 // settlePublish is the third step: a publish that was interrupted between its steps is settled from what is
 // on disk (delivered, in conflict, or not started) before any task can run again.

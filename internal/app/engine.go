@@ -189,8 +189,8 @@ type Engine struct {
 	// beforeDispatch, when set by a test, runs before a stage is begun. A slow one stands in for a loaded
 	// machine, where a file waits in the queue for a while before the scheduler takes it.
 	beforeDispatch func(kernel.StageKind)
-	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
-	afterReap func()
+	// afterReap, in tests, runs between reclaiming the workers and the next exit step, with how many it reclaimed.
+	afterReap func(reaped int)
 	// beforeProbeCheck, in tests, runs just before the start-up probe checks the model's files (modelArgs); a slow one
 	// stands in for a long check, which is not cancelled.
 	beforeProbeCheck func(ctx context.Context)

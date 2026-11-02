@@ -243,6 +243,10 @@ func TestClosingDuringTheDeviceProbeEndsItsWorker(t *testing.T) {
 	}
 }
 
+// probeExitWaitBefore is how long the exit used to wait for the whole start-up probe before reaping (probeExitWait,
+// until the exit waited for a worker being started only). A close that takes at least this long waited for the probe.
+const probeExitWaitBefore = 3 * time.Second
+
 // A probe stopped by the exit when it is about to start its worker starts none, even when it reaches the start only
 // after the workers were reclaimed; and the exit does not wait for it (it could be checking the model's files, which
 // is not cancelled), only for a worker being started.
@@ -256,7 +260,7 @@ func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 			// started here, not by Open, so that the hooks are in place first: the probe is held, just before it starts
 			// its worker, until the exit has stopped it and reclaimed the workers
 			reaped, held := make(chan struct{}), make(chan struct{})
-			e.afterReap = func() { close(reaped) }
+			e.afterReap = func(int) { close(reaped) }
 			e.beforeProbeLaunch = func(ctx context.Context) { close(held); <-ctx.Done(); <-reaped }
 			e.opt.ProbeDevices = true
 			e.startProbe(e.life)
@@ -265,8 +269,10 @@ func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 			if err := tc.close(e); err != nil {
 				t.Fatal(err)
 			}
-			// closing an idle engine takes well under a second; waiting for the probe took its 3s limit
-			if took := time.Since(began); took > 2*time.Second {
+			// not a time limit: the probe is held until after the reap, so an exit that waits for the whole probe takes
+			// all of the 3s it used to wait (probeExitWaitBefore), and one that does not takes as long as closing an idle
+			// engine, well under that. Only a close slowed to 3s by the runner itself would be reported wrongly.
+			if took := time.Since(began); took >= probeExitWaitBefore {
 				t.Fatalf("closing took %v: it waited for the probe", took)
 			}
 			eventually(t, "ended", func() bool { return probeEnded(e) })
@@ -276,10 +282,6 @@ func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 		})
 	}
 }
-
-// probeExitWaitBefore is how long the exit used to wait for the whole start-up probe before reaping (probeExitWait,
-// until the exit waited for a worker being started only). A close that takes at least this long waited for the probe.
-const probeExitWaitBefore = 3 * time.Second
 
 // A probe that is checking the model's files when the exit stops it (a long check, which is not cancelled) does not
 // hold the exit up; when its check is done it starts no worker and records no reason: being stopped is not a failure.
@@ -327,10 +329,13 @@ func TestAProbeStartingItsWorkerWhenStoppedHasItReaped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e, _, _ := probeEngine(t, workerWaits, false)
 			// the probe is held where it has checked it was not stopped and is starting its worker: after the stop,
-			// until the workers are reclaimed or a second has passed
+			// until the workers are reclaimed or a second has passed. The second makes the check one-sided: on a slow
+			// runner an exit that does not wait for the start may reap only after it, and pass (a miss); an exit that
+			// waits never reaps inside it, so it cannot be reported wrongly.
 			reaped, held := make(chan struct{}), make(chan struct{})
 			var late atomic.Bool
-			e.afterReap = func() { close(reaped) }
+			var reclaimed atomic.Int64
+			e.afterReap = func(n int) { reclaimed.Store(int64(n)); close(reaped) }
 			e.inProbeLaunch = func(ctx context.Context) {
 				close(held)
 				<-ctx.Done()
@@ -348,6 +353,11 @@ func TestAProbeStartingItsWorkerWhenStoppedHasItReaped(t *testing.T) {
 			}
 			if late.Load() {
 				t.Fatal("the workers were reclaimed while the probe was starting its worker: it started after the reap")
+			}
+			// only the probe starts a worker here, so a reap that ended a process of this workspace shows that the
+			// probe's worker was really started (a failed start would pass the checks above too)
+			if n := reclaimed.Load(); n < 1 {
+				t.Fatalf("the exit reclaimed %d workers: the probe started none", n)
 			}
 			if n, err := platform.ReapMarkedPrefix(e.markerPrefix()); err != nil || n != 0 {
 				t.Fatalf("left running after the close: %d (%v)", n, err)

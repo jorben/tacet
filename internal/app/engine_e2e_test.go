@@ -2013,7 +2013,7 @@ func TestASystemShutdownStopsAtOnceAndTheBatchResumesAfterwards(t *testing.T) {
 	steps = nil
 	mu.Unlock()
 	// the stages of the reclaimed workers get to report before the workspace is released, as they may
-	e.afterReap = func() { time.Sleep(time.Second) }
+	e.afterReap = func(int) { time.Sleep(time.Second) }
 	started := time.Now()
 	if err = e.CloseForSystem(); err != nil {
 		t.Fatal(err)
