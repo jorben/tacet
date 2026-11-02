@@ -450,14 +450,15 @@ func copyTemp(dir string, src io.Reader, digest string) (string, error) {
 
 // exclusiveCopy is the non-atomic fallback of FR-30: create the target
 // exclusively, copy, flush and verify; a failure removes what it created.
+// The source is closed before it is removed: Windows refuses to delete an open file.
 func exclusiveCopy(temp, target, digest string) error {
 	in, err := os.Open(temp)
 	if err != nil {
 		return ErrIO
 	}
-	defer in.Close()
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
+		in.Close()
 		if errors.Is(err, os.ErrExist) {
 			return ErrNameConflict
 		}
@@ -465,6 +466,7 @@ func exclusiveCopy(temp, target, digest string) error {
 	}
 	h := sha256.New()
 	_, err = io.Copy(io.MultiWriter(out, h), in)
+	in.Close()
 	if err == nil {
 		err = out.Sync()
 	}

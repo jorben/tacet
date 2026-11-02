@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,13 +45,14 @@ class BackendOptionsTest(unittest.TestCase):
             providers_for('CoreMLExecutionProvider', None)
         (name, options), fallback = providers_for('CoreMLExecutionProvider', Path('/c'))
         self.assertEqual((name, fallback), ('CoreMLExecutionProvider', 'CPUExecutionProvider'))
-        self.assertEqual(options, {'MLComputeUnits': 'CPUAndGPU', 'ModelFormat': 'MLProgram', 'ModelCacheDirectory': '/c'})
+        self.assertEqual(options, {'MLComputeUnits': 'CPUAndGPU', 'ModelFormat': 'MLProgram', 'ModelCacheDirectory': str(Path('/c'))})
 
     def test_cache_folder_is_private_per_runtime_version_and_never_a_link(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = prepare_cache(Path(tmp) / 'k', '1.31.1')
             self.assertEqual(path.name, 'ort-1.31.1')
-            self.assertEqual(path.stat().st_mode & 0o777, 0o700)
+            if os.name != 'nt':  # Windows has no mode bits; the per-user profile ACL keeps it private
+                self.assertEqual(path.stat().st_mode & 0o777, 0o700)
             link = Path(tmp) / 'link'
             link.symlink_to(Path(tmp) / 'k')
             with self.assertRaises(BackendError):

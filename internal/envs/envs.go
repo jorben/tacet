@@ -115,6 +115,14 @@ func within(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+// plainRelative reports whether rel is a non-empty path below a root on every
+// platform: not absolute, not rooted ("/x" and "\x" are relative to the drive
+// on Windows), no volume name ("C:x") and no "..".
+func plainRelative(rel string) bool {
+	return rel != "" && !filepath.IsAbs(rel) && filepath.VolumeName(rel) == "" &&
+		!strings.HasPrefix(rel, "/") && !strings.HasPrefix(rel, "\\") && !strings.Contains(rel, "..")
+}
+
 // resolveInterpreter checks that the recorded interpreter is a relative path
 // without "..", and that what it names is a regular, executable file. A venv
 // interpreter is normally a symlink to the managed CPython outside the venv, so
@@ -123,7 +131,7 @@ func within(root, path string) bool {
 // returned path keeps the venv location, which the interpreter needs to find
 // its pyvenv.cfg and site-packages.
 func resolveInterpreter(root, rel string) (string, error) {
-	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "..") {
+	if !plainRelative(rel) {
 		return "", ErrInterpreter
 	}
 	realRoot, err := filepath.EvalSymlinks(root)
@@ -152,7 +160,7 @@ func (r *Repository) BeginDeploy(tx store.Tx, id Identity, root, interpreter str
 	if !filepath.IsAbs(root) || (!builtin && !within(r.base, filepath.Clean(root))) {
 		return "", ErrOutsideBase
 	}
-	if interpreter == "" || filepath.IsAbs(interpreter) || strings.Contains(interpreter, "..") {
+	if !plainRelative(interpreter) {
 		return "", ErrInterpreter
 	}
 	t, sc, err := scope(tx)

@@ -7,12 +7,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/jorben/tacet/internal/host"
 	"github.com/jorben/tacet/internal/kernel"
+	"github.com/jorben/tacet/internal/platform"
 	"github.com/jorben/tacet/internal/store"
 )
 
@@ -75,7 +77,8 @@ func TestEndToEndWriteFreezeThenReadWithTheIssuedKey(t *testing.T) {
 	if err != nil || wires[0].Handle != 3 || wires[0].Mode != Write || wires[0].Digest != "" {
 		t.Fatalf("handoff: %+v %v", wires, err)
 	}
-	if info, _ := os.Stat(filepath.Join(dir, g.ResourceID())); info.Mode().Perm() != 0o600 {
+	// Windows has no mode bits; the workspace directory's ACL keeps the file private
+	if info, _ := os.Stat(filepath.Join(dir, g.ResourceID())); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %v", info.Mode())
 	}
 	writeCiphertext(t, g, files, wires[0], "synthetic private content")
@@ -89,8 +92,9 @@ func TestEndToEndWriteFreezeThenReadWithTheIssuedKey(t *testing.T) {
 	if err != nil || !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 {
 		t.Fatalf("freeze: %q %v", digest, err)
 	}
-	if info, _ := os.Stat(g.rec.path); info.Mode().Perm() != 0o400 {
-		t.Fatalf("frozen file is writable: %v", info.Mode())
+	// Windows can only mark a file read-only, which shows as 0444
+	if perm := statPerm(t, g.rec.path); perm&0o222 != 0 || (runtime.GOOS != "windows" && perm != 0o400) {
+		t.Fatalf("frozen file is writable: %v", perm)
 	}
 	// A later attempt reads the very bytes with the same derived key.
 	rg, err := m.IssueRead(att("j1", "a2"), g.ResourceID())
@@ -286,8 +290,9 @@ func TestHandleKeptAcrossFreezeCannotMutateFrozenResource(t *testing.T) {
 	g, _ := m.IssueWrite(att("j1", "a1"), 1<<20)
 	files, wires, _ := Handoff(g)
 	writeCiphertext(t, g, files, wires[0], "honest")
-	// The plugin kept its own descriptor, which the host cannot close for it.
-	sneaky, err := os.OpenFile(filepath.Join(dir, g.ResourceID()), os.O_WRONLY|os.O_APPEND, 0)
+	// The plugin kept its own descriptor, which the host cannot close for it. It
+	// shares the host handle's open mode, which lets the host delete the file.
+	sneaky, err := platform.OpenShared(filepath.Join(dir, g.ResourceID()), os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -637,4 +642,13 @@ func TestReadBackRefusesAnAlteredFile(t *testing.T) {
 	if _, err := g.ReadBack(1 << 20); !errors.Is(err, ErrTampered) {
 		t.Fatalf("%v", err)
 	}
+}
+
+func statPerm(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }

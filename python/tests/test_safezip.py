@@ -20,7 +20,10 @@ def package(entries, *, streaming=False):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             for name, data in entries:
-                archive.writestr(name, data)
+                info = zipfile.ZipInfo(name)
+                info.filename = name  # ZipInfo turns "\\" into "/" on Windows; keep the name as given
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, data)
     return stream.getvalue()
 
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -255,9 +256,11 @@ func TestInterpreterChangedAfterRegistrationIsRefused(t *testing.T) {
 	if err := launch(); err != nil {
 		t.Fatal(err)
 	}
-	os.Chmod(interpreter, 0o600) // no longer executable
-	if err := launch(); !errors.Is(err, ErrInterpreter) {
-		t.Fatalf("non-executable: %v", err)
+	if runtime.GOOS != "windows" { // Windows has no execute bit to take away
+		os.Chmod(interpreter, 0o600) // no longer executable
+		if err := launch(); !errors.Is(err, ErrInterpreter) {
+			t.Fatalf("non-executable: %v", err)
+		}
 	}
 	os.Remove(interpreter)
 	if err := launch(); !errors.Is(err, ErrInterpreter) {
@@ -288,7 +291,7 @@ func TestRegistrationRefusesPathsOutsideTheBaseAndRelativeEscapes(t *testing.T) 
 		t.Fatalf("relative root: %v", err)
 	}
 	root := f.venv("e1")
-	for _, interp := range []string{"", "/usr/bin/python3", "../../bin/sh", "bin/../../x"} {
+	for _, interp := range []string{"", "/usr/bin/python3", `\bin\python`, "../../bin/sh", "bin/../../x"} {
 		if err := try(root, interp, false); !errors.Is(err, ErrInterpreter) {
 			t.Fatalf("interpreter %q accepted: %v", interp, err)
 		}

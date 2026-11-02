@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jorben/tacet/internal/coverage"
@@ -158,7 +159,7 @@ func TestPurgeRefusesAnEmptyJobAndBodyDirectoriesArePrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(root, "j1"))
-	if err != nil || info.Mode().Perm() != 0o700 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o700) { // Windows: no mode bits
 		t.Errorf("job body directory: %v %v", info.Mode(), err)
 	}
 }

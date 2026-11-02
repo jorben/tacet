@@ -12,6 +12,7 @@ import (
 
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/keys"
+	"github.com/jorben/tacet/internal/platform"
 	"github.com/jorben/tacet/internal/store"
 )
 
@@ -92,7 +93,7 @@ func randomHex(n int) (string, error) {
 }
 
 func digestOf(path string) (string, int64, error) {
-	f, err := os.Open(path)
+	f, err := platform.OpenShared(path, os.O_RDONLY, 0)
 	if err != nil {
 		return "", 0, err
 	}
@@ -177,7 +178,7 @@ func (m *Manager) IssueRead(a kernel.AttemptRef, id string) (*Grant, error) {
 	if rec.st != frozen {
 		return nil, ErrNotReadable
 	}
-	f, err := os.Open(rec.path)
+	f, err := platform.OpenShared(rec.path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, ErrNotFound
 	}
@@ -217,7 +218,7 @@ func (m *Manager) IssueWrite(a kernel.AttemptRef, limit int64) (*Grant, error) {
 	}
 	id := "res_" + idPart
 	path := filepath.Join(m.dir, id)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := platform.OpenShared(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, ErrNotWritable
 	}
@@ -310,7 +311,7 @@ func (g *Grant) seal() (string, error) {
 		return "", ErrNotWritable
 	}
 	oldPath := g.rec.path
-	input, err := os.Open(oldPath)
+	input, err := platform.OpenShared(oldPath, os.O_RDONLY, 0)
 	if err != nil {
 		m.discard(g)
 		return "", ErrNotWritable
@@ -572,7 +573,7 @@ func (g *Grant) ReadBack(limit int64) ([]byte, error) {
 	if g.revoked || len(g.key) == 0 || allZero(g.key) {
 		return nil, ErrRevoked
 	}
-	f, err := os.Open(g.rec.path)
+	f, err := platform.OpenShared(g.rec.path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, ErrNotFound
 	}

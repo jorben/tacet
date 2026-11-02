@@ -63,7 +63,7 @@ def inventory() -> tuple[dict, dict]:
     requirements: dict[str, list] = {}
     hashes = {}
     for name in SOURCES:
-        content = (DOCS / name).read_text()
+        content = (DOCS / name).read_text(encoding="utf-8")
         hashes[name] = hashlib.sha256(content.encode()).hexdigest()
         for line, text in enumerate(content.splitlines(), 1):
             for key in set(IDENTIFIER.findall(text)):
@@ -74,7 +74,7 @@ def inventory() -> tuple[dict, dict]:
 
 def render() -> str:
     requirements, hashes = inventory()
-    evidence = json.loads(LEDGER.read_text())
+    evidence = json.loads(LEDGER.read_text(encoding="utf-8"))
     unknown = set(evidence["requirements"]) - set(requirements)
     if unknown:
         raise ValueError(f"unknown evidence identifiers: {sorted(unknown)}")
@@ -114,11 +114,11 @@ def main() -> None:
     args = parser.parse_args()
     text = render()
     if args.check:
-        if not REPORT.exists() or REPORT.read_text() != text:
+        if not REPORT.exists() or REPORT.read_text(encoding="utf-8") != text:
             raise SystemExit("backend requirement inventory is stale; run python3 tools/backend_trace.py")
     else:
         REPORT.parent.mkdir(parents=True, exist_ok=True)
-        REPORT.write_text(text)
+        REPORT.write_text(text, encoding="utf-8", newline="\n")
     print(f"backend requirement inventory: {'current' if args.check else 'generated'}")
 
 

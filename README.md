@@ -203,7 +203,7 @@ npm test         # Vitest
 npm run build    # 类型检查 + 生产构建
 ```
 
-CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在 macOS 14 与 Windows 上生成绑定、构建前端并运行 `go vet`、`go test` 与追踪检查，并在 Ubuntu / macOS / Windows 上运行 Python 测试。
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在 macOS 15 与 Windows 上生成绑定、构建前端并运行 `go vet`、`go test` 与追踪检查，并在 Ubuntu / macOS / Windows 上运行 Python 测试。
 
 ## 目录结构
 
