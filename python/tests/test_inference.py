@@ -27,14 +27,15 @@ class InferencePolicyTest(unittest.TestCase):
             self.assertEqual(backend, COREML)
             _, backend = load_session(Path('/fixed/model_fp16.onnx'), 2, CPU, Path(tmp))
             self.assertEqual(backend, CPU)
-        self.assertEqual(calls, [('/fixed/model_fp16.onnx', COREML), ('/fixed/model_fp16.onnx', CPU)])
+        graph = str(Path('/fixed/model_fp16.onnx'))
+        self.assertEqual(calls, [(graph, COREML), (graph, CPU)])
 
     def test_no_gpu_uses_cpu_on_same_model(self):
         ort, calls = self.runtime([CPU])
         with patch.dict(sys.modules, onnxruntime=ort):
             _, actual = load_session(Path('/fixed/model_fp16.onnx'), 2, 'auto')
         self.assertEqual(actual, CPU)
-        self.assertEqual(calls, [('/fixed/model_fp16.onnx', CPU)])
+        self.assertEqual(calls, [(str(Path('/fixed/model_fp16.onnx')), CPU)])
 
     def test_gpu_initialization_failure_falls_back_without_changing_graph(self):
         def fail_gpu(p):
