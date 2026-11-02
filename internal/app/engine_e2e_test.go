@@ -1888,8 +1888,10 @@ func TestASystemShutdownStopsAtOnceAndTheBatchResumesAfterwards(t *testing.T) {
 			}
 		}
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-	defer cancel()
+	// No wall-clock deadline for the whole batch: under -race on a CI runner it
+	// took over 4 minutes (run 41391573277). A hang is caught by go test's
+	// -timeout; the shutdown itself keeps its own bound below.
+	ctx := t.Context()
 	var paths []string
 	for i := 0; i < 6; i++ {
 		var b strings.Builder

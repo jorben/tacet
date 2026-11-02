@@ -8,7 +8,6 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/sched"
@@ -29,8 +28,9 @@ type fixture struct {
 func fixtureDB(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	t.Cleanup(cancel)
+	// No wall-clock deadline: a test's commits took over 10s on a loaded Windows
+	// runner (run 41391573277). A hang is caught by go test's -timeout instead.
+	ctx := t.Context()
 	f.ctx = ctx
 	dir := t.TempDir()
 	f.dir = dir
