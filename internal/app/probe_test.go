@@ -277,6 +277,46 @@ func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 	}
 }
 
+// probeExitWaitBefore is how long the exit used to wait for the whole start-up probe before reaping (probeExitWait,
+// until the exit waited for a worker being started only). A close that takes at least this long waited for the probe.
+const probeExitWaitBefore = 3 * time.Second
+
+// A probe that is checking the model's files when the exit stops it (a long check, which is not cancelled) does not
+// hold the exit up; when its check is done it starts no worker and records no reason: being stopped is not a failure.
+func TestAProbeCheckingTheModelWhenStoppedHoldsNothingUp(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		close func(*Engine) error
+	}{{"normal", (*Engine).Close}, {"system shutdown", (*Engine).CloseForSystem}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, args, _ := probeEngine(t, workerWaits, false)
+			// the check ignores the stop, as the real one does: it ends only when the test lets it, after the close
+			checking, checked := make(chan struct{}), make(chan struct{})
+			e.beforeProbeCheck = func(context.Context) { close(checking); <-checked }
+			e.opt.ProbeDevices = true
+			e.startProbe(e.life)
+			<-checking
+			began := time.Now()
+			err := tc.close(e)
+			took := time.Since(began)
+			close(checked)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if took >= probeExitWaitBefore {
+				t.Fatalf("closing took %v: it waited for the file check", took)
+			}
+			eventually(t, "ended", func() bool { return probeEnded(e) })
+			if _, detecting, code := e.deviceState(e.modelByID(probeModel), true); detecting || code != "" {
+				t.Fatalf("after the stop: detecting %v code %q, want neither", detecting, code)
+			}
+			if s := starts(t, args); len(s) != 0 {
+				t.Fatalf("workers started: %q", s)
+			}
+		})
+	}
+}
+
 // A probe already starting its worker when the exit stops it has started it before the workers are reclaimed: the
 // exit waits for that start, so the reap ends the worker and none starts after it.
 func TestAProbeStartingItsWorkerWhenStoppedHasItReaped(t *testing.T) {

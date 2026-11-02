@@ -191,6 +191,9 @@ type Engine struct {
 	beforeDispatch func(kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
 	afterReap func()
+	// beforeProbeCheck, in tests, runs just before the start-up probe checks the model's files (modelArgs); a slow one
+	// stands in for a long check, which is not cancelled.
+	beforeProbeCheck func(ctx context.Context)
 	// beforeProbeLaunch, in tests, runs when the start-up probe has the model slot and is about to start its worker,
 	// before the section that starts it (probeLaunch). inProbeLaunch runs inside that section, after its stop check.
 	beforeProbeLaunch func(ctx context.Context)

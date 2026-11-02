@@ -186,13 +186,23 @@ func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 		}
 		e.probeFailed[m.id] = code
 	}
-	if ctx.Err() != nil || confirmed() || !e.eligible(m) {
+	// No stop check here: startProbe's loop checked just before calling probe. A stop that comes during the file check
+	// is caught after it, when the probe waits for the model slot and again in the launch section: starting a worker
+	// is what a stop has to prevent, and the exit does not wait for the check.
+	if confirmed() || !e.eligible(m) {
 		return
+	}
+	if e.beforeProbeCheck != nil {
+		e.beforeProbeCheck(ctx)
 	}
 	// this checks the model's files, which can take a while and is not cancelled; the exit does not wait for it
 	args, timeout, err := e.modelArgs(ctx, m, &snapshot.ModelExecution{ModelID: m.id, Digest: m.digest, Backend: "auto"})
 	if err != nil {
-		if ctx.Err() == nil && !errors.Is(err, ErrModelNotInstalled) { // not installed: nothing to confirm
+		// Not installed: nothing to confirm. This is the only error a probe gets here, a stop during the check
+		// included: it asks for the model's own build under auto, so the build and the policy are always accepted;
+		// buildDir turns every failure of the check into ErrModelNotInstalled, and a preinstalled build is not
+		// checked. So a stop is never recorded as a failure, and needs no ctx check here.
+		if !errors.Is(err, ErrModelNotInstalled) {
 			settled(err.Error())
 		}
 		return
