@@ -70,29 +70,45 @@ func (e *Engine) modelArgs(ctx context.Context, m *modelInfo, exec *snapshot.Mod
 
 // recordBackend uses the worker's handshake, never just the requested provider, for device display.
 func (e *Engine) recordBackend(m *modelInfo, requested string, session *host.Session) {
+	backend := backendOf(session)
+	if backend == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.modelBackends == nil {
+		e.modelBackends = map[string]string{}
+	}
+	e.modelBackends[m.digest+"/"+requested] = backend
+}
+
+// backendOf is the provider a worker's handshake reports; "" if it reports none.
+func backendOf(session *host.Session) string {
 	for _, backend := range []string{"CoreMLExecutionProvider", "DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider"} {
 		if session.Capability("backend." + backend) {
-			e.mu.Lock()
-			if e.modelBackends == nil {
-				e.modelBackends = map[string]string{}
-			}
-			e.modelBackends[m.digest+"/"+requested] = backend
-			e.mu.Unlock()
-			return
+			return backend
 		}
 	}
+	return ""
 }
 
 func (e *Engine) reportedBackend(m *modelInfo, gpu bool) string {
+	backend, _, _ := e.deviceState(m, gpu)
+	return backend
+}
+
+// deviceState reads in one critical section what Models shows of m's device: the provider (auto before it is
+// confirmed), whether the start-up probe is confirming it, and why the probe could not.
+func (e *Engine) deviceState(m *modelInfo, gpu bool) (backend string, detecting bool, code string) {
 	if !gpu || deviceOf(m.backend) != "gpu" {
-		return "CPUExecutionProvider"
+		return "CPUExecutionProvider", false, ""
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if backend := e.modelBackends[m.digest+"/auto"]; backend != "" {
-		return backend
+		return backend, false, ""
 	}
-	return "auto"
+	return "auto", e.probing[m.id], e.probeFailed[m.id]
 }
 
 func deviceOf(backend string) string {
@@ -109,8 +125,13 @@ func deviceOf(backend string) string {
 // startProbe confirms, in the background, the provider each installed GPU-capable model gets under the current
 // preference, so the device shown after a restart is a fact and not "GPU first". Each worker is ended right after
 // its handshake: no trial, no document. With GPU acceleration off nothing is probed: the CPU needs no confirmation.
-// A preference changed later is confirmed by the next run or start (a setting change starts no worker).
+// Any work that needs the model slot ends the probe for good (takeModelSlot): the task's own handshake confirms its
+// model, and a model left unconfirmed is confirmed by its first task.
 func (e *Engine) startProbe(ctx context.Context) {
+	if !e.opt.ProbeDevices {
+		return
+	}
+	ctx, stop := context.WithCancel(ctx)
 	done := make(chan struct{})
 	e.probeDone = done
 	var targets []*modelInfo
@@ -122,6 +143,7 @@ func (e *Engine) startProbe(ctx context.Context) {
 		}
 	}
 	e.mu.Lock()
+	e.probeStop = stop
 	e.probing = map[string]bool{}
 	for _, m := range targets {
 		e.probing[m.id] = true
@@ -129,28 +151,49 @@ func (e *Engine) startProbe(ctx context.Context) {
 	e.mu.Unlock()
 	go func() {
 		defer close(done)
+		defer func() {
+			stop()
+			e.mu.Lock()
+			clear(e.probing)
+			e.mu.Unlock()
+		}()
 		for _, m := range targets {
+			if ctx.Err() != nil {
+				return
+			}
 			e.probe(ctx, m)
 			e.mu.Lock()
-			delete(e.probing, m.id)
+			delete(e.probing, m.id) // skipped or settled
 			e.mu.Unlock()
 		}
 	}()
 }
 
 // probe starts m's worker under the auto policy and records the provider its handshake reports. A model that is
-// not installed, or whose worker does not start, stays unconfirmed; a run reports it then.
+// not installed, or whose worker does not start, stays unconfirmed with the reason; a run confirms it then.
 func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 	confirmed := func() bool {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		return e.modelBackends[m.digest+"/auto"] != ""
 	}
-	if confirmed() {
+	settled := func(code string) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		delete(e.probing, m.id)
+		if e.probeFailed == nil {
+			e.probeFailed = map[string]string{}
+		}
+		e.probeFailed[m.id] = code
+	}
+	if confirmed() || !e.eligible(m) {
 		return
 	}
 	args, timeout, err := e.modelArgs(ctx, m, &snapshot.ModelExecution{ModelID: m.id, Digest: m.digest, Backend: "auto"})
 	if err != nil {
+		if !errors.Is(err, ErrModelNotInstalled) { // not installed: nothing to confirm
+			settled(err.Error())
+		}
 		return
 	}
 	select {
@@ -158,31 +201,98 @@ func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 	case <-ctx.Done():
 		return
 	}
-	defer func() { <-e.modelSem }()
-	if confirmed() { // a run or a trial loaded it while the probe waited
+	e.mu.Lock()
+	e.probeHolds = true
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		e.probeHolds = false
+		e.mu.Unlock()
+		<-e.modelSem
+	}()
+	if e.beforeProbeLaunch != nil {
+		e.beforeProbeLaunch(ctx)
+	}
+	if ctx.Err() != nil || confirmed() { // stopped, or a run or a trial loaded it while the probe waited
+		return
+	}
+	if s, err := e.SettingsGet(ctx); err != nil || !s.GPUAcceleration { // turned off while the probe waited
 		return
 	}
 	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)
 	if err != nil {
+		if ctx.Err() == nil { // stopped is not failed
+			settled(launchCode(err))
+		}
 		return
 	}
-	e.recordBackend(m, "auto", w.Session)
+	e.mu.Lock()
+	if backend := backendOf(w.Session); backend != "" {
+		if e.modelBackends == nil {
+			e.modelBackends = map[string]string{}
+		}
+		e.modelBackends[m.digest+"/auto"] = backend
+	}
+	delete(e.probing, m.id)
+	delete(e.probeFailed, m.id)
+	e.mu.Unlock()
 	w.Terminate(time.Second)
 }
 
-func (e *Engine) isProbing(id string) bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.probing[id]
+// launchCode is the reason code of a worker that did not start.
+func launchCode(err error) string {
+	for _, c := range []error{errHandshakeTimeout, errKilledEarly, errExitedEarly, errHandshake, errSpawn} {
+		if errors.Is(err, c) {
+			return c.Error()
+		}
+	}
+	return "PLUGIN_START_FAILED"
 }
 
-// waitProbe waits for the start-up probe (its context is the engine's, already cancelled when closing).
-func (e *Engine) waitProbe(ctx context.Context) {
+// stopProbe ends the start-up probe for good (it may be called again) and reports whether the probe held the model
+// slot when it was called. No model is shown as being detected afterwards.
+func (e *Engine) stopProbe() (held bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.probeStop != nil {
+		e.probeStop()
+	}
+	clear(e.probing)
+	return e.probeHolds
+}
+
+// takeModelSlot takes the one model slot for real work, ending the start-up probe first. wait: queue for the slot
+// instead of refusing; a slot the probe held is always waited for, it is released at once.
+func (e *Engine) takeModelSlot(ctx context.Context, wait bool) error {
+	held := e.stopProbe()
+	select {
+	case e.modelSem <- struct{}{}:
+		return nil
+	default:
+	}
+	if !wait && !held {
+		return ErrModelBusy
+	}
+	select {
+	case e.modelSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// probeExitWait bounds how long an exit waits for the start-up probe. It is cancelled by then, and launchWithin
+// ends within about 1.2s of a cancelled handshake; waiting for it before reaping means no python starts after the
+// reap.
+var probeExitWait = 3 * time.Second
+
+// waitProbe waits, at most d, for the start-up probe to end.
+func (e *Engine) waitProbe(d time.Duration) {
 	if e.probeDone == nil {
 		return
 	}
 	select {
 	case <-e.probeDone:
-	case <-ctx.Done():
+	case <-time.After(d):
 	}
 }

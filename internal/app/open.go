@@ -25,6 +25,8 @@ type Config struct {
 	Root      string            // release root; empty: TACET_ROOT or next to the executable
 	UserKey   keys.UserKeyStore // empty: the platform credential store
 	Account   string            // credential account of the workspace; default "workspace"
+	// ProbeDevices: start-up device probe; only the desktop app shows the device, the CLI and tests leave it off.
+	ProbeDevices bool
 }
 
 // ErrRuntimeMissing says the built-in components are not where they should be.
@@ -212,6 +214,7 @@ func OpenWith(ctx context.Context, c Config) (*Engine, error) {
 	}
 	_, statErr := os.Stat(filepath.Join(c.Workspace, "workspace.db"))
 	o.Create = statErr != nil
+	o.ProbeDevices = c.ProbeDevices
 	return Open(ctx, o)
 }
 

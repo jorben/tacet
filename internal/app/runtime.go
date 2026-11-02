@@ -79,10 +79,8 @@ func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef, id string
 	if err != nil {
 		return nil, nil, err
 	}
-	select {
-	case e.modelSem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+	if err = e.takeModelSlot(ctx, true); err != nil {
+		return nil, nil, err
 	}
 	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)
 	if err != nil {
@@ -266,11 +264,11 @@ func (e *Engine) recoverAll(ctx context.Context) error {
 func (e *Engine) startDispatch(context.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel, e.life = cancel, ctx
+	e.startProbe(ctx) // before any task can ask for the model slot, so every one of them can stop it
 	go func() {
 		defer close(e.done)
 		e.disp.Run(ctx, e.complete)
 	}()
-	e.startProbe(ctx)
 	return nil
 }
 

@@ -130,6 +130,8 @@ type Options struct {
 	// Activity declares to the platform that work runs (on) or no longer does (off); nil is
 	// platform.DeclareActivity.
 	Activity func(on bool) error
+	// ProbeDevices: start-up device probe; only the desktop app shows the device, the CLI and tests leave it off.
+	ProbeDevices bool
 }
 
 // Engine is the shared kernel of the desktop app and the CLI: the same
@@ -164,7 +166,10 @@ type Engine struct {
 	detect        map[string]*detectCache
 	modelBackends map[string]string // actual providers, keyed by model digest and requested policy
 	probing       map[string]bool   // models whose device the start-up probe has yet to confirm
-	probeDone     chan struct{}     // closed when the start-up probe has ended
+	probeFailed   map[string]string // model id -> reason code of the probe's last failure to confirm it
+	probeStop     context.CancelFunc
+	probeHolds    bool          // the probe holds modelSem right now; probeStop cancels the whole probe
+	probeDone     chan struct{} // closed when the start-up probe has ended; nil if none ran (set before Open returns, read by Close: that order guards it)
 	cancel        context.CancelFunc
 	done          chan struct{}
 	closed        bool
@@ -172,7 +177,7 @@ type Engine struct {
 	listenSeq     int
 	pv            *previewState
 	models        []*modelInfo    // the catalog, in manifest order
-	modelSem      chan struct{}   // one model worker at a time (detection, preparation): their memory is not shared
+	modelSem      chan struct{}   // one model worker at a time (detection, preparation, the start-up probe, which yields): their memory is not shared
 	catalog       *models.Service // downloads and installed state; nil when every model is preinstalled
 	life          context.Context // the engine's lifetime: background downloads run under it
 	ret           *retention.Service
@@ -185,6 +190,8 @@ type Engine struct {
 	beforeDispatch func(kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
 	afterReap func()
+	// beforeProbeLaunch, in tests, runs when the start-up probe has the model slot, before it starts a worker.
+	beforeProbeLaunch func(ctx context.Context)
 	// deadline, in tests, replaces stageDeadline.
 	deadline func(kernel.StageKind, int64) time.Duration
 }

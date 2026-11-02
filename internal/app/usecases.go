@@ -68,6 +68,7 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 	stopper, err := lifecycle.NewStopper([]lifecycle.Step{
 		{Name: lifecycle.ExitStopDispatch, Run: func(context.Context) error {
 			e.queue.PauseDispatch(true)
+			e.stopProbe()
 			if mode == lifecycle.SystemShutdown {
 				// cancelled before the workers are reclaimed: a stage whose worker dies then ends as
 				// cancelled, which is not recorded, instead of as failed, which would be
@@ -81,12 +82,12 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error {
 			e.cancel()
 			waitDone(ctx)
-			e.waitProbe(ctx)
 			e.act.stop()
 			return nil
 		}},
 		{Name: lifecycle.ExitCheckpoint, Run: e.recoverJobs},
 		{Name: lifecycle.ExitReap, Run: func(ctx context.Context) error {
+			e.waitProbe(probeExitWait) // stopped by now; no probe worker starts after the reap
 			err := e.reapPrevious(ctx)
 			if e.afterReap != nil {
 				e.afterReap()
