@@ -35,28 +35,41 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: astral-sh/setup-uv@v6
       - name: Install the plugin environment
         working-directory: python
         run: uv sync --locked --all-packages
+      # The frontend is the same on both systems, so it is built and tested once,
+      # on Windows, whose job is the shorter. The Go packages only embed
+      # frontend/dist, so macOS gives them a placeholder, as task ensure:dist does.
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Windows'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install Wails CLI
+        if: runner.os == 'Windows'
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
       - name: Install frontend dependencies
+        if: runner.os == 'Windows'
         working-directory: frontend
         run: npm ci
       - name: Generate bindings
+        if: runner.os == 'Windows'
         run: wails3 generate bindings -clean=true -ts -i ./cmd/tacet-desktop
       - name: Build frontend
+        if: runner.os == 'Windows'
         working-directory: frontend
         run: npm run build
       - name: Frontend tests
+        if: runner.os == 'Windows'
         working-directory: frontend
         run: npm test
+      - name: Placeholder frontend build
+        if: runner.os != 'Windows'
+        shell: bash
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Tacet</title>' > frontend/dist/index.html
       # macOS only: Windows checks the files out with CRLF line endings
       - name: Gofmt
         if: runner.os == 'macOS'
@@ -66,14 +79,20 @@ jobs:
           if [ -n "$bad" ]; then echo "not gofmt'd:"; echo "$bad"; exit 1; fi
       - run: go vet ./...
       # -count=1: a cached result is not a run of this commit. macOS runs the
-      # suite under the race detector (internal/app takes about 4 minutes there
-      # on an M-series machine), Windows without it.
+      # suite under the race detector, Windows without it.
       - name: Test (includes module dependency rules)
         shell: bash
         run: |
-          race=""
-          if [ "$RUNNER_OS" = macOS ]; then race=-race; fi
-          go test $race -count=1 -timeout 30m ./...
+          if [ "$RUNNER_OS" != macOS ]; then
+            go test -count=1 -timeout 30m ./...
+            exit 0
+          fi
+          go test -race -count=1 -timeout 30m $(go list ./... | grep -v '/internal/app$')
+          # internal/app's tests run one at a time (t.Setenv rules out
+          # t.Parallel), 417s under -race here; split them over one process
+          # per core instead (143s against 229s on one core locally).
+          go test -race -c -o "$RUNNER_TEMP/app.race" ./internal/app
+          build/race-shards.sh internal/app "$RUNNER_TEMP/app.race" "$(getconf _NPROCESSORS_ONLN)" -test.timeout=30m
       - name: Backend requirement trace
         run: python tools/backend_trace.py --check
 
