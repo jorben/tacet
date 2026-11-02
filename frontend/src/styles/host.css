@@ -33,7 +33,15 @@
   --wails-draggable: no-drag;
 }
 
-/* macOS (hidden-inset title bar): leave room for the system traffic lights. */
+/* macOS (hidden-inset title bar, unified compact toolbar): the system centres the traffic lights 20px
+   below the top of the window and spans x 12–72. Wails (v3.0.0) makes the web view 1px taller than the
+   window's content view, and that extra 1px sits above the window's top edge, so page y = window y + 1.
+   The row is 42px: 1px hidden, 40px of bar, 1px border. The 1px top padding puts the bar's content on
+   the same 20px line. Keep in step with windowOptions in cmd/tacet-desktop/main.go. */
+:root[data-host="darwin"] .win {
+  grid-template-rows: 42px minmax(0, 1fr);
+}
 :root[data-host="darwin"] .titlebar {
+  padding-top: 1px;
   padding-left: 84px;
 }
