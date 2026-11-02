@@ -276,6 +276,9 @@ func (e *Engine) startDispatch(context.Context) error {
 // dispatch is jobs.Dispatch: begin the stage durably, then hand it to the scheduler.
 func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 	go func() {
+		if e.beforeDispatch != nil {
+			e.beforeDispatch(stage)
+		}
 		e.mu.Lock()
 		closed := e.closed
 		e.mu.Unlock()

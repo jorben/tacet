@@ -178,6 +178,9 @@ type Engine struct {
 	// beforeConfirm, when set by a test, runs before a file that finished its inspection after
 	// the batch started joins the batch; it holds that window open.
 	beforeConfirm func()
+	// beforeDispatch, when set by a test, runs before a stage is begun. A slow one stands in for a loaded
+	// machine, where a file waits in the queue for a while before the scheduler takes it.
+	beforeDispatch func(kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
 	afterReap func()
 	// deadline, in tests, replaces stageDeadline.
