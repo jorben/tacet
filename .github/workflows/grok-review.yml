@@ -1,0 +1,24 @@
+name: Notify Grok review
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+permissions: {}
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST event
+        env:
+          URL: ${{ secrets.GROK_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROK_WEBHOOK_KEY }}
+          PAYLOAD: >-
+            {"repo":"${{ github.repository }}",
+             "pr":${{ github.event.pull_request.number }},
+             "action":"${{ github.event.action }}",
+             "sender":"${{ github.event.sender.login }}",
+             "requested_reviewer":"${{ github.event.requested_reviewer.login }}"}
+        run: |
+          curl -fsS -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $KEY" \
+            -d "$PAYLOAD"
