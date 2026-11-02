@@ -8,13 +8,17 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 // These tests use the real login Keychain with a unique service name and remove
-// the item afterwards. A session without Keychain access fails them on purpose:
-// the production code must not fall back, so the test must not either.
+// the item afterwards, so they run only with TACET_REAL_KEYCHAIN=1 (CI sets it).
+// A session without Keychain access fails them on purpose: the production code
+// must not fall back, so the test must not either.
 func testSecret(t *testing.T) *Secret {
 	t.Helper()
+	testenv.UseRealKeychain(t)
 	s, err := NewSecret("tacet-test-"+strconv.FormatInt(time.Now().UnixNano(), 36), "user-key")
 	if err != nil {
 		t.Fatal(err)
@@ -65,12 +69,15 @@ func TestSecretsAreIndependentPerServiceAndAccount(t *testing.T) {
 	}
 }
 
-func TestSecretRejectsBadNamesAndEmptyValues(t *testing.T) {
+func TestSecretRejectsBadNames(t *testing.T) {
 	for _, bad := range [][2]string{{"", "a"}, {"a", ""}, {"a/b", "c"}, {"a", "b\\c"}, {"a b", "c"}, {"a", "b:c"}, {"a\x00", "c"}} {
 		if _, err := NewSecret(bad[0], bad[1]); !errors.Is(err, ErrSecretUnavailable) {
 			t.Fatalf("%q accepted", bad)
 		}
 	}
+}
+
+func TestSecretRejectsAnEmptyValue(t *testing.T) {
 	if err := testSecret(t).Save(nil); !errors.Is(err, ErrSecretUnavailable) {
 		t.Fatalf("empty value: %v", err)
 	}

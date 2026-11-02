@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/jorben/tacet/internal/testenv"
 )
 
 func TestKeychainBackedManagerSurvivesReopenAndRefusesSilentRecreate(t *testing.T) {
+	testenv.UseRealKeychain(t)
 	store, err := NewOSUserKeyStore("tacet-test-"+strconv.FormatInt(time.Now().UnixNano(), 36), "user-key")
 	if err != nil {
 		t.Fatal(err)
