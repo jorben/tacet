@@ -79,7 +79,7 @@ func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef, id string
 	if err != nil {
 		return nil, nil, err
 	}
-	if err = e.takeModelSlot(ctx, true); err != nil {
+	if err = e.takeModelSlot(ctx); err != nil {
 		return nil, nil, err
 	}
 	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)

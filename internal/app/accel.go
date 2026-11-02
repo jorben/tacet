@@ -249,30 +249,21 @@ func launchCode(err error) string {
 	return "PLUGIN_START_FAILED"
 }
 
-// stopProbe ends the start-up probe for good (it may be called again) and reports whether the probe held the model
-// slot when it was called. No model is shown as being detected afterwards.
-func (e *Engine) stopProbe() (held bool) {
+// stopProbe ends the start-up probe for good (it may be called again). No model is shown as being detected
+// afterwards.
+func (e *Engine) stopProbe() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.probeStop != nil {
 		e.probeStop()
 	}
 	clear(e.probing)
-	return e.probeHolds
 }
 
-// takeModelSlot takes the one model slot for real work, ending the start-up probe first. wait: queue for the slot
-// instead of refusing; a slot the probe held is always waited for, it is released at once.
-func (e *Engine) takeModelSlot(ctx context.Context, wait bool) error {
-	held := e.stopProbe()
-	select {
-	case e.modelSem <- struct{}{}:
-		return nil
-	default:
-	}
-	if !wait && !held {
-		return ErrModelBusy
-	}
+// takeModelSlot takes the one model slot for real work, ending the start-up probe first, and queues for it: a slot
+// the probe held is released at once.
+func (e *Engine) takeModelSlot(ctx context.Context) error {
+	e.stopProbe()
 	select {
 	case e.modelSem <- struct{}{}:
 		return nil

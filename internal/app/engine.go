@@ -168,7 +168,7 @@ type Engine struct {
 	probing       map[string]bool   // models whose device the start-up probe has yet to confirm
 	probeFailed   map[string]string // model id -> reason code of the probe's last failure to confirm it
 	probeStop     context.CancelFunc
-	probeHolds    bool          // the probe holds modelSem right now; probeStop cancels the whole probe
+	probeHolds    bool          // the probe holds modelSem right now (observed by tests); probeStop cancels the whole probe
 	probeDone     chan struct{} // closed when the start-up probe has ended; nil if none ran (set before Open returns, read by Close: that order guards it)
 	cancel        context.CancelFunc
 	done          chan struct{}

@@ -568,10 +568,10 @@ func (e *Engine) prepareInstalled(ctx context.Context, dir string, entry models.
 			if s.GPUAcceleration && deviceOf(m.backend) == "gpu" {
 				backend = "auto"
 			}
-			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath, "--backend", backend, "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout, true)
+			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath, "--backend", backend, "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout)
 		}
 		if v := m.accel; v != nil && v.entry.Key() == entry.Key() {
-			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout, true)
+			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout)
 		}
 	}
 	return ErrModelUnknown
@@ -579,9 +579,9 @@ func (e *Engine) prepareInstalled(ctx context.Context, dir string, entry models.
 
 var trialSeq atomic.Uint64
 
-// trial loads a build of m with args and runs its sample. wait: queue for the model slot instead of refusing.
-func (e *Engine) trial(ctx context.Context, m *modelInfo, args []string, timeout time.Duration, wait bool) error {
-	if err := e.takeModelSlot(ctx, wait); err != nil {
+// trial loads a build of m with args and runs its sample, queueing for the model slot.
+func (e *Engine) trial(ctx context.Context, m *modelInfo, args []string, timeout time.Duration) error {
+	if err := e.takeModelSlot(ctx); err != nil {
 		return err
 	}
 	defer func() { <-e.modelSem }()
