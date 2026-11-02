@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -386,5 +387,26 @@ func TestADeviceProbeWithoutAProviderSaysSo(t *testing.T) {
 	eventually(t, "ended", func() bool { return probeEnded(e) })
 	if rt := modelState(t, e, probeModel); rt.Device != "auto" || rt.Detecting || rt.DeviceCode != "PLUGIN_NO_BACKEND" {
 		t.Fatalf("device %q detecting %v code %q, want auto, not detecting, PLUGIN_NO_BACKEND", rt.Device, rt.Detecting, rt.DeviceCode)
+	}
+}
+
+// A trial run (preparing a download) that needs the model while the probe's worker is still loading does not wait
+// for it either: the probe gives the slot up and ends, and the trial starts its own worker.
+func TestATrialDoesNotWaitForTheDeviceProbe(t *testing.T) {
+	e, args, _ := probeEngine(t, workerWaitsFirst, true)
+	probeIsLoading(t, e, args)
+	m := e.modelByID(probeModel)
+	// the probe's worker waits for release, which is never written: the trial gets the slot only if the probe yields.
+	// The fake worker has no model to run the sample with, so the trial itself fails, after its worker answered.
+	err := e.trial(context.Background(), m, []string{"--model-dir", m.opt.Dir, "--manifest", m.opt.ManifestPath, "--backend", "auto", "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout)
+	if !errors.Is(err, ErrTrial) {
+		t.Fatalf("trial: %v, want its sample run to fail on the fake worker", err)
+	}
+	eventually(t, "ended", func() bool { return probeEnded(e) })
+	if rt := modelState(t, e, probeModel); rt.Device != "gpu" || rt.Detecting {
+		t.Fatalf("device %q detecting %v, want gpu confirmed by the trial", rt.Device, rt.Detecting)
+	}
+	if s := starts(t, args); len(s) != 2 {
+		t.Fatalf("workers started: %q", s)
 	}
 }
