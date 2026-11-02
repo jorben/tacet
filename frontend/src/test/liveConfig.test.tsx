@@ -496,11 +496,42 @@ describe("方案与规则集的存储同步", () => {
       expect(failed).toBe(true);
       expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
       Object.assign(fake.modelList[0]!, { detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
-      await act(() => vi.advanceTimersByTimeAsync(2000));
+      await act(() => vi.advanceTimersByTimeAsync(4000)); // after a failed read the wait doubles
       expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
       const settled = modelReads();
       await act(() => vi.advanceTimersByTimeAsync(10000));
       expect(modelReads()).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检测期间读取一直失败：重试间隔逐次加倍，最长 30 秒；恢复后回到正常间隔", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failing = true;
+      fake.models = async () => {
+        if (!failing) return read();
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      const n = modelReads();
+      // 2s, then 4s, 8s, 16s, 30s, 30s after each failure
+      for (const wait of [2000, 4000, 8000, 16000, 30000, 30000]) {
+        await act(() => vi.advanceTimersByTimeAsync(wait - 1));
+        const before = modelReads();
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expect(modelReads()).toBe(before + 1);
+      }
+      expect(modelReads()).toBe(n + 6);
+      failing = false;
+      await act(() => vi.advanceTimersByTimeAsync(30000));
+      const ok = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(2000)); // a good read resets the wait
+      expect(modelReads()).toBe(ok + 1);
     } finally {
       vi.useRealTimers();
     }

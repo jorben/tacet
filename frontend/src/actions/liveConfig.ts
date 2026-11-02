@@ -24,6 +24,8 @@ let known = new WeakSet<object>();
 const markKnown = (o: object | undefined): void => { if (o) known.add(o); };
 let models: Model[] = [];
 let modelTimer: ReturnType<typeof setTimeout> | undefined;
+/** Reads of the model states that failed in a row; each one doubles the wait before the next. */
+let failedReads = 0;
 let loaded = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let running: Promise<void> | null = null;
@@ -115,6 +117,8 @@ export async function loadCategories(): Promise<void> {
 const MODEL_POLL_MS = 700;
 /** The start-up device probe takes a model load: when it is all there is to wait for, ask less often. */
 const PROBE_POLL_MS = 2000;
+/** The longest wait between reads while they keep failing. */
+const MODEL_RETRY_MAX_MS = 30000;
 const modelBusy = (st: string): boolean => st === "downloading" || st === "verifying" || st === "loading";
 
 /** Reads the download state of every model; while one is busy, again shortly. A model that became ready says so. */
@@ -123,9 +127,11 @@ export async function refreshModels(): Promise<void> {
   if (!e) return;
   const rts = await e.models().catch(() => null);
   if (!rts) {
-    watchModels(); // a failed read is asked again while something is still under way
+    failedReads++;
+    watchModels(); // a failed read is asked again, less and less often, while something is still under way
     return;
   }
+  failedReads = 0;
   const became: string[] = [];
   store.update((d) => {
     d.models.forEach((m) => {
@@ -150,11 +156,13 @@ export function watchModels(): void {
   const ms = getState().models;
   const busy = ms.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""));
   if (!busy && !ms.some((m) => !!m.runtime?.detecting)) return;
-  modelTimer = setTimeout(() => void refreshModels(), busy ? MODEL_POLL_MS : PROBE_POLL_MS);
+  const ms0 = busy ? MODEL_POLL_MS : PROBE_POLL_MS;
+  modelTimer = setTimeout(() => void refreshModels(), Math.min(ms0 * 2 ** failedReads, MODEL_RETRY_MAX_MS));
 }
 
 export function stopConfigSync(): void {
   clearTimeout(modelTimer);
+  failedReads = 0;
   unsubscribe?.();
   unsubscribe = null;
   clearTimeout(timer);
