@@ -41,3 +41,33 @@
   - 加 `-race`、上新平台或换 runner 时，先找出离上限最近的测试，在本机 `-race` 下看各测试的耗时。
   - 其他测试里还有约 80 处 `context.WithTimeout(context.Background(), …)`；在本机 `-race` 下，它们离各自的上限都还很远，所以这次没有改。
 - 出现：1 次（2026-11-02）
+
+## CI 耗时
+
+**优化 CI 耗时之前，先拿到 job 里每一段的实测时间，再给出预计；不要只按最慢的那一段推算。**
+- PR #3 的第一轮优化（a40d925）把 `internal/app` 拆成 3 个进程并行，把前端步骤只放在 Windows 上跑。动手前预计 macOS go job 从约 10 分钟降到 5–6 分钟，实测只从约 604s 降到 497s（运行 41390041951 → 41399127060）。
+- 预计偏差的原因：只估了分片那一段，漏了它前面串行的两段。按日志时间戳，测试步骤实际是三段依次执行：其他 40 个包带 `-race` 约 110s（大部分是编译），编译 `internal/app` 的测试二进制约 37s，3 个分片 288s。
+- 规则：
+  - 先用 `gh api repos/<owner>/<repo>/actions/runs/<id>/jobs` 拿每个步骤的耗时，再用步骤日志的时间戳把耗时最长的步骤拆成串行的几段；
+  - 给出的收益写成“推算”，改完以实际 CI 耗时为准，和推算不符就照实说。
+- 出现：1 次（2026-11-02）
+
+**`-race` 慢，先做 CPU 剖析看时间花在谁身上，再决定怎么拆分或并行。**
+- 第一轮优化后，3 个分片要等关机测试跑完，它在本机 `-race` 下要 125s，不带 `-race` 只要 16s。在 `-race` 下用 `-cpuprofile` 剖析：约三分之一的样本落在 `go-sqlite3-wasm`（`_sqlite3VdbeExec` 累计 37s / 114s）。这个依赖是从 WebAssembly 转译成 Go 的 SQLite 解释器，race detector 给它的每次内存读写都插了桩。
+- 58bcf97 用 `-gcflags=github.com/ncruces/go-sqlite3-wasm/v6=-race=false` 让这个包不插桩：关机测试 125s → 43s，`internal/app` 3 个分片 143s → 61s，其他包 38s，全部通过。
+- 去掉插桩之前，先验证 race 覆盖还在：在 `internal/app` 里临时放一个故意制造的竞争，用同样的参数跑，仍然报 `WARNING: DATA RACE` 和 FAIL，验证完删掉。代价是第三方 SQLite 内部的竞争不再检查；tacet 自己的代码、驱动和 `database/sql` 仍然插桩。
+- 规则：
+  - 拆分、并行只能把串行时间摊开，先剖析，找到时间是不是集中在某个依赖上；
+  - 只对第三方、且不经 tacet 代码共享状态的包关闭插桩，并用一个故意制造的竞争证明 tacet 的代码仍被检查；
+  - CI 和 `Taskfile.yml` 的 `test:race` 用同一组参数，本机和 CI 的结论才能对得上。
+- 出现：1 次（2026-11-02）
+
+**改了构建参数（`-race`、`-tags`、`-gcflags`），要确认 CI 的编译缓存会被重新保存。**
+- `actions/setup-go` 的缓存 key 原来只按 `go.sum` 计算。这个 key 在 CI 加 `-race` 之前就保存过；之后每次都命中主 key，而命中主 key 时不会再保存（日志：`Cache hit occurred on the primary key …, not saving cache`），所以 `-race` 的编译产物从来没进缓存，每次都从头编。
+- 58bcf97 把 `ci.yml` 加进 `cache-dependency-path`。新 key 第一次运行缓存未命中，macOS go job 429s（`go vet` 77s、测试 294s）；同一提交重跑、缓存命中后是 230s（测试 192s）（运行 41411160316 及其重跑）。缓存这一项就省了约 200s，比本机冷热编译的差距（`internal/app` 的 race 二进制 12s 对 2s）大得多。
+- 规则：
+  - 改了编译参数，看 `Post Run actions/setup-go` 的日志：写着 `not saving` 而参数又变了，说明缓存里没有新参数的产物；
+  - 缓存 key 要覆盖决定编译产物的文件（参数写在 `ci.yml` 里，就把它放进 key）；
+  - 评估优化效果时分开报缓存命中和未命中两种耗时：`ci.yml` 每改一次，以及合并后 master 的第一次运行，都是冷缓存（PR 分支保存的缓存，master 用不到）。
+- 出现：1 次（2026-11-02）
+
