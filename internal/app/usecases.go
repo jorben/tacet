@@ -233,7 +233,9 @@ func (e *Engine) pollIdle(ctx context.Context, batch string, preflightOnly bool)
 			s := m.Position.State
 			switch {
 			case preflightOnly:
-				busy = busy || s == jobs.Preflighting
+				// A file resumed from its inspection is queued to be inspected again from the start: until the
+				// scheduler takes it, it is neither inspecting nor inspected, and a start must not see it as ready.
+				busy = busy || s == jobs.Preflighting || (s == jobs.Queued && m.Position.Cursor == kernel.StagePreflight)
 			case running(s), s == jobs.ReadyToPublish && e.hasGrant(ctx, batch):
 				busy = true
 			case s == jobs.Preflighted && confirmed:

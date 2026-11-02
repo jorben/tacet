@@ -1502,6 +1502,96 @@ func TestAnInterruptedStartIsCarriedOutByResume(t *testing.T) {
 	}
 }
 
+// resumedBeforeInspection imports one text file into a new batch, pauses it while it is being inspected and
+// resumes it, with every inspection dispatched slowly as on a loaded machine: the file is then queued to be
+// inspected again, neither inspecting nor inspected (CI run 41419681662). With interrupt, a start that ended
+// before the inspection comes first, so Resume has a start to carry out.
+func resumedBeforeInspection(t *testing.T, interrupt bool) (*Engine, string) {
+	t.Helper()
+	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
+	e := openEngine(t, ws, &memKey{}, true)
+	t.Cleanup(func() { e.Close() })
+	e.beforeDispatch = func(s kernel.StageKind) {
+		if s == kernel.StagePreflight {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	ctx := t.Context()
+	p := filepath.Join(in, "a.txt")
+	if err := os.WriteFile(p, []byte("nothing to redact here\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if interrupt {
+		gone, stop := context.WithCancel(ctx)
+		stop()
+		if err = e.Start(gone, StartRequest{Batch: st.ID, Authorize: true}); !errors.Is(err, context.Canceled) {
+			t.Fatalf("%v", err)
+		}
+	}
+	if err = e.Pause(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if now, err := e.Status(ctx, st.ID, 10); err != nil || now.Files[0].State != "paused" {
+		t.Fatalf("setup: the file must be paused during its inspection: %+v %v", now, err)
+	}
+	if err = e.Resume(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if now, err := e.Status(ctx, st.ID, 10); err != nil || now.Files[0].State != "queued" {
+		t.Fatalf("setup: the resumed file must wait in the queue to be inspected again: %+v %v", now, err)
+	}
+	return e, st.ID
+}
+
+// waitCompleted waits for the batch's only file to be delivered.
+func waitCompleted(t *testing.T, e *Engine, batch string) BatchStatus {
+	t.Helper()
+	now, err := e.Wait(t.Context(), batch)
+	for i := 0; err == nil && now.Files[0].State != "completed" && i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+		now, err = e.Wait(t.Context(), batch)
+	}
+	if err != nil || now.Files[0].State != "completed" {
+		t.Fatalf("%+v %v", now, err)
+	}
+	return now
+}
+
+// The start Resume carries out waits for the file it resumed to be inspected again; it does not find the
+// file not ready, fail, and drop the request with the authorization that was given.
+func TestAnInterruptedStartIsCarriedOutByResumeWhileTheFileWaitsToBeInspectedAgain(t *testing.T) {
+	e, batch := resumedBeforeInspection(t, true)
+	now, err := e.Wait(t.Context(), batch)
+	if err != nil || !now.Started || !now.Authorized {
+		t.Fatalf("the start Resume carries out was lost: %+v %v", now, err)
+	}
+	waitCompleted(t, e, batch)
+}
+
+// A start right after a resume waits for the resumed file to be inspected again instead of refusing it.
+func TestAStartRightAfterAResumeWaitsForTheFileToBeInspectedAgain(t *testing.T) {
+	e, batch := resumedBeforeInspection(t, false)
+	if err := e.Start(t.Context(), StartRequest{Batch: batch, Authorize: true}); err != nil {
+		t.Fatalf("a start right after a resume: %v", err)
+	}
+	if now := waitCompleted(t, e, batch); !now.Started || !now.Authorized {
+		t.Fatalf("%+v", now)
+	}
+}
+
+// Waiting for the inspection of a draft batch does not end while a resumed file waits to be inspected again.
+func TestPreflightAfterAResumeWaitsForTheFileToBeInspectedAgain(t *testing.T) {
+	e, batch := resumedBeforeInspection(t, false)
+	now, err := e.Preflight(t.Context(), batch)
+	if err != nil || now.Files[0].State != "preflighted" {
+		t.Fatalf("the inspection is not over yet: %+v %v", now, err)
+	}
+}
+
 // A file inspected after its batch started, and paused before it joined the batch, is moved on by Resume:
 // nothing else would run for a file that is waiting at "inspected".
 func TestResumeJoinsAnInspectedFileToItsStartedBatch(t *testing.T) {

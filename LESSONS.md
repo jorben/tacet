@@ -71,3 +71,14 @@
   - 评估优化效果时分开报缓存命中和未命中两种耗时：`ci.yml` 每改一次，以及合并后 master 的第一次运行，都是冷缓存（PR 分支保存的缓存，master 用不到）。
 - 出现：1 次（2026-11-02）
 
+## 并发与时序
+
+**等待“某一步做完”的判断，要列出被等的对象在途中可能处在的每个状态，包括排队等调度的中间状态；用钩子推迟调度来测，不靠反复重跑。**
+- PR #3 合并后，master 的 macOS go job 变红（运行 41419681662）：`TestAnInterruptedStartIsCarriedOutByResume` 卡满测试自己的 2 分钟轮询上限（120.53s）后失败，最终状态是 `Started:false Authorized:false`。同一份代码在 PR 上的 5 轮 CI 都是绿的，本机 `-race -count=20` 也全部通过（每次约 1.1s）。
+- 原因：暂停一个正在检查的文件再恢复，它先回到 `queued`（cursor=preflight），要等调度器 `BeginStage` 才重新变成 `preflighting`。`pollIdle(preflightOnly)` 只把 `preflighting` 当作检查没完，Resume 带起来的 Start 落在这个窗口里去 `ConfirmBatch`，得到 `JOB_TRANSITION_INVALID`；`finishPendingStart` 随即清掉请求，用户给的开始和授权被静默丢弃。CI 上 3 个分片占满 3 个核，调度慢了一点就落进了窗口。同一个窗口还会让“恢复后马上开始”报错，让 `Preflight()` 在文件还在排队时就返回。
+- 复现：在 `Engine.dispatch` 开头注入 300ms 延迟，同一行（`engine_e2e_test.go:1497`）复现了同样的状态，并打印出后台 Start 的错误 `JOB_TRANSITION_INVALID`。第一次把延迟加在检查阶段里面，复现不了：窗口在恢复之后、调度之前，不在检查过程中。
+- 修复：fix/resume-carries-start。`pollIdle` 把 cursor 是 preflight 的 `queued` 也算作检查没完；新增测试钩子 `beforeDispatch`，3 个测试把检查的派发推迟 500ms，在旧代码上都失败（`the start Resume carries out was lost`、`JOB_TRANSITION_INVALID`、`State:queued`），修复后 `-race -count=20` 全部通过。
+- 规则：
+  - 写“等到 X 做完”的判断时，从状态机里找出 X 在途中会经过的所有状态（这里漏了 cursor 指向该阶段的 `queued`），不要只认“正在做”的那一个；
+  - 涉及异步调度的测试，用钩子推迟调度，确定性地打开窗口；本机反复重跑都通过，不能说明没有竞争。
+- 出现：1 次（2026-11-02）
