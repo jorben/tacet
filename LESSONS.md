@@ -27,3 +27,17 @@
 - 规则：测试需要的环境由 CI 装好，再用开关（`TACET_REQUIRE_PLUGINS=1`）把“缺少依赖”变成失败。判断 CI 是否真的跑过，要看耗时和跳过数，不能只看颜色；某个平台上跑得快，先确认测试在那个平台上是否被编译（构建标签），再下“跳过了”的结论。CI 结果不能来自测试缓存（`-count=1`）。
 - 修复：ci/verification-gates（`testenv.Python`、`testenv.Missing`、CI 安装 uv 环境）。
 - 出现：1 次（2026-11-02）
+
+**测试不用墙钟时间给整个流程设上限；改变运行方式时，重新检查依赖时长的上限。**
+- PR #3 加上 `-race` 之后，只改了文档的 e8a22d8 在 CI 上变红了（运行 41391573277），而同样代码的上一轮 bded2e0 是绿的：
+  - macOS：`TestASystemShutdownStopsAtOnceAndTheBatchResumesAfterwards` 用一个 4 分钟的 context 覆盖导入、处理、关机、恢复、再处理的全过程。本机 `-race` 下要 122s，CI 上跑了 241s，超过了上限。
+  - Windows：`internal/jobs` 的 `fixtureDB` 用一个 10 秒的 context 覆盖整个测试的所有提交。那次 runner 整体偏慢，`internal/models` 从 26–32s 变成 80s，`internal/policy` 从 8–10s 变成 50s，结果 3 个测试报 `context deadline exceeded`。
+- 复现方法是注入延迟，不是反复重跑：
+  - 关机测试：旧代码的上限压到 6s，在同一行（`engine_e2e_test.go:1957`）复现了同样的错误；
+  - `jobs`：上限设为 100ms，每次提交前 sleep 5ms，在 `checkpoint_test.go:194` 和 `invalidate_test.go:70` 复现了 CI 上的报错。
+  - 改成 `t.Context()` 以后，两者都通过：关机测试在本机 `-race` 下用 122s，`jobs` 在注入同样的延迟后通过。
+- 规则：
+  - 防卡死交给 `go test -timeout`，测试只给需求本身规定的时限设断言，例如“关机在 4 秒内完成”；
+  - 加 `-race`、上新平台或换 runner 时，先找出离上限最近的测试，在本机 `-race` 下看各测试的耗时。
+  - 其他测试里还有约 80 处 `context.WithTimeout(context.Background(), …)`；在本机 `-race` 下，它们离各自的上限都还很远，所以这次没有改。
+- 出现：1 次（2026-11-02）
