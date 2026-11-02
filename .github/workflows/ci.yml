@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
 
+# A pull request's run is replaced by its next push; a run on master always
+# finishes, so every master commit has a result of its own.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 permissions:
   contents: read
 
@@ -16,6 +22,14 @@ jobs:
       matrix:
         os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # The cross-language tests fail instead of skipping when python/.venv is
+      # missing (internal/testenv). Without it they all skipped here, and a
+      # green run said nothing about the plugins (LESSONS.md).
+      TACET_REQUIRE_PLUGINS: '1'
+      # The macOS Keychain tests are opt-in on a person's machine; a runner's
+      # login Keychain is thrown away with it.
+      TACET_REAL_KEYCHAIN: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,6 +40,10 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - name: Install the plugin environment
+        working-directory: python
+        run: uv sync --locked --all-packages
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
       - name: Install frontend dependencies
@@ -36,9 +54,26 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+      # macOS only: Windows checks the files out with CRLF line endings
+      - name: Gofmt
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bad=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$bad" ]; then echo "not gofmt'd:"; echo "$bad"; exit 1; fi
       - run: go vet ./...
+      # -count=1: a cached result is not a run of this commit. macOS runs the
+      # suite under the race detector (internal/app takes about 4 minutes there
+      # on an M-series machine), Windows without it.
       - name: Test (includes module dependency rules)
-        run: go test ./...
+        shell: bash
+        run: |
+          race=""
+          if [ "$RUNNER_OS" = macOS ]; then race=-race; fi
+          go test $race -count=1 -timeout 30m ./...
       - name: Backend requirement trace
         run: python tools/backend_trace.py --check
 

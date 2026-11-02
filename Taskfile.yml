@@ -62,16 +62,49 @@ tasks:
       - mkdir -p frontend/dist
       - echo '<!doctype html><title>Tacet</title>' > frontend/dist/index.html
 
-  test:
-    summary: Runs the Go tests, including the module dependency rules (internal/archtest)
-    deps: [ensure:dist]
+  python:sync:
+    summary: Installs the Python SDK and built-in plugins into python/.venv, which the cross-language Go tests start
+    internal: true
+    dir: python
     cmds:
-      - go test ./...
+      - uv sync --locked --all-packages
+
+  test:
+    summary: Runs the Go tests, including the module dependency rules (internal/archtest); a missing python/.venv fails them
+    deps: [ensure:dist, python:sync]
+    vars:
+      RACE: '{{.RACE | default ""}}'
+    env:
+      TACET_REQUIRE_PLUGINS: '1'
+    cmds:
+      - go test {{.RACE}} -count=1 -timeout 30m ./...
+
+  test:race:
+    summary: Runs the Go tests under the race detector, as CI does on macOS
+    cmds:
+      - task: test
+        vars:
+          RACE: -race
+
+  test:frontend:
+    summary: Runs the frontend unit tests (vitest)
+    cmds:
+      - task: common:frontend:run
+        vars:
+          SCRIPT: test
+
+  fmt:check:
+    summary: Fails when a Go file is not gofmt'd
+    cmds:
+      - |
+        bad=$(gofmt -l $(git ls-files '*.go'))
+        if [ -n "$bad" ]; then echo "not gofmt'd:"; echo "$bad"; exit 1; fi
 
   lint:
-    summary: Runs go vet and the frontend type check
+    summary: Runs gofmt, go vet and the frontend type check
     deps: [ensure:dist]
     cmds:
+      - task: fmt:check
       - go vet ./...
       - task: common:frontend:run
         vars:
@@ -89,9 +122,12 @@ tasks:
       - python3 tools/backend_trace.py --check
 
   check:
-    summary: Runs every check that CI runs
+    summary: Runs every check that CI runs (the Go suite under -race on macOS, as CI does)
     cmds:
       - task: check:backend-trace
       - task: lint
+      - task: test:frontend
       - task: test
+        vars:
+          RACE: '{{if eq OS "darwin"}}-race{{end}}'
       - task: test:python
