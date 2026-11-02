@@ -80,11 +80,11 @@ tasks:
       - go test {{.RACE}} -count=1 -timeout 30m ./...
 
   test:race:
-    summary: Runs the Go tests under the race detector, as CI does on macOS
+    summary: Runs the Go tests under the race detector, as CI does on macOS (SQLite's translated interpreter left uninstrumented, see ci.yml)
     cmds:
       - task: test
         vars:
-          RACE: -race
+          RACE: -race -gcflags=github.com/ncruces/go-sqlite3-wasm/v6=-race=false
 
   test:frontend:
     summary: Runs the frontend unit tests (vitest)
@@ -129,5 +129,5 @@ tasks:
       - task: test:frontend
       - task: test
         vars:
-          RACE: '{{if eq OS "darwin"}}-race{{end}}'
+          RACE: '{{if eq OS "darwin"}}-race -gcflags=github.com/ncruces/go-sqlite3-wasm/v6=-race=false{{end}}'
       - task: test:python

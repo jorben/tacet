@@ -35,6 +35,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # The build cache is saved only when its key is new. Keyed on go.sum
+          # alone, it was saved before this workflow ran -race and never again,
+          # so every run compiled the race build from scratch. The flags live
+          # here, so this file is part of the key.
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/ci.yml
       - uses: astral-sh/setup-uv@v6
       - name: Install the plugin environment
         working-directory: python
@@ -80,18 +87,25 @@ jobs:
       - run: go vet ./...
       # -count=1: a cached result is not a run of this commit. macOS runs the
       # suite under the race detector, Windows without it.
+      #
+      # The race detector leaves out SQLite (go-sqlite3-wasm, SQLite translated
+      # from WebAssembly to Go): instrumenting every access of its interpreter
+      # made the shutdown test take 125s instead of 43s locally. Tacet's own
+      # code, ncruces' driver and database/sql stay instrumented; a race planted
+      # in internal/app is still reported. Taskfile's test:race does the same.
       - name: Test (includes module dependency rules)
         shell: bash
+        env:
+          RACE: -race -gcflags=github.com/ncruces/go-sqlite3-wasm/v6=-race=false
         run: |
           if [ "$RUNNER_OS" != macOS ]; then
             go test -count=1 -timeout 30m ./...
             exit 0
           fi
-          go test -race -count=1 -timeout 30m $(go list ./... | grep -v '/internal/app$')
+          go test $RACE -count=1 -timeout 30m $(go list ./... | grep -v '/internal/app$')
           # internal/app's tests run one at a time (t.Setenv rules out
-          # t.Parallel), 417s under -race here; split them over one process
-          # per core instead (143s against 229s on one core locally).
-          go test -race -c -o "$RUNNER_TEMP/app.race" ./internal/app
+          # t.Parallel); split them over one process per core instead.
+          go test $RACE -c -o "$RUNNER_TEMP/app.race" ./internal/app
           build/race-shards.sh internal/app "$RUNNER_TEMP/app.race" "$(getconf _NPROCESSORS_ONLN)" -test.timeout=30m
       - name: Backend requirement trace
         run: python tools/backend_trace.py --check
