@@ -1,0 +1,38 @@
+name: Notify Grok review
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, review_requested]
+permissions: {}
+concurrency:
+  group: grok-review-${{ github.event.pull_request.number }}-${{ github.event.action }}
+  cancel-in-progress: false
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST event
+        env:
+          URL: ${{ secrets.GROK_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROK_WEBHOOK_KEY }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SENDER: ${{ github.event.sender.login }}
+          REVIEWER: ${{ github.event.requested_reviewer.login }}
+          DELIVERY_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          payload=$(jq -n \
+            --arg repo "$REPO" --argjson pr "$PR" --arg action "$ACTION" \
+            --arg head_sha "$HEAD_SHA" --arg sender "$SENDER" \
+            --arg requested_reviewer "$REVIEWER" --arg delivery_id "$DELIVERY_ID" \
+            '{repo:$repo, pr:$pr, action:$action, head_sha:$head_sha, sender:$sender, requested_reviewer:$requested_reviewer, delivery_id:$delivery_id}')
+          # 最多重试 3 次（共 4 次尝试），间隔 5 秒；每次最长 20 秒
+          curl -fsS -X POST "$URL" \
+            --retry 3 --retry-delay 5 --retry-all-errors \
+            --connect-timeout 10 --max-time 20 \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $KEY" \
+            -H "X-Delivery-Id: $DELIVERY_ID" \
+            -d "$payload"
