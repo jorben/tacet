@@ -21,27 +21,32 @@ const (
 	workerWaits      = "wait"  // every start waits until release exists
 	workerWaitsFirst = "first" // only the first start waits; later ones answer at once
 	workerFails      = "fail"  // it exits before the handshake
+	workerNoBackend  = "none"  // it answers at once without naming the provider it runs on
 )
 
 // fakeModelPython is an interpreter for the engine: the AstrLink worker it starts appends its arguments to args,
 // then (as mode says) waits until release exists and answers the handshake as the real plugin does on Core ML,
-// without loading a model, or exits. Every other module runs on the real interpreter.
+// without loading a model, or exits, or answers without naming a provider. Every other module runs on the real interpreter.
 func fakeModelPython(t *testing.T, py, mode string) (python, args, release string) {
 	t.Helper()
 	dir := t.TempDir()
 	python, args, release = filepath.Join(dir, "python"), filepath.Join(dir, "args"), filepath.Join(dir, "release")
+	caps := "{'backend.CoreMLExecutionProvider': True}"
+	if mode == workerNoBackend {
+		caps = "{}"
+	}
 	worker := "import sys\n" +
 		"from tacet_plugin_sdk.runtime import Worker\n" +
 		"def run(task, params):\n    raise RuntimeError('no model')\n" +
 		"sys.exit(Worker(sys.stdin.buffer, sys.stdout.buffer, 'tacet.astrlink', '0.1.0', ['detect'], {'detect.run': run}, " +
-		"capabilities={'backend.CoreMLExecutionProvider': True}).run())\n"
+		"capabilities=" + caps + ").run())\n"
 	script := "#!/bin/sh\n" +
 		"if [ \"$3\" = tacet_detect_astrlink ]; then\n" +
 		"  shift 3\n" +
 		"  echo \"$@\" >> '" + args + "'\n" +
 		"  mode='" + mode + "'\n" +
 		"  if [ \"$mode\" = " + workerFails + " ]; then exit 1; fi\n" +
-		"  if [ \"$mode\" = " + workerWaits + " ] || [ \"$(wc -l < '" + args + "' | tr -d ' ')\" -le 1 ]; then\n" +
+		"  if [ \"$mode\" = " + workerWaits + " ] || { [ \"$mode\" = " + workerWaitsFirst + " ] && [ \"$(wc -l < '" + args + "' | tr -d ' ')\" -le 1 ]; }; then\n" +
 		"    while [ ! -e '" + release + "' ]; do sleep 0.05; done\n" +
 		"  fi\n" +
 		"  exec '" + py + "' -I -c \"" + worker + "\"\n" +
@@ -372,5 +377,14 @@ func TestTurningGPUOffEndsAWaitingDeviceProbe(t *testing.T) {
 	}
 	if s := starts(t, args); len(s) != 0 {
 		t.Fatalf("workers started: %q", s)
+	}
+}
+
+// A worker that answers without naming its provider leaves the device unconfirmed with a reason, not silently.
+func TestADeviceProbeWithoutAProviderSaysSo(t *testing.T) {
+	e, _, _ := probeEngine(t, workerNoBackend, true)
+	eventually(t, "ended", func() bool { return probeEnded(e) })
+	if rt := modelState(t, e, probeModel); rt.Device != "auto" || rt.Detecting || rt.DeviceCode != "PLUGIN_NO_BACKEND" {
+		t.Fatalf("device %q detecting %v code %q, want auto, not detecting, PLUGIN_NO_BACKEND", rt.Device, rt.Detecting, rt.DeviceCode)
 	}
 }

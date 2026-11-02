@@ -241,18 +241,24 @@ func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 		}
 		return
 	}
-	e.mu.Lock()
-	if backend := backendOf(w.Session); backend != "" {
-		if e.modelBackends == nil {
-			e.modelBackends = map[string]string{}
-		}
-		e.modelBackends[m.digest+"/auto"] = backend
+	defer w.Terminate(time.Second)
+	backend := backendOf(w.Session)
+	if backend == "" { // it answered without naming its provider: nothing to confirm, and the card says why
+		settled(errNoBackend.Error())
+		return
 	}
+	e.mu.Lock()
+	if e.modelBackends == nil {
+		e.modelBackends = map[string]string{}
+	}
+	e.modelBackends[m.digest+"/auto"] = backend
 	delete(e.probing, m.id)
 	delete(e.probeFailed, m.id)
 	e.mu.Unlock()
-	w.Terminate(time.Second)
 }
+
+// errNoBackend: a probed worker started but did not report the provider it runs on.
+var errNoBackend = errors.New("PLUGIN_NO_BACKEND")
 
 // launchCode is the reason code of a worker that did not start.
 func launchCode(err error) string {
