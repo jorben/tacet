@@ -537,6 +537,47 @@ describe("方案与规则集的存储同步", () => {
     }
   });
 
+  it("读取失败后不再需要刷新：下次开始刷新（下载 GPU 版本）时第一次读取又失败，重试间隔从正常间隔算起", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true, accel: { ...ACCEL } })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failing = true;
+      fake.models = async () => {
+        if (!failing) return read();
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      const n = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(2000 + 4000 + 8000)); // three failed reads: the next would wait 16s
+      expect(modelReads()).toBe(n + 3);
+      // the detection ended, and the settings were read again with the model states: nothing left to wait for
+      failing = false;
+      Object.assign(fake.modelList[0]!, { detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      await act(() => loadConfig());
+      expect(getState().models[0]!.runtime).toMatchObject({ detecting: false });
+      const stopped = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(60000));
+      expect(modelReads()).toBe(stopped);
+      // a download starts the polling again, and its first read fails too
+      failing = true;
+      await act(async () => {
+        downloadAccel("astrlink-guard-int8");
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(getState().models[0]!.runtime!.accel!.status).toBe("downloading");
+      expect(modelReads()).toBe(stopped + 1);
+      // one failure: 700ms doubled once, not the 30s the earlier failures had reached
+      await act(() => vi.advanceTimersByTimeAsync(1399));
+      expect(modelReads()).toBe(stopped + 1);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(modelReads()).toBe(stopped + 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("GPU 版本校验未通过：重新下载前先丢弃残留；试运行失败时重新准备", async () => {
     fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL, state: "error", code: "MODEL_VERIFY_FAILED" } })];
     await loadConfig();

@@ -155,7 +155,10 @@ export function watchModels(): void {
   if (!loaded) return;
   const ms = getState().models;
   const busy = ms.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""));
-  if (!busy && !ms.some((m) => !!m.runtime?.detecting)) return;
+  if (!busy && !ms.some((m) => !!m.runtime?.detecting)) {
+    failedReads = 0; // the next round of polling starts at the normal interval, not where this one's failures left it
+    return;
+  }
   const ms0 = busy ? MODEL_POLL_MS : PROBE_POLL_MS;
   modelTimer = setTimeout(() => void refreshModels(), Math.min(ms0 * 2 ** failedReads, MODEL_RETRY_MAX_MS));
 }
