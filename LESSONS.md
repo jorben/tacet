@@ -19,7 +19,8 @@
 - 出现：1 次（2026-11-02）
 
 **CI 绿了不代表测试跑过：缺依赖的测试会静默跳过。**
-- CI 的 `go` job 没有安装 `python/.venv`，17 个跨语言测试文件全部 `t.Skip`。在运行 41384722770 的 Windows job 里，`internal/validate` 只用了 0.23s，`internal/cli` 只用了 1.9s；本机实跑分别是 19.1s 和 18.5s。macOS job 里 `internal/validate` 还是 `(cached)`。另外解释器路径写死成 `bin/python`，Windows 上就算装了环境也找不到。
-- 规则：测试需要的环境由 CI 装好，再用开关（`TACET_REQUIRE_PLUGINS=1`）把“缺少依赖”变成失败。判断 CI 是否真的跑过，要看耗时和跳过数，不能只看颜色。CI 结果不能来自测试缓存（`-count=1`）。
+- CI 的 `go` job 没有安装 `python/.venv`，跨语言测试在 macOS 上全部 `t.Skip`。运行 41384722770 的 macOS job 里，`internal/app` 只用了 0.72s，`internal/validate`、`internal/cli`、`internal/detect`、`internal/extract` 都是 `(cached)`。装好环境以后，PR #3 的同一个 job 里 `internal/app` 用了 417s（带 `-race`），本机不带 `-race` 是 79s。
+- 其中 16 个测试文件带 `//go:build darwin`，Windows 上根本不编译，所以 Windows job 的耗时说明不了跳过与否：最初的分析拿它当证据，推断错了（2026-11-02 的研究报告）。没有构建标签的只有 `internal/host/session_test.go`，它写死的 `bin/python` 在 Windows 上找不到。
+- 规则：测试需要的环境由 CI 装好，再用开关（`TACET_REQUIRE_PLUGINS=1`）把“缺少依赖”变成失败。判断 CI 是否真的跑过，要看耗时和跳过数，不能只看颜色；某个平台上跑得快，先确认测试在那个平台上是否被编译（构建标签），再下“跳过了”的结论。CI 结果不能来自测试缓存（`-count=1`）。
 - 修复：ci/verification-gates（`testenv.Python`、`testenv.Missing`、CI 安装 uv 环境）。
 - 出现：1 次（2026-11-02）
