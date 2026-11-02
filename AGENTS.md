@@ -13,6 +13,30 @@
 5. **交叉编译不等于在 Windows 上测过。** `GOOS=windows go vet/build` 不运行测试。Windows 相关的改动以 CI 的 `windows-latest` job 或真实 Windows 机器上的结果为准。
 6. **日志完整保存到红测试被找到为止。** 链式命令用 `set -o pipefail`；把全量日志 `tee` 到文件再 grep，不要直接 `| tail`。
 
+## 维护 LESSONS.md
+
+[LESSONS.md](LESSONS.md) 记录已合并的工作出过什么错，以及能提前抓住它的规则。它靠下面两种方式更新：一种是出事时当场写，另一种是定期复盘时补漏。
+
+### 出事时当场写
+
+下面任一情况出现时，在修复它的**同一个 PR** 里新增一条，或者更新已有的条目：
+
+- 修复的是最近合并的改动，也就是修了又修（包括 revert）；
+- master 上 CI 变红；
+- 发布后、真机上或其他平台上发现了 CI 没抓到的问题；
+- 审查或复盘发现某个验收项没做、证据不成立，或者之前的结论是错的。
+
+如果已有条目讲的是同一条规则，就不新增，在它的“出现”里补上日期并把次数加 1。同一天的多次发现只算一次。“出现”达到 3 个不同的日子，就把规则移进本文件的验收要求，并在 LESSONS.md 的条目里注明已移入。
+
+### 定期复盘
+
+当场写会漏掉没被当成事故的问题，所以要定期补漏：每周一次，以及每次发版前。复盘的进度记在 LESSONS.md 第一行的 `reviewed-through` 标记里。
+
+1. 列出标记之后合并到 master 的提交：`git log --reverse --date=short --format='%h %ad %s' <标记提交>..origin/master`；
+2. 列出这段时间 master 上失败的 CI：`gh run list --branch master --status failure --limit 50`；
+3. 逐条检查：有没有修了又修、revert、只覆盖了报告里那一个案例的修复、提交或 PR 里写的验证与事实不符、master 变红？有就按“出事时当场写”的规则记录；
+4. 把标记改成这次复盘到的最后一个 master 提交，写上日期，和第 3 步的修改放在同一个提交里（`docs(lessons): 📝 Review through <提交>`）。没有新条目也要更新标记，在提交说明里写“无新条目”。
+
 ## 测试约定
 
 - **每个有测试的包都在临时 HOME 里运行。** 包里有 `main_test.go`：`func TestMain(m *testing.M) { testenv.Main(m) }`。它把 HOME、USERPROFILE、XDG_*、APPDATA、LOCALAPPDATA 指到临时目录，并核对 `os.UserHomeDir/UserConfigDir/UserCacheDir` 都落在里面；新包漏写时 `internal/archtest` 会失败。测试不得读写真实的工作区、模型目录或用户配置。
