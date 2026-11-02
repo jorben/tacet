@@ -217,3 +217,17 @@ func TestEncryptedConnectionKeepsTemporaryDataInMemoryAndOverwritesDeletedPages(
 		}
 	}
 }
+
+// A Windows path must not become "file://C:/...": SQLite reads C: as a URI
+// authority and refuses the database (it failed every encrypted open on Windows).
+func TestFileURIHasNoAuthorityAndEscapesTheQuery(t *testing.T) {
+	for in, want := range map[string]string{
+		"/Users/a b/w.db":   "file:/Users/a%20b/w.db",
+		"C:/Users/a/w#?.db": "file:C:/Users/a/w%23%3F.db",
+		"/tmp/100%.db":      "file:/tmp/100%25.db",
+	} {
+		if got := fileURI(in); got != want {
+			t.Errorf("fileURI(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

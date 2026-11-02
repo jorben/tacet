@@ -38,7 +38,7 @@ func OpenEncrypted(ctx context.Context, path string, key []byte) (*sql.DB, error
 		return nil, ErrEncryptedOpen
 	}
 	hexKey := hex.EncodeToString(key)
-	db, err := driver.Open((&url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: "vfs=adiantum"}).String(),
+	db, err := driver.Open(fileURI(path)+"?vfs=adiantum",
 		func(c *sqlite3.Conn) error {
 			// key first, before any page is read; temp objects stay in memory so
 			// no plaintext temporary file is created; deleted pages are overwritten
@@ -55,4 +55,11 @@ func OpenEncrypted(ctx context.Context, path string, key []byte) (*sql.DB, error
 		return nil, ErrEncryptedOpen
 	}
 	return db, nil
+}
+
+// fileURI is the SQLite URI of an absolute path, without an authority:
+// "file:/a/b" on macOS, "file:C:/a/b" on Windows. Building it with url.URL
+// would write "file://C:/a/b", which SQLite refuses as an unknown authority.
+func fileURI(path string) string {
+	return "file:" + (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
 }
