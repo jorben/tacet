@@ -169,7 +169,8 @@ type Engine struct {
 	probeFailed   map[string]string // model id -> reason code of the probe's last failure to confirm it
 	probeStop     context.CancelFunc
 	probeHolds    bool          // the probe holds modelSem right now (observed by tests); probeStop cancels the whole probe
-	probeDone     chan struct{} // closed when the start-up probe has ended; nil if none ran (set before Open returns, read by Close: that order guards it)
+	probeDone     chan struct{} // closed when the start-up probe has ended; nil if none ran (set before Open returns)
+	probeLaunch   sync.Mutex    // held by the probe while it checks it was not stopped and starts its worker
 	cancel        context.CancelFunc
 	done          chan struct{}
 	closed        bool
@@ -190,8 +191,10 @@ type Engine struct {
 	beforeDispatch func(kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step.
 	afterReap func()
-	// beforeProbeLaunch, in tests, runs when the start-up probe has the model slot, before it starts a worker.
+	// beforeProbeLaunch, in tests, runs when the start-up probe has the model slot and is about to start its worker,
+	// before the section that starts it (probeLaunch). inProbeLaunch runs inside that section, after its stop check.
 	beforeProbeLaunch func(ctx context.Context)
+	inProbeLaunch     func(ctx context.Context)
 	// deadline, in tests, replaces stageDeadline.
 	deadline func(kernel.StageKind, int64) time.Duration
 }

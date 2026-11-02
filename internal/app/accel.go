@@ -186,12 +186,13 @@ func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 		}
 		e.probeFailed[m.id] = code
 	}
-	if confirmed() || !e.eligible(m) {
+	if ctx.Err() != nil || confirmed() || !e.eligible(m) {
 		return
 	}
+	// this checks the model's files, which can take a while and is not cancelled; the exit does not wait for it
 	args, timeout, err := e.modelArgs(ctx, m, &snapshot.ModelExecution{ModelID: m.id, Digest: m.digest, Backend: "auto"})
 	if err != nil {
-		if !errors.Is(err, ErrModelNotInstalled) { // not installed: nothing to confirm
+		if ctx.Err() == nil && !errors.Is(err, ErrModelNotInstalled) { // not installed: nothing to confirm
 			settled(err.Error())
 		}
 		return
@@ -210,16 +211,30 @@ func (e *Engine) probe(ctx context.Context, m *modelInfo) {
 		e.mu.Unlock()
 		<-e.modelSem
 	}()
-	if e.beforeProbeLaunch != nil {
-		e.beforeProbeLaunch(ctx)
-	}
 	if ctx.Err() != nil || confirmed() { // stopped, or a run or a trial loaded it while the probe waited
 		return
 	}
 	if s, err := e.SettingsGet(ctx); err != nil || !s.GPUAcceleration { // turned off while the probe waited
 		return
 	}
-	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)
+	if e.beforeProbeLaunch != nil {
+		e.beforeProbeLaunch(ctx)
+	}
+	// the exit waits for this section only (ExitReap): a worker started in it is reclaimed by the reap, and once the
+	// exit has stopped the probe none is started
+	e.probeLaunch.Lock()
+	if ctx.Err() != nil {
+		e.probeLaunch.Unlock()
+		return
+	}
+	if e.inProbeLaunch != nil {
+		e.inProbeLaunch(ctx)
+	}
+	w, err := e.spawn(m.plug, args, nil)
+	e.probeLaunch.Unlock()
+	if err == nil {
+		err = e.handshake(ctx, w, m.plug, timeout)
+	}
 	if err != nil {
 		if ctx.Err() == nil { // stopped is not failed
 			settled(launchCode(err))
@@ -272,18 +287,9 @@ func (e *Engine) takeModelSlot(ctx context.Context) error {
 	}
 }
 
-// probeExitWait bounds how long an exit waits for the start-up probe. It is cancelled by then, and launchWithin
-// ends within about 1.2s of a cancelled handshake; waiting for it before reaping means no python starts after the
-// reap.
-var probeExitWait = 3 * time.Second
-
-// waitProbe waits, at most d, for the start-up probe to end.
-func (e *Engine) waitProbe(d time.Duration) {
-	if e.probeDone == nil {
-		return
-	}
-	select {
-	case <-e.probeDone:
-	case <-time.After(d):
-	}
+// probeStarted waits until a probe starting a worker has started it: called after stopProbe, it means no probe
+// worker is started afterwards. It does not wait for the probe to end.
+func (e *Engine) probeStarted() {
+	e.probeLaunch.Lock()
+	defer e.probeLaunch.Unlock() // nothing to do inside: waiting for the section in probe is the point
 }

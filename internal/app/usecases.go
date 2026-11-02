@@ -87,7 +87,7 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 		}},
 		{Name: lifecycle.ExitCheckpoint, Run: e.recoverJobs},
 		{Name: lifecycle.ExitReap, Run: func(ctx context.Context) error {
-			e.waitProbe(probeExitWait) // stopped by now; no probe worker starts after the reap
+			e.probeStarted() // stopped by now: a probe worker already started is reaped, none starts later
 			err := e.reapPrevious(ctx)
 			if e.afterReap != nil {
 				e.afterReap()

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -83,6 +84,9 @@ func probeEngine(t *testing.T, mode string, probe bool) (e *Engine, args, releas
 	t.Cleanup(func() {
 		e.Close() // ErrClosed when the test closed it
 		os.WriteFile(release, nil, 0o600)
+		if e.probeDone != nil {
+			<-e.probeDone // Close does not wait for the probe to end; the test does
+		}
 	})
 	return e, args, release
 }
@@ -99,13 +103,14 @@ func starts(t *testing.T, args string) []string {
 	return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 }
 
-// eventually polls cond until it holds; the test's own timeout bounds it.
+// eventually polls cond until it holds. Only the test's own timeout (go test -timeout) bounds it: just before that
+// ends, it says what it was waiting for.
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(time.Minute)
+	deadline, bounded := t.Deadline()
 	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("still not %s after a minute", what)
+		if bounded && time.Until(deadline) < 2*time.Second {
+			t.Fatalf("still not %s when the test's time ran out", what)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -153,12 +158,8 @@ func TestTheDeviceOfAnInstalledModelIsConfirmedAtStartUp(t *testing.T) {
 	if err := os.WriteFile(release, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(time.Minute)
-	rt := modelState(t, e, id)
-	for rt.Detecting && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-		rt = modelState(t, e, id)
-	}
+	var rt ModelRuntime
+	eventually(t, "confirmed", func() bool { rt = modelState(t, e, id); return !rt.Detecting })
 	if rt.Device != "gpu" || rt.Backend != "CoreMLExecutionProvider" || !rt.Accelerated || rt.Detecting || rt.DeviceCode != "" {
 		e.Close()
 		t.Fatalf("after start-up the device is not confirmed: device %q backend %q accelerated %v detecting %v code %q", rt.Device, rt.Backend, rt.Accelerated, rt.Detecting, rt.DeviceCode)
@@ -172,13 +173,15 @@ func TestTheDeviceOfAnInstalledModelIsConfirmedAtStartUp(t *testing.T) {
 	if err := e.Close(); err != nil {
 		t.Fatal(err)
 	}
+	eventually(t, "ended", func() bool { return probeEnded(e) }) // Close does not wait for it
 
 	os.Remove(args)
 	e = openEngineWith(t, ws, key, false, opts)
 	rt = modelState(t, e, id)
-	if err := e.Close(); err != nil { // waits for a probe, had one started
+	if err := e.Close(); err != nil {
 		t.Fatal(err)
 	}
+	eventually(t, "ended", func() bool { return probeEnded(e) })
 	if rt.Device != "cpu" || rt.Detecting {
 		t.Fatalf("GPU off: device %q detecting %v", rt.Device, rt.Detecting)
 	}
@@ -204,13 +207,15 @@ func TestTheCommandLineStartsNoDeviceProbe(t *testing.T) {
 	}
 }
 
-// Closing while the probe's worker is still loading ends the probe and its worker before the workers are reclaimed,
-// in either exit; nothing is started afterwards and nothing is left running.
+// Closing while the probe's worker is still loading ends that worker with the others, in either exit, and does not
+// wait for the probe: the system's shutdown keeps its limit (as in the shutdown end-to-end test). Nothing is left
+// running and nothing is started afterwards.
 func TestClosingDuringTheDeviceProbeEndsItsWorker(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		close func(*Engine) error
-	}{{"normal", (*Engine).Close}, {"system shutdown", (*Engine).CloseForSystem}} {
+		limit time.Duration
+	}{{"normal", (*Engine).Close, exitGrace}, {"system shutdown", (*Engine).CloseForSystem, 4 * time.Second}} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, args, _ := probeEngine(t, workerWaits, true)
 			probeIsLoading(t, e, args)
@@ -218,24 +223,23 @@ func TestClosingDuringTheDeviceProbeEndsItsWorker(t *testing.T) {
 			if err := tc.close(e); err != nil {
 				t.Fatal(err)
 			}
-			if took := time.Since(began); took > exitGrace+probeExitWait {
-				t.Fatalf("closing took %v", took)
-			}
-			if !probeEnded(e) {
-				t.Fatal("the probe outlived the close")
-			}
-			if s := starts(t, args); len(s) != 1 {
-				t.Fatalf("workers started: %q", s)
+			if took := time.Since(began); took > tc.limit {
+				t.Fatalf("closing took %v, more than %v", took, tc.limit)
 			}
 			if n, err := platform.ReapMarkedPrefix(e.markerPrefix()); err != nil || n != 0 {
 				t.Fatalf("left running after the close: %d (%v)", n, err)
+			}
+			eventually(t, "ended", func() bool { return probeEnded(e) })
+			if s := starts(t, args); len(s) != 1 {
+				t.Fatalf("workers started: %q", s)
 			}
 		})
 	}
 }
 
-// A probe stopped by the exit after it took the model slot, but before it started its worker, starts none, and the
-// exit waits for it: no python is started after the workers are reclaimed.
+// A probe stopped by the exit when it is about to start its worker starts none, even when it reaches the start only
+// after the workers were reclaimed; and the exit does not wait for it (it could be checking the model's files, which
+// is not cancelled), only for a worker being started.
 func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -243,24 +247,66 @@ func TestAProbeStoppedBeforeItsWorkerStartsStartsNone(t *testing.T) {
 	}{{"normal", (*Engine).Close}, {"system shutdown", (*Engine).CloseForSystem}} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, args, _ := probeEngine(t, workerWaits, false)
-			// started here, not by Open, so that the hook is in place first: it holds the probe until the exit stops it
-			e.beforeProbeLaunch = func(ctx context.Context) { <-ctx.Done() }
+			// started here, not by Open, so that the hooks are in place first: the probe is held, just before it starts
+			// its worker, until the exit has stopped it and reclaimed the workers
+			reaped, held := make(chan struct{}), make(chan struct{})
+			e.afterReap = func() { close(reaped) }
+			e.beforeProbeLaunch = func(ctx context.Context) { close(held); <-ctx.Done(); <-reaped }
 			e.opt.ProbeDevices = true
 			e.startProbe(e.life)
-			eventually(t, "holding the slot", func() bool {
-				e.mu.Lock()
-				defer e.mu.Unlock()
-				return e.probeHolds
-			})
+			<-held
+			began := time.Now()
 			if err := tc.close(e); err != nil {
 				t.Fatal(err)
 			}
-			if !probeEnded(e) {
-				t.Fatal("the probe outlived the close")
+			// closing an idle engine takes well under a second; waiting for the probe took its 3s limit
+			if took := time.Since(began); took > 2*time.Second {
+				t.Fatalf("closing took %v: it waited for the probe", took)
 			}
+			eventually(t, "ended", func() bool { return probeEnded(e) })
 			if s := starts(t, args); len(s) != 0 {
 				t.Fatalf("workers started: %q", s)
 			}
+		})
+	}
+}
+
+// A probe already starting its worker when the exit stops it has started it before the workers are reclaimed: the
+// exit waits for that start, so the reap ends the worker and none starts after it.
+func TestAProbeStartingItsWorkerWhenStoppedHasItReaped(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		close func(*Engine) error
+	}{{"normal", (*Engine).Close}, {"system shutdown", (*Engine).CloseForSystem}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, _, _ := probeEngine(t, workerWaits, false)
+			// the probe is held where it has checked it was not stopped and is starting its worker: after the stop,
+			// until the workers are reclaimed or a second has passed
+			reaped, held := make(chan struct{}), make(chan struct{})
+			var late atomic.Bool
+			e.afterReap = func() { close(reaped) }
+			e.inProbeLaunch = func(ctx context.Context) {
+				close(held)
+				<-ctx.Done()
+				select {
+				case <-reaped:
+					late.Store(true)
+				case <-time.After(time.Second):
+				}
+			}
+			e.opt.ProbeDevices = true
+			e.startProbe(e.life)
+			<-held
+			if err := tc.close(e); err != nil {
+				t.Fatal(err)
+			}
+			if late.Load() {
+				t.Fatal("the workers were reclaimed while the probe was starting its worker: it started after the reap")
+			}
+			if n, err := platform.ReapMarkedPrefix(e.markerPrefix()); err != nil || n != 0 {
+				t.Fatalf("left running after the close: %d (%v)", n, err)
+			}
+			eventually(t, "ended", func() bool { return probeEnded(e) })
 		})
 	}
 }
