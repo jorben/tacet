@@ -287,7 +287,7 @@ describe("规则", () => {
     expect(astr().mapping?.map.private_person).toBe("organization");
     expect(row("person").querySelector('[data-tip="默认值：private_person"]')).toBeTruthy();
     expect(row("organization").textContent).toContain("private_person");
-    expect($(".toast")!.textContent).toContain("已从 人名 移到 公司名");
+    expect($(".toast")!.textContent).toBe("已将 private_person 从 人名 移到 公司名");
     expect(win()).toContain("已自定义");
     // Uncheck a label and verify the unassociated section offers it for reassignment.
     click(row("address").querySelector("button")!);

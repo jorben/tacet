@@ -227,9 +227,9 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     await act(async () => { press("恢复默认"); });
     expect(fake.items.filter((i) => i.kind === "model_mapping")).toHaveLength(0); expect($$(".mapping-row [data-tip]")).toHaveLength(0);
   });
-  it("把模型最后标签从 A 移到 B 也先确认；确认后提示已从 A 移到 B", async () => {
+  it("把模型最后标签从 A 移到 B 也先确认；确认后提示已将标签从 A 移到 B", async () => {
     await live(); mount("model"); choose("organization"); pick("private_person"); await finish(); expect($(".loss-modal")).toHaveTextContent("X"); await confirm();
-    expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization"); expect(overlayStore.get().toast?.msg).toContain("已从 人名 移到 公司名");
+    expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization"); expect(overlayStore.get().toast?.msg).toBe("已将 private_person 从 人名 移到 公司名");
   });
   it.each([false, true])("快速连续勾选 3 个标签（已有自定义 %s）：菜单关闭一次写入，无冲突", async (custom) => {
     const fake = await live(); if (custom) await setCategoryLabels("privacy-filter-fp16", "organization", ["private_date"]);

@@ -97,8 +97,9 @@ export function setCategoryLabels(modelId: string, category: string, labels: str
   return change(modelId, (m) => {
     const { map, moved } = withCategoryLabels(effectiveLabels(m), category, labels, m.labels ?? {});
     const catalog = getState().categories;
-    const from = [...new Set(moved.map((x) => categoryName(catalog, x.from)))];
-    return { map, message: from.length ? from.map((n) => "已从 " + n + " 移到 " + categoryName(catalog, category)).join("；") : undefined };
+    const messages = moved.slice(0, 3).map(({ label, from }) => "已将 " + label + " 从 " + categoryName(catalog, from) + " 移到 " + categoryName(catalog, category));
+    if (moved.length > 3) messages.push("等 " + (moved.length - 3) + " 个标签");
+    return { map, message: messages.join("；") || undefined };
   });
 }
 
