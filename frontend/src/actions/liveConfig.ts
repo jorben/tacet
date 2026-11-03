@@ -3,7 +3,7 @@
 // person sets up lives only in memory.
 import {
   BUILTIN_MODEL_PRESET, BUILTIN_RULES_PRESET, modelFromItem, modelStateFromEngine, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
-  schemeIdOf, versionLabel, type Model,
+  schemeIdOf, schemeTreatments, versionLabel, type Model,
 } from "../domain/liveConfig";
 import type { Preset, Ruleset } from "../domain/types";
 import { applyCategoryColors, type CategoryInfo } from "../domain/categories";
@@ -301,6 +301,9 @@ async function writeChanges(): Promise<void> {
       store.update((d) => {
         const x = d.presets.find((q) => q.id === uiId);
         if (!x) return;
+        // Without a setting, a scheme not stored yet masks a category and a stored one leaves it off: the first
+        // write takes what was written as the scheme's settings, so storing it changes nothing it does.
+        if (!x.stored) for (const [c, t] of Object.entries(schemeTreatments(sc))) x.cats[c] ??= t;
         x.stored = { id: pr.id, version: pr.version, schemeId: sc.id, schemeVersion: sc.version };
         x.ver = versionLabel(pr);
         x.id = pr.id;

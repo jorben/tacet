@@ -3,7 +3,7 @@ import { openConfidenceMenu, openPresetModelMenu, openPresetMoreMenu, openPreset
 import { MODEL_LABELS } from "../../domain/catalog";
 import { categoryName } from "../../domain/categories";
 import {
-  availableRulesets, categorySourceLabel, confidenceOf, effectiveTreatment, formatConfidence, modelById, presetConfidence, presetCategorySources, presetTreatment, schemeCategories,
+  availableRulesets, categorySourceLabel, confidenceOf, effectiveTreatment, formatConfidence, modelById, presetConfidence, presetCategorySources, schemeCategories,
   type CategorySource,
 } from "../../domain/presets";
 import { openModal } from "../../overlay/store";
@@ -51,8 +51,9 @@ const NO_SOURCE_HINT = "所选模型的标签与规则组的规则都不识别�
 
 /**
  * One category of the scheme: what detects it (the model, its rules, or both) and what is done with it. A
- * category nothing detects is off and cannot be switched on; a setting the scheme holds for it stays stored and
- * applies again once a source comes back (`kept`).
+ * category nothing detects is off and cannot be switched on; a mask or placeholder the scheme holds for it (not
+ * the default an unsaved scheme shows, which is not stored for it) stays stored and applies again once a source
+ * comes back (`kept`).
  */
 function CategoryRow({ category, source, value, kept, locked }: { category: string; source?: CategorySource; value: PresetTreatment; kept: boolean; locked: boolean }) {
   const name = categoryName(useAppState((s) => s.categories), category);
@@ -129,7 +130,7 @@ export function SchemeEditor() {
         </List>
         <List>
           {schemeCategories(p, models, available, catalog).map((t) => (
-            <CategoryRow key={t} category={t} source={sources.get(t)} value={effectiveTreatment(p, t, sources)} kept={["mask", "ph"].includes(presetTreatment(p, t))} locked={locked} />
+            <CategoryRow key={t} category={t} source={sources.get(t)} value={effectiveTreatment(p, t, sources)} kept={["mask", "ph"].includes(p.cats[t] ?? "")} locked={locked} />
           ))}
         </List>
       </div>

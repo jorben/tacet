@@ -93,6 +93,21 @@ describe("方案", () => {
     expect(source("电话")).toBe("规则");
   });
 
+  it("无来源类别的提示只在方案自己存有遮盖或占位符时说设置会保留", () => {
+    const hint = (name: string) => catRow(name)!.querySelector("[data-source]")!.getAttribute("data-tip");
+    go("presets");
+    press("复制");
+    press("仅规则");
+    // the copy holds the builtin's setting for 人名: it is stored and applies again with a source
+    expect(hint("人名")).toContain("已保存的设置会在可识别后生效");
+    press("新建");
+    press("仅规则");
+    // a new scheme holds nothing for 人名: the default mask is not stored for a category nothing detects
+    expect(preset().cats).not.toHaveProperty("person");
+    expect(sourceOf("人名")).toBe("不识别");
+    expect(hint("人名")).not.toContain("已保存的设置");
+  });
+
   it("选择同一模型保持已设置的置信度", () => {
     go("presets");
     press("复制");

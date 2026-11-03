@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
-import { presetCategories } from "../domain/presets";
+import { presetCategories, presetTreatment } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -98,6 +98,22 @@ describe("方案与规则集的存储同步", () => {
     const p = getState().presets.find((x) => x.name === "新方案")!;
     expect(p.stored?.id).toMatch(/^cfg_/);
     expect(JSON.parse(fake.items.find((i) => i.id === p.stored!.id)!.content)).toMatchObject({ ruleset_id: "builtin-cn-office", model_profile_id: "builtin-model-astrlink", rules_only: false });
+  });
+
+  it("新建方案存好后仍遮盖有来源的类别；之后改别的类别不会删掉它们", async () => {
+    act(() => newPreset());
+    await waitFor(() => expect(getState().presets.find((x) => x.name === "新方案")?.stored).toBeTruthy());
+    const p = () => getState().presets.find((x) => x.name === "新方案")!;
+    const actions = () => JSON.parse(fake.items.find((i) => i.id === p().stored!.schemeId)!.content).category_actions;
+    // what the first write stored by default is what the screen now holds
+    expect(actions()).toMatchObject({ phone: "mask", person: "mask" });
+    expect(presetTreatment(p(), "phone")).toBe("mask");
+    expect(unhandledCategories(p(), getState().models[0]!.categories!)).toEqual([]);
+    // an edit of another category keeps phone masked in storage
+    act(() => setCategoryTreatment("person", "ph"));
+    await waitFor(() => expect(actions().person).toBe("placeholder"));
+    expect(actions().phone).toBe("mask");
+    expect(presetTreatment(p(), "phone")).toBe("mask");
   });
 
   it("新规则组与引用它的方案：先存规则集，方案里的编号换成存储编号", async () => {

@@ -262,15 +262,20 @@ interface PresetJSON {
 
 const toTreatment = (a: string | undefined): PresetTreatment | null => (a === "placeholder" ? "ph" : a === "mask" || a === "delete" ? "mask" : null);
 
+/** The settings a stored scheme object holds, one for each category it lists (an action the screen has no setting for reads as off). */
+export function schemeTreatments(scheme: ConfigItem | undefined): Preset["cats"] {
+  const actions = parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}).category_actions ?? {};
+  return Object.fromEntries(Object.entries(actions).map(([id, action]) => [id, toTreatment(action) ?? "off"]));
+}
+
 /** The screen's scheme from its two stored objects. */
 export function presetFromItems(preset: ConfigItem, scheme: ConfigItem | undefined, rulesets: Ruleset[], models: Model[]): Preset {
   const p = parse<PresetJSON>(preset.content, {} as PresetJSON);
   const model = models.find((m) => m.profile === p.model_profile_id) ?? null;
   const s = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(scheme?.content ?? "{}", {}) } as SchemeJSON;
   const det = p.rules_only || !model ? "rules" : "model";
-  const cats: Preset["cats"] = {};
+  const cats = schemeTreatments(scheme);
   const ids = [p.ruleset_id, ...(p.extra_ruleset_ids ?? [])].filter((id) => rulesets.some((r) => r.id === id));
-  for (const [id, action] of Object.entries(s.category_actions)) cats[id] = toTreatment(action) ?? "off";
   for (const id of presetCategories({ det, model: model?.id ?? "", rules: ids }, models, rulesets)) {
     // An absent action is disabled, including a category explicitly switched off before saving.
     cats[id] ??= "off";
