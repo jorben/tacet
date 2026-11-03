@@ -58,13 +58,14 @@
 - `probe_test.go` 的假 AstrLink worker 原来是一个 `#!/bin/sh` 脚本，在 `exec python` 之前以 `/bin/sh` 的身份等待。在 macOS 26.6.2 上，Apple 平台二进制的 `kern.procargs2` 不返回环境变量，退出流程按 `TACET_TREE` 标记回收时看不到这个进程。
   - `TestAProbeStartingItsWorkerWhenStoppedHasItReaped` 因此在本机必定失败（`the exit reclaimed 0 workers`），在 CI 的 macOS 15 上通过（#15）。
   - 更隐蔽的是“关闭后没有残留”的断言（`ReapMarkedPrefix(...) n != 0`）：去掉回收这一步后，`TestClosingDuringTheDeviceProbeEndsItsWorker` 在 sh 版本上照样通过，因为它根本看不到 sh 进程。
+- 同一个假 worker 在 CI 的 macOS 15 上又造成另一种失败：PR #12 的 b11dcf4（运行 41592626908）里，`TestClosingDuringTheDeviceProbeEndsItsWorker` 报 `left running after the close: 1`。推测原因（本机 macOS 26 看不到 sh 进程，没有复现）：sh 的等待循环每 50ms 起一个 `/bin/sleep` 子进程，子进程也带着标记；回收只扫一遍进程列表，扫完之后、sh 被杀之前新起的 `sleep` 就漏掉了，随后的检查看到了它。真实 worker 在进程内等待，不会这样。
 - 修复：fix/probe-test-platform-binary。假解释器改成用真实解释器运行的 Python 脚本（shebang 指向 venv 的 python），worker 从第一次 exec 起就带着可见的标记。验证：
   - sh 版本上测试失败，新版本通过；
   - 把 `probeStarted` 改成空函数，新版本报 `it started after the reap`；
   - 去掉回收这一步，新版本报 `left running after the close: 1`，sh 版本不报；
   - `-race -count=20` 全部通过。
 - 规则：
-  - 被检查的属性（这里是能否读到进程的环境变量）随平台或二进制类型变化时，假进程要用和真实进程同类的二进制，不能为了方便换成 shell；
+  - 被检查的属性（这里是能否读到进程的环境变量、会不会派生子进程）随平台或二进制类型变化时，假进程要用和真实进程同类的二进制，行为也要一致，不能为了方便换成 shell；
   - 断言“没有残留”“没有发生”的测试，要另有一次 X 确实存在、断言确实报错的对照，否则检查手段失效时它也会通过；
   - 本机失败、CI 通过时，先比较两边的系统版本和二进制类型。
 - 出现：1 次（2026-11-03）
