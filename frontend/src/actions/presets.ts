@@ -1,11 +1,12 @@
 // Schemes (presets) and rule sets: editing, versions, import and the menus of the configuration pages.
 import { MODEL_LABELS } from "../domain/catalog";
 import {
-  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, modelById, presetConfidence, presetCategories, type Versioned,
+  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, losesNothing, modelById, presetConfidence, presetCategories, rulesetChangeLoss,
+  type DetectionLoss, type Versioned,
 } from "../domain/presets";
-import type { Boundary, CategoryId, Preset, PresetTab, PresetTreatment, Rule, RuleKind, Ruleset } from "../domain/types";
+import type { CategoryId, Preset, PresetTab, PresetTreatment, Rule, RuleDraft, Ruleset } from "../domain/types";
 import { getState, store, type AppState } from "../store";
-import { closeModal, openMenu, openModal, toast, type PopAnchor } from "../overlay/store";
+import { closeModal, openMenu, openModal, toast, type ModalSpec, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
 import { nextId } from "./timers";
 import { isLive } from "./live";
@@ -188,12 +189,56 @@ export function copyRuleset(): void {
   toast("已复制");
 }
 
-export function toggleRule(index: number): void {
-  store.update((d) => {
-    const r = rulesetOf(d);
-    bumpVersion(r);
-    r.rules[index]!.on = !r.rules[index]!.on;
+/** The confirmation that lists what a change would cost; cancelling closes it, or returns to `back`. */
+export function confirmLoss(action: string, loss: DetectionLoss, go: () => void, back?: ModalSpec): void {
+  openModal({
+    type: "detectionLoss", action,
+    lost: loss.categories.map((x) => ({ preset: x.preset.name, categories: x.categories })),
+    noRules: loss.noRules.map((p) => p.name),
+    go: () => { closeModal(); go(); },
+    back,
   });
+}
+
+/**
+ * Changes the selected rule set with `edit` as one new version (one save of the whole set). When the same edit
+ * on a copy would leave a scheme that uses the rule set without a detection source for a category it masks or
+ * replaces, or without any rule switched on, the schemes are listed and the edit waits for a yes; cancelling
+ * changes nothing. A rule set no scheme uses is changed at once.
+ */
+function editRuleset(action: string, edit: (r: Ruleset) => void, done?: (r: Ruleset) => void, back?: ModalSpec): void {
+  const s = getState();
+  const r = selectedRuleset(s);
+  const apply = () => {
+    store.update((d) => {
+      const target = d.rulesets.find((x) => x.id === r.id);
+      if (!target) return;
+      bumpVersion(target);
+      edit(target as Ruleset);
+    });
+    const target = getState().rulesets.find((x) => x.id === r.id);
+    if (target) done?.(target);
+  };
+  const copy: Ruleset = { ...r, rules: r.rules.map((x) => ({ ...x })) };
+  edit(copy);
+  const loss = rulesetChangeLoss(s.presets, { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models }, copy);
+  if (losesNothing(loss)) apply();
+  else confirmLoss(action, loss, apply, back);
+}
+
+/** Switches one rule, addressed by its index in the rule set. */
+export function toggleRule(index: number): void {
+  const on = !selectedRuleset(getState()).rules[index]!.on;
+  editRuleset(on ? "启用" : "停用", (r) => { r.rules[index]!.on = on; });
+}
+
+/**
+ * Switches every rule of the selected rule set that reports `category` on or off: one new version, so one save of
+ * the whole set. Rules are switched, never removed; nothing changes when all of them already are.
+ */
+export function setCategoryRulesOn(category: CategoryId, on: boolean): void {
+  if (!selectedRuleset(getState()).rules.some((x) => x.cat === category && x.on !== on)) return;
+  editRuleset(on ? "启用" : "停用", (r) => { r.rules.forEach((x) => { if (x.cat === category) x.on = on; }); });
 }
 
 export function openRulesetMoreMenu(anchor: PopAnchor): void {
@@ -214,16 +259,13 @@ export function openRulesetMoreMenu(anchor: PopAnchor): void {
   }, { alignRight: true });
 }
 
-export interface RuleDraft {
-  name: string;
-  kind: RuleKind;
-  cat: CategoryId;
-  bd: Boundary;
-  body: string;
-}
-export type SaveRuleResult = "saved" | "unchanged" | "name" | "body" | "lookaround";
+export type { RuleDraft };
+export type SaveRuleResult = "saved" | "unchanged" | "name" | "body" | "lookaround" | "confirm";
 
-/** Validates and stores an edited or new rule. Returns what the dialog has to react to. */
+/**
+ * Validates and stores an edited or new rule; `index` is the rule's index in the rule set (null adds one at the
+ * end). Returns what the dialog has to react to ("confirm": the schemes it would cost are listed first).
+ */
 export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult {
   if (!draft.name.trim()) return "name";
   if (!draft.body.trim()) return "body";
@@ -232,36 +274,34 @@ export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult
     toast("不支持前后断言（如 (?<!…)），请改用“前后边界”");
     return "lookaround";
   }
+  // The rule as saved. `on: true` re-enables a rule that was switched off (a known issue left as it is).
   const x: Rule = { name: draft.name.trim(), kind: draft.kind, cat: draft.cat, bd: draft.kind === "正则" ? draft.bd || "" : "", body: draft.body.trim(), on: true };
-  const old = index != null ? selectedRuleset(getState()).rules[index] : undefined;
+  const rs = selectedRuleset(getState());
+  const old = index != null ? rs.rules[index] : undefined;
   if (old && (["name", "kind", "cat", "bd", "body"] as const).every((k) => (old[k] || "") === x[k])) {
     closeModal();
     toast("内容未变，版本不变");
     return "unchanged";
   }
-  let ver = "";
-  store.update((d) => {
-    const r = rulesetOf(d);
-    bumpVersion(r);
+  let applied = false;
+  editRuleset("保存", (r) => {
     if (index != null) Object.assign(r.rules[index]!, x, { n: 0, rid: old?.rid });
-    else r.rules.push(x);
-    ver = r.ver;
-  });
-  closeModal();
-  toast("已保存为 " + ver);
-  return "saved";
+    else r.rules.push({ ...x });
+  }, (r) => {
+    applied = true;
+    closeModal();
+    toast("已保存为 " + r.ver);
+  }, { type: "ruleEditor", rulesetId: rs.id, index, draft });
+  return applied ? "saved" : "confirm";
 }
 
-export function deleteRule(index: number): void {
-  let ver = "";
-  store.update((d) => {
-    const r = rulesetOf(d);
-    bumpVersion(r);
-    r.rules.splice(index, 1);
-    ver = r.ver;
-  });
-  closeModal();
-  toast("已删除 · 保存为 " + ver);
+/** Deletes a rule, addressed by its index in the rule set. `draft` is what the editor holds, for going back to it. */
+export function deleteRule(index: number, draft?: RuleDraft): void {
+  const rs = selectedRuleset(getState());
+  editRuleset("删除", (r) => { r.rules.splice(index, 1); }, (r) => {
+    closeModal();
+    toast("已删除 · 保存为 " + r.ver);
+  }, { type: "ruleEditor", rulesetId: rs.id, index, draft });
 }
 
 /* ── Versions ─────────────────────────────────────────────────────────────── */

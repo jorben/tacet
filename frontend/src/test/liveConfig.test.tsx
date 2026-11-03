@@ -269,7 +269,10 @@ describe("方案与规则集的存储同步", () => {
     const model = () => getState().models[0]!;
     expect(model().labels).toEqual({ private_person: "person", private_address: "address", phone: "phone", email: "email" });
     await setLabelCategory(model().id, "private_person", "organization");
-    expect(fake.calls).toContain("configCreate:model_mapping");
+    const confirm = overlayStore.get().modal;
+    expect(confirm?.type).toBe("detectionLoss");
+    if (confirm?.type === "detectionLoss") confirm.go();
+    await waitFor(() => expect(fake.calls).toContain("configCreate:model_mapping"));
     const stored = fake.items.find((i) => i.kind === "model_mapping")!;
     expect(stored.name).toBe("astrlink-guard-int8");
     expect(JSON.parse(stored.content)).toEqual({ model_id: "astrlink-guard-int8", label_map: { private_person: "organization", private_address: "address", phone: "phone", email: "email" } });

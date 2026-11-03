@@ -83,6 +83,7 @@ export async function loadConfig(): Promise<void> {
   const homeId = mi.length ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET;
   const home = presets.find((p) => p.stored?.id === homeId) ?? presets[0];
   store.update((d) => {
+    d.configLoad++;
     d.rulesets = rulesets;
     d.presets = presets;
     d.models = mi.map((x) => x.plugin);
@@ -193,7 +194,11 @@ export function flushConfig(): Promise<void> {
       } while (again);
     } catch (err) {
       toast(configErrorText(err));
+      const selectedRuleset = getState().rulesetSel;
       await loadConfig().catch(() => {});
+      if (selectedRuleset && getState().rulesets.some((r) => r.id === selectedRuleset)) {
+        store.update((d) => { d.rulesetSel = selectedRuleset; });
+      }
     } finally {
       running = null;
     }

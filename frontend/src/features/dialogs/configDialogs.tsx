@@ -3,10 +3,10 @@ import {
   deleteRule, finishImport, importNameClashes, rollback, saveRule, versionTarget, type RuleDraft,
 } from "../../actions/presets";
 import { createCategory, defaultPlaceholder } from "../../actions/categories";
-import { categoryOf } from "../../domain/categories";
-import type { Boundary, RuleKind } from "../../domain/types";
+import { categoryName, categoryOf } from "../../domain/categories";
+import type { Boundary, CategoryId, RuleKind } from "../../domain/types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
-import { closeModal } from "../../overlay/store";
+import { closeModal, openModal, type ModalSpec } from "../../overlay/store";
 import { useAppState } from "../../store";
 import { Button, Field, Icon, List, Segmented, Swatch, Tag, TextArea, pushLeft } from "../../ui";
 
@@ -16,11 +16,15 @@ const BOUNDARY_OPTIONS: { value: Boundary; label: string }[] = [
   { value: "", label: "不限" }, { value: "digit", label: "不紧邻数字" }, { value: "word", label: "不紧邻字母或数字" },
 ];
 
-/** Add or edit a rule: a word list or a regular expression, what it counts as, and (for expressions) its boundaries. */
-export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; index: number | null }) {
+/**
+ * Add or edit a rule: a word list or a regular expression, what it counts as, and (for expressions) its boundaries.
+ * `index` is the rule's index in the rule set. A new rule reports `category` until another is picked ("other"
+ * without one); an existing rule shows its own category. `initial` is what the editor held when it was left.
+ */
+export function RuleEditorDialog({ rulesetId, index, category, initial }: { rulesetId: string; index: number | null; category?: CategoryId; initial?: RuleDraft }) {
   const existing = useAppState((s) => s.rulesets.find((r) => r.id === rulesetId)?.rules[index ?? -1]);
-  const [draft, setDraft] = useState<RuleDraft>(() => ({
-    name: existing?.name ?? "", kind: existing?.kind ?? "词表", cat: existing?.cat ?? "other", bd: existing?.bd ?? "", body: existing?.body ?? "",
+  const [draft, setDraft] = useState<RuleDraft>(() => initial ?? ({
+    name: existing?.name ?? "", kind: existing?.kind ?? "词表", cat: existing?.cat ?? category ?? "other", bd: existing?.bd ?? "", body: existing?.body ?? "",
   }));
   // every category of the catalog can be reported by a rule; a stored category the catalog lacks stays selectable
   const catalog = useAppState((s) => s.categories);
@@ -100,7 +104,7 @@ export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; inde
       </ModalBody>
       <ModalFooter>
         {index != null && (
-          <Button variant="danger" style={pushLeft} onClick={() => deleteRule(index)}>
+          <Button variant="danger" style={pushLeft} onClick={() => deleteRule(index, draft)}>
             删除
           </Button>
         )}
@@ -109,6 +113,43 @@ export function RuleEditorDialog({ rulesetId, index }: { rulesetId: string; inde
         </Button>
         <Button variant="primary" onClick={save}>
           保存
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/**
+ * A change would leave schemes unable to start a task: the schemes and what they would lose are listed, and the
+ * change is made only on a yes. Cancelling changes nothing (and returns to the dialog the change came from).
+ */
+export function DetectionLossDialog({ action, lost, noRules, go, back }: { action: string; lost: { preset: string; categories: CategoryId[] }[]; noRules: string[]; go: () => void; back?: ModalSpec }) {
+  const catalog = useAppState((s) => s.categories);
+  const names = [...new Set([...lost.map((x) => x.preset), ...noRules])];
+  return (
+    <Modal className="loss-modal" initialFocus=".btn-g">
+      <ModalHeader title={"仍要" + action + "？"} subtitle={"以下方案将无法开始任务：" + names.map((n) => "「" + n + "」").join("、")} />
+      <ModalBody>
+        <ul className="loss-list">
+          {lost.map((x) => (
+            <li key={x.preset}>
+              方案『{x.preset}』将无法开始任务：{x.categories.map((c) => categoryName(catalog, c)).join("、")} 没有检测来源
+            </li>
+          ))}
+          {noRules.map((n) => (
+            <li key={"rules:" + n}>方案『{n}』将没有任何启用的规则，开始任务会失败</li>
+          ))}
+        </ul>
+        <div className="muted sm" style={{ marginTop: 10 }}>
+          请为这些实体保留检测来源，并为方案保留至少一条启用的规则；也可在方案页调整处理方式。
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={() => (back ? openModal(back) : closeModal())}>
+          取消
+        </Button>
+        <Button variant="danger" onClick={go}>
+          仍要{action}
         </Button>
       </ModalFooter>
     </Modal>

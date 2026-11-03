@@ -1,7 +1,10 @@
 // A model's labels and the categories they count as. The default comes with the model (its manifest); the
 // person may send a label to another category, a category of their own included, or not use it. The
 // kernel stores the change as the model's "model_mapping" object; resetting deletes it.
-import { effectiveLabels, mappedCategories, sameMapping } from "../domain/liveConfig";
+import { effectiveLabels, mappedCategories, sameMapping, withCategoryLabels } from "../domain/liveConfig";
+import { categoryName } from "../domain/categories";
+import { availableRulesets, losesNothing, mappingChangeLoss } from "../domain/presets";
+import { confirmLoss } from "./presets";
 import type { ModelPlugin } from "../domain/types";
 import { toast } from "../overlay/store";
 import { getState, store } from "../store";
@@ -50,20 +53,55 @@ async function write(m: ModelPlugin, map: Record<string, string>): Promise<boole
   }
 }
 
+/** Queue the operation, including reading the current map and stored version, separately for each model. */
+const queues = new Map<string, Promise<void>>();
+function enqueue(modelId: string, operation: () => Promise<void>): Promise<void> {
+  const next = (queues.get(modelId) ?? Promise.resolve()).then(operation);
+  queues.set(modelId, next);
+  void next.finally(() => { if (queues.get(modelId) === next) queues.delete(modelId); });
+  return next;
+}
+
+type MappingEdit = (m: ModelPlugin) => { map: Record<string, string>; message?: string };
+function change(modelId: string, edit: MappingEdit, approved = false): Promise<void> {
+  return enqueue(modelId, async () => {
+    const s = getState();
+    const m = s.models.find((x) => x.id === modelId);
+    if (!m) return;
+    const { map, message } = edit(m);
+    if (sameMapping(map, effectiveLabels(m))) return;
+    const loss = mappingChangeLoss(s.presets, { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models }, modelId, map);
+    if (!approved && !losesNothing(loss)) {
+      confirmLoss("保存映射", loss, () => { void change(modelId, edit, true); });
+      return;
+    }
+    if (await write(m, map) && message) toast(message);
+  });
+}
+
 /** Sends one label of a model to a category, or (null) stops using it. */
-export async function setLabelCategory(modelId: string, label: string, category: string | null): Promise<void> {
-  const m = getState().models.find((x) => x.id === modelId);
-  if (!m?.labels || !(label in m.labels)) return;
-  const map = { ...effectiveLabels(m) };
-  if (category == null) delete map[label];
-  else map[label] = category;
-  if (sameMapping(map, effectiveLabels(m))) return;
-  await write(m, map);
+export function setLabelCategory(modelId: string, label: string, category: string | null): Promise<void> {
+  return change(modelId, (m) => {
+    const map = { ...effectiveLabels(m) };
+    if (m.labels && label in m.labels) {
+      if (category == null) delete map[label];
+      else map[label] = category;
+    }
+    return { map };
+  });
+}
+
+/** Exactly these labels report the category; labels already used elsewhere move here. One whole-map write. */
+export function setCategoryLabels(modelId: string, category: string, labels: string[]): Promise<void> {
+  return change(modelId, (m) => {
+    const { map, moved } = withCategoryLabels(effectiveLabels(m), category, labels, m.labels ?? {});
+    const catalog = getState().categories;
+    const from = [...new Set(moved.map((x) => categoryName(catalog, x.from)))];
+    return { map, message: from.length ? from.map((n) => "已从 " + n + " 移到 " + categoryName(catalog, category)).join("；") : undefined };
+  });
 }
 
 /** Back to the mapping the model comes with. */
-export async function resetModelMapping(modelId: string): Promise<void> {
-  const m = getState().models.find((x) => x.id === modelId);
-  if (!m?.mapping) return;
-  if (await write(m, { ...(m.labels ?? {}) })) toast("已恢复默认映射");
+export function resetModelMapping(modelId: string): Promise<void> {
+  return change(modelId, (m) => ({ map: { ...(m.labels ?? {}) }, message: "已恢复默认映射" }));
 }

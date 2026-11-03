@@ -27,6 +27,8 @@ export interface AppState {
   presetSel: string;
   presetTab: PresetTab;
   rulesetSel: string | null;
+  /** A fresh configuration load resets transient editor state, even if the selected id stays the same. */
+  configLoad: number;
 
   /** One single-file task and one batch run at a time (see `needSlot`). */
   single: Single | null;
@@ -63,6 +65,7 @@ export function createInitialState(): AppState {
     presetSel: "office",
     presetTab: "scheme",
     rulesetSel: null,
+    configLoad: 0,
     single: null,
     batch: null,
     behind: null,
