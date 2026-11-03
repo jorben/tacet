@@ -56,9 +56,10 @@ async function write(m: ModelPlugin, map: Record<string, string>): Promise<boole
 /** Queue the operation, including reading the current map and stored version, separately for each model. */
 const queues = new Map<string, Promise<void>>();
 function enqueue(modelId: string, operation: () => Promise<void>): Promise<void> {
-  const next = (queues.get(modelId) ?? Promise.resolve()).then(operation);
+  const next = (queues.get(modelId) ?? Promise.resolve()).then(operation, operation);
   queues.set(modelId, next);
-  void next.finally(() => { if (queues.get(modelId) === next) queues.delete(modelId); });
+  const release = () => { if (queues.get(modelId) === next) queues.delete(modelId); };
+  void next.then(release, release);
   return next;
 }
 

@@ -9,6 +9,7 @@ import { setCategoryLabels } from "../actions/modelMapping";
 import { flushConfig, loadConfig, stopConfigSync } from "../actions/liveConfig";
 import { overlayStore } from "../overlay/store";
 import { effectiveLabels } from "../domain/liveConfig";
+import * as liveConfigDomain from "../domain/liveConfig";
 import { rulesetChangeLoss } from "../domain/presets";
 import type { Rule } from "../domain/types";
 import { setService } from "../services";
@@ -250,6 +251,26 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     await act(async () => { if (how === "Escape") key("Escape"); else click(mapping("email")); });
     expect(spy).toHaveBeenCalledTimes(1); expect(effectiveLabels(getState().models[0]!).private_phone).toBe("organization");
     await act(async () => { key("Escape"); click(mapping("email")); }); expect(spy).toHaveBeenCalledTimes(1);
+  });
+  it("同模型前一次操作抛错后，已排队的下一次操作仍执行并写入，调用方分别收到各自结果", async () => {
+    const fake = await live();
+    const error = new Error("unexpected mapping edit failure");
+    const edit = vi.spyOn(liveConfigDomain, "withCategoryLabels").mockImplementationOnce(() => { throw error; });
+    try {
+      const results = await Promise.allSettled([
+        setCategoryLabels("privacy-filter-fp16", "organization", ["private_phone"]),
+        setCategoryLabels("privacy-filter-fp16", "organization", ["private_email"]),
+      ]);
+      expect(results[0]).toEqual({ status: "rejected", reason: error });
+      expect(results[1].status).toBe("fulfilled");
+      expect(fake.calls.filter((c) => c === "configCreate:model_mapping")).toHaveLength(1);
+      const storedMap = JSON.parse(fake.items.find((i) => i.kind === "model_mapping")!.content).label_map;
+      expect(storedMap.private_email).toBe("organization");
+      expect(storedMap.private_phone).toBe("phone");
+      expect(effectiveLabels(getState().models[0]!).private_email).toBe("organization");
+    } finally {
+      edit.mockRestore();
+    }
   });
   it.each([false, true])("同模型写入队列含首次 configCreate（已有自定义 %s）：注入写入延迟，连续操作保留 3 标签", async (custom) => {
     const fake = await live(); if (custom) await setCategoryLabels("privacy-filter-fp16", "organization", ["private_date"]);
