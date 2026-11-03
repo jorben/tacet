@@ -133,6 +133,20 @@ describe("实体清单 · 规则页", () => {
     press(kind === "改实体" ? "保存" : "删除", ".modal"); await confirm();
     expect(selected().rules.filter((r) => r.cat === "phone")).toHaveLength(0);
   });
+  it("额外规则集失源按每个方案分别计算：仅规则忽略模型，其他规则集覆盖则不提醒", () => {
+    demo([rule("A")]);
+    const s = getState();
+    const primary = { id: "primary", name: "主规则集", ver: "v1", rules: [rule("邮箱", "email")] };
+    const backup = { id: "backup", name: "补充规则集", ver: "v1", rules: [rule("备用电话")] };
+    const sources = { rulesets: [primary, selected(), backup], models: s.models };
+    const changed = { ...selected(), rules: [rule("A", "phone", false)] };
+    const x = { ...s.presets[0]!, id: "X", name: "X", det: "rules" as const, rules: ["primary", "test"], cats: { phone: "ph" as const } };
+    const y = { ...x, id: "Y", name: "Y", rules: ["primary", "test", "backup"] };
+    const z = { ...x, id: "Z", name: "Z", det: "model" as const };
+    const loss = rulesetChangeLoss([x, y, z], sources, changed);
+    expect(loss.categories.map((r) => [r.preset.name, r.categories])).toEqual([["X", ["phone"]]]);
+    expect(loss.noRules).toEqual([]);
+  });
   it("失源纯函数按每个方案合并其他规则集、模型和处理方式；额外引用也算，未引用不算", () => {
     demo([rule("A")]); const s = getState(), rs = selected();
     const base = { ...s.presets[0]!, id: "X", name: "X", cats: { phone: "mask" as const }, rules: ["cn", "test"] };
@@ -223,7 +237,11 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     expect(create).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled(); await finish();
     await waitFor(() => expect(effectiveLabels(getState().models[0]!).account_number).toBe("organization"));
     expect(create.mock.calls.length + save.mock.calls.length).toBe(1);
-    for (const l of ["private_phone", "private_email", "account_number"]) expect(effectiveLabels(getState().models[0]!)[l]).toBe("organization");
+    const storedMap = JSON.parse(fake.items.find((i) => i.kind === "model_mapping")!.content).label_map;
+    for (const l of ["private_phone", "private_email", "account_number"]) {
+      expect(effectiveLabels(getState().models[0]!)[l]).toBe("organization");
+      expect(storedMap[l]).toBe("organization");
+    }
     expect(overlayStore.get().toast?.msg).not.toMatch(/VERSION_CONFLICT|名称已被使用/);
   });
   it.each(["Escape", "outside"])("多选菜单通过 %s 关闭时只提交一次；勾选期间不写入", async (how) => {

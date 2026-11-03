@@ -37,7 +37,7 @@ async function scene(k, name, expects) {
 }
 
 // scenes (prototype navigator)
-await scene("home", "首页", ["拖入文档", "通用办公脱敏", "最近", "季度客户材料"]);
+await scene("home", "首页", ["拖入文档", "办公外发", "最近", "季度客户材料"]);
 await scene("fresh", "首页 · 首次使用", ["拖入文档", "请先下载隐私识别模型"]);
 await scene("model-download", "模型 · 下载中", ["正在准备识别模型，可先选择文档。", "查看进度"]);
 await scene("model-paused", "模型 · 已暂停", ["模型下载已暂停", "继续准备"]);
@@ -60,7 +60,7 @@ await scene("b5", "批量 · 人工复核", ["复核队列", "请决策"].filter
 await scene("b3", "批量 · 完成", ["已导出", "查看清单"]);
 await scene("b6", "批量 · 无人值守完成", ["已导出"]);
 await scene("b4", "批量 · 导出清单", ["SHA-256", "全部", "未导出"]);
-await scene("presets", "方案", ["通用办公脱敏", "检测方式", "最低置信度", "规则集"]);
+await scene("presets", "方案", ["办公外发", "检测方式", "最低置信度", "规则集"]);
 await scene("plugins", "插件", ["插件", "第三方", "OFD"]);
 await scene("settings", "设置", ["外观", "涂抹样式", "存储", "版本", "关于"]);
 await scene("close", "关闭窗口", ["最小化到托盘"]);
@@ -76,11 +76,33 @@ await page.keyboard.press("Escape");
 
 await page.goto(BASE + "#scene=presets"); await page.reload(); await page.waitForTimeout(300);
 await page.getByRole('tab', { name: '规则', exact: true }).click();
-await shot("规则集", ["中国场景规则集", "手机号", "企业词条"]);
+await shot("规则集 · 按实体分组", ["中国场景规则集", "2 条规则 · 2 条启用", "边界", "手机号", "企业词条"]);
+await page.getByRole('button', { name: '收起 电话', exact: true }).click();
+await shot("规则集 · 收起实体", ["2 条规则 · 2 条启用", "电话"]);
+await page.getByRole('button', { name: '展开 电话', exact: true }).click();
+await page.getByRole('button', { name: '复制', exact: true }).click();
+await page.getByRole('switch', { name: '启用 手机号', exact: true }).click();
+await shot("规则集 · 部分启用", ["1/2 已启用", "2 条规则 · 1 条启用", "在此实体下添加规则"]);
+await page.locator('.rule-row').filter({ has: page.locator('.rule-name', { hasText: '手机号' }) }).getByRole('button', { name: '编辑', exact: true }).click();
+await page.getByRole('textbox', { name: '名称', exact: true }).fill('手机号（修订）');
+await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
+if (await page.getByRole('switch', { name: '启用 手机号（修订）', exact: true }).getAttribute('aria-checked') !== 'false') throw new Error('编辑停用规则后被重新启用');
+await shot("规则集 · 编辑保留停用状态", ["手机号（修订）", "1/2 已启用", "2 条规则 · 1 条启用"]);
+await page.locator('.rule-group[data-category=phone]').getByRole('button', { name: '在此实体下添加规则', exact: true }).click();
+await shot("在电话实体下添加规则", ["添加规则", "命中归类", "电话"]);
+await page.keyboard.press("Escape");
 await page.locator('.pitem').filter({ hasText: '企业词条' }).click();
 await page.getByRole('button', { name: '添加规则', exact: true }).click();
 await shot("添加规则对话框", ["添加规则", "词表", "正则", "命中归类"]);
 await page.keyboard.press("Escape");
+await page.getByRole('tab', { name: '模型', exact: true }).click();
+await shot("模型 · 按实体关联标签", ["默认映射", "private_person", "未设置", "未关联的标签"]);
+await page.getByRole('button', { name: '公司名 关联的标签', exact: true }).click();
+await page.getByRole('menuitemcheckbox').filter({ hasText: 'private_person' }).click();
+await shot("模型 · 多选标签草稿", ["公司名 · 可多选标签", "完成"]);
+await page.getByRole('button', { name: '完成', exact: true }).click();
+await shot("模型 · 失去检测来源二次确认", ["仍要保存映射？", "办公外发", "没有检测来源"]);
+await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
 
 await page.goto(BASE + "#scene=plugins"); await page.reload(); await page.waitForTimeout(300);
 await page.getByRole('button', { name: '安装', exact: true }).click();
