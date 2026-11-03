@@ -263,6 +263,31 @@ describe("方案与规则集的存储同步", () => {
     expect(JSON.parse(fake.items.find((i) => i.id === "cfg_s")!.content).category_actions).toMatchObject({ email: "mask" });
   });
 
+  it("打开普通方案的历史版本不写入：存储版本和内容不变", async () => {
+    stopConfigSync();
+    // a model scheme stored exactly as the screen writes it
+    const scheme = { category_actions: { phone: "placeholder" }, image_default: "remove" };
+    const preset = { ruleset_id: "builtin-cn-office", scheme_id: "cfg_s", mode: "guided", rules_only: false, memory_bytes: 1073741824, dpi: 200, style: "solid", retention_days: 0, scheme_rev: 1, model_profile_id: "builtin-model-astrlink", min_confidence: 0.8 };
+    fake.items.push(item("scheme", "cfg_s", "方案 y", scheme, false), item("preset", "cfg_p", "普通方案", preset, false));
+    await loadConfig();
+    expect(getState().presets.find((p) => p.id === "cfg_p")).toMatchObject({ det: "model", builtin: false });
+    await sleep(500);
+    expect(writes()).toEqual([]);
+    selectPreset("cfg_p");
+    fake.history.cfg_p = [{ v: { number: 1, savedAt: Math.floor(Date.now() / 1000) }, content: JSON.stringify(preset) }];
+    await act(async () => { await openVersions("preset"); });
+    expect(overlayStore.get().modal).toMatchObject({ type: "versions", kind: "preset" });
+    expect(getState().presets.find((p) => p.id === "cfg_p")!.edited).toBe("刚刚");
+    await sleep(500);
+    await act(async () => { await flushConfig(); });
+    for (const [id, content] of [["cfg_p", preset], ["cfg_s", scheme]] as const) {
+      const stored = fake.items.find((i) => i.id === id)!;
+      expect(stored.version).toBe(1);
+      expect(stored.content).toBe(JSON.stringify(content));
+    }
+    expect(writes()).toEqual([]);
+  });
+
   it("打开规则集的历史版本不重写规则集：存储版本不变", async () => {
     stopConfigSync();
     // stored in a form the screen would write differently (a name equal to the rule's id is left out)
