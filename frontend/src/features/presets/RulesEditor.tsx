@@ -11,7 +11,7 @@ import { TriCheckbox } from "../../ui/TriCheckbox";
 import { ConfigHeader } from "./ConfigHeader";
 import { ItemList } from "./ItemList";
 
-const GROUP_HINT = "只影响本规则集内的规则；实体要不要处理，请在方案页设置";
+const GROUP_HINT = "只影响本规则组内的规则；类别要不要处理，请在方案页设置";
 
 /** Remount when the rule set changes: expansion belongs to this visit, keyed by rule set and entity. */
 function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
@@ -26,7 +26,7 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
       const multi = total > 1;
       const expanded = !collapsed.has(key);
       const name = loading ? g.category : categoryName(catalog, g.category);
-      const entity = <><Swatch category={g.category} /><span className="entity-name">{name}</span>{!loading && !g.known && <Tag>未登记实体</Tag>}</>;
+      const entity = <><Swatch category={g.category} /><span className="entity-name">{name}</span>{!loading && !g.known && <Tag>未登记类别</Tag>}</>;
       return <section className="rule-group" data-category={g.category} key={key} aria-label={name}>
         {multi && <div className="row rule-group-head">
           <button type="button" className="rule-expand" aria-label={(expanded ? "收起 " : "展开 ") + name} aria-expanded={expanded} onClick={() => setCollapsed((was) => {
@@ -35,7 +35,7 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
           <span className="muted sm">{total} 条规则 · {on} 条启用</span>
           <span className="rv" {...tip(GROUP_HINT, { align: "end" })}>
             {on > 0 && on < total && <span className="muted sm">{on}/{total} 已启用</span>}
-            <TriCheckbox checked={on === total ? true : on === 0 ? false : "mixed"} label={"启用实体 " + name} disabled={locked} onChange={() => setCategoryRulesOn(g.category, on !== total)} />
+            <TriCheckbox checked={on === total ? true : on === 0 ? false : "mixed"} label={"启用类别 " + name} disabled={locked} onChange={() => setCategoryRulesOn(g.category, on !== total)} />
           </span>
         </div>}
         {(!multi || expanded) && g.items.map(({ rule: x, index }) => <div className={"row rule-row" + (multi ? " rule-child" : "")} key={index}>
@@ -51,10 +51,10 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
             <span {...(!multi ? tip(GROUP_HINT, { align: "end" }) : {})}><Switch checked={x.on} disabled={locked} label={"启用 " + x.name} onChange={() => toggleRule(index)} /></span>
           </span>
         </div>)}
-        {!locked && (!multi || expanded) && <div className="rule-add"><Button variant="ghost" icon="plus" onClick={() => openModal({ type: "ruleEditor", rulesetId: r.id, index: null, category: g.category })}>在此实体下添加规则</Button></div>}
+        {!locked && (!multi || expanded) && <div className="rule-add"><Button variant="ghost" icon="plus" onClick={() => openModal({ type: "ruleEditor", rulesetId: r.id, index: null, category: g.category })}>在此类别下添加规则</Button></div>}
       </section>;
     })}
-    {!r.rules.length && <Empty padding="36px 0">还没有规则</Empty>}
+    {!r.rules.length && <Empty padding="36px 0">还没有规则。添加第一条规则后，规则组才会保存，并可在方案中选用</Empty>}
   </List>;
 }
 
@@ -62,13 +62,13 @@ export function RulesEditor() {
   const s = useAppState((s) => s);
   const sets = availableRulesets(s.rulesets, s.plugins);
   const r = sets.find((x) => x.id === s.rulesetSel) || sets[0];
-  if (!r) return <Empty>还没有规则集</Empty>;
+  if (!r) return <Empty>还没有规则组</Empty>;
   const locked = !!(r.builtin || r.plugin);
   const used = s.presets.filter((p) => p.rules.includes(r.id)).map((p) => p.name);
   return <div className="split">
     <ItemList items={sets.map((x) => ({ id: x.id, icon: "hash", title: x.name, subtitle: x.ver + (x.plugin ? " · 插件" : "") + " · " + x.rules.length + " 条规则" }))} selectedId={r.id} onSelect={selectRuleset} onCreate={newRuleset} onImport={() => startImport("ruleset")} />
     <div className="preset-detail" role="region" aria-label="规则内容" tabIndex={0}>
-      <ConfigHeader name={r.name} version={r.ver} locked={locked} lockedHint={r.plugin ? "来自插件，复制后可编辑" : "内建规则集，复制后可编辑"} subtitle={used.length ? "用于 " + used.join("、") : "未被方案使用"} onCopy={copyRuleset} onMore={openRulesetMoreMenu} />
+      <ConfigHeader name={r.name} version={r.ver} locked={locked} lockedHint={r.plugin ? "来自插件，复制后可编辑" : "内建规则组，复制后可编辑"} subtitle={used.length ? "用于 " + used.join("、") : "未被方案使用"} onCopy={copyRuleset} onMore={openRulesetMoreMenu} />
       <RuleGroups key={JSON.stringify([s.configLoad, r.id])} r={r} locked={locked} />
       {!locked && <Button icon="plus" style={{ marginTop: 12 }} onClick={() => openModal({ type: "ruleEditor", rulesetId: r.id, index: null })}>添加规则</Button>}
     </div>

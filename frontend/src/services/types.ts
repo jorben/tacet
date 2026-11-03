@@ -215,6 +215,8 @@ export interface EngineCategory {
   placeholder: string;
   color?: string;
   manual?: boolean;
+  /** Marked by hand in review; a scheme lists it only when one of its sources reports it. */
+  reviewOnly?: boolean;
   origin: "standard" | "model" | "custom";
   /** Version of a user category's stored object. */
   version?: number;

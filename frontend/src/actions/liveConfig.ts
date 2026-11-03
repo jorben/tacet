@@ -6,7 +6,7 @@ import {
   schemeIdOf, versionLabel, type Model,
 } from "../domain/liveConfig";
 import type { Preset, Ruleset } from "../domain/types";
-import { applyCategoryColors, categoryName, type CategoryInfo } from "../domain/categories";
+import { applyCategoryColors, type CategoryInfo } from "../domain/categories";
 import {
   pluginFromEngine, settingsFromEngine, settingsToEngine, exportRuleset, exportScheme, importPackage, packageCategories, remapPackageCategories, type Imported,
 } from "../domain/liveConfig";
@@ -234,9 +234,10 @@ async function writeChanges(): Promise<void> {
     synced.delete(it.id);
   }
 
-  // 2. rule sets (a preset may refer to one that is new)
+  // 2. rule sets (a preset may refer to one that is new). A rule set holds at least one rule: a new one is
+  // stored once it has its first rule.
   for (const rs of getState().rulesets) {
-    if (rs.builtin || rs.plugin || known.has(rs)) continue;
+    if (rs.builtin || rs.plugin || known.has(rs) || (!rs.stored && !rs.rules.length)) continue;
     const content = rulesetContent(rs);
     const old = rs.stored ? synced.get(rs.stored.id) : undefined;
     let out: ConfigItem;
@@ -265,15 +266,13 @@ async function writeChanges(): Promise<void> {
   }
 
   // 3. schemes (each is a scheme object and a preset object)
-  const dropped = new Set<string>();
   for (const p of getState().presets) {
     if (p.builtin || known.has(p)) continue;
     const s = getState();
     const w = presetContents(p, s.rulesets as Ruleset[], models, {
       scheme: p.stored?.schemeId ? synced.get(p.stored.schemeId) : undefined,
       preset: p.stored ? synced.get(p.stored.id) : undefined,
-    });
-    w.dropped.forEach((c) => dropped.add(c));
+    }, s.categories);
     let scheme = p.stored?.schemeId ? synced.get(p.stored.schemeId) : undefined;
     let preset = p.stored ? synced.get(p.stored.id) : undefined;
     let changed = false;
@@ -310,7 +309,6 @@ async function writeChanges(): Promise<void> {
     }
     markKnown(getState().presets.find((q) => q.id === preset!.id));
   }
-  if (dropped.size) toast("以下类别没有规则或模型检测，未写入方案：" + [...dropped].map((c) => categoryName(getState().categories, c)).join("、"));
   last = { presets: getState().presets, rulesets: getState().rulesets };
 }
 
@@ -399,7 +397,7 @@ export async function exportLive(kind: "preset" | "ruleset", id: string): Promis
 type Parsed = Exclude<Imported, { error: unknown }>;
 let pending: Parsed | null = null;
 
-const IMPORT_ERRORS = { format: "不是 Tacet 的配置文件", kind: "文件类型不符", content: "文件内容不符合要求", rulesets: "缺少方案所用的规则集" } as const;
+const IMPORT_ERRORS = { format: "不是 Tacet 的配置文件", kind: "文件类型不符", content: "文件内容不符合要求", rulesets: "缺少方案所用的规则组" } as const;
 
 /** Reads a chosen file; a name already taken asks for another one, nothing is overwritten or merged. */
 export async function importLive(kind: "preset" | "ruleset"): Promise<void> {

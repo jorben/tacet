@@ -91,17 +91,16 @@ describe("方案 ↔ 存储对象", () => {
     const w = presetContents(p, rs, models, { scheme, preset });
     expect(sameContent(w.scheme, scheme.content)).toBe(true);
     expect(sameContent(w.preset("sc"), preset.content)).toBe(true);
-    expect(w.dropped).toEqual([]);
   });
 
-  it("无来源且原存储没有设置的类别不写入并报告，原存储的隐藏类别保持原值", () => {
+  it("无来源的类别也保存方案里的设置（来源恢复后生效），方案不列出的类别保持原值", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.cats.address = "mask";
     const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
-    expect(w.dropped).toEqual(["address"]);
     const s = JSON.parse(w.scheme);
-    expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "person", "phone"]);
-    expect(s.category_actions.person).toBe("placeholder");
+    // address and person: nothing of a rules-only scheme detects them, the settings stay; employee is unknown to the catalog
+    expect(Object.keys(s.category_actions).sort()).toEqual(["address", "employee", "other", "payment_card", "person", "phone"]);
+    expect(s.category_actions).toMatchObject({ address: "mask", person: "placeholder", employee: "delete" });
     expect(JSON.parse(w.preset("sc"))).toMatchObject({ rules_only: true, ruleset_id: "cn" });
     expect(JSON.parse(w.preset("sc")).model_profile_id).toBeUndefined();
   });

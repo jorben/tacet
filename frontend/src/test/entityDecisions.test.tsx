@@ -62,7 +62,7 @@ async function checkCatalog(page: "规则页" | "模型页", outcome: "ready" | 
     expect(getState().categoryStatus).toBe("loading");
     for (const id of ["phone", "customer_id", "ghost"]) {
       expect(row(id).querySelector(".entity-name")).toHaveTextContent(id);
-      expect(row(id)).not.toHaveTextContent("未登记实体");
+      expect(row(id)).not.toHaveTextContent("未登记类别");
     }
   } finally {
     await act(async () => {
@@ -72,12 +72,12 @@ async function checkCatalog(page: "规则页" | "模型页", outcome: "ready" | 
   }
   expect(getState().categoryStatus).toBe(outcome);
   expect(row("phone").querySelector(".entity-name")).toHaveTextContent("电话");
-  expect(row("ghost")).toHaveTextContent("ghost未登记实体");
+  expect(row("ghost")).toHaveTextContent("ghost未登记类别");
   if (outcome === "ready") {
     expect(row("customer_id").querySelector(".entity-name")).toHaveTextContent("客户编号");
-    expect(row("customer_id")).not.toHaveTextContent("未登记实体");
+    expect(row("customer_id")).not.toHaveTextContent("未登记类别");
   } else {
     expect(getState().categories).toBe(fallback);
-    expect(row("customer_id")).toHaveTextContent("customer_id未登记实体");
+    expect(row("customer_id")).toHaveTextContent("customer_id未登记类别");
   }
 }

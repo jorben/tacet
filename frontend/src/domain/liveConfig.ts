@@ -3,8 +3,8 @@
 // A screen "scheme" is two stored objects: a preset (which rule sets, which model, how confident) and a
 // scheme (what is done to each category). The screen shows them as one. A rule set maps one to one.
 import type { ConfigItem, EngineModelRuntime, EnginePlugin, EngineSettings } from "../services/types";
-import type { CategoryInfo } from "./categories";
-import { presetCategories, presetTreatment } from "./presets";
+import { STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
+import { presetCategories, presetCategorySources, presetTreatment, schemeCategories } from "./presets";
 import type {
   KeepDays, ModelMapping, PluginInfo, RedactStyle, Settings, ThemePref,
   Boundary, ImageAction, ModelErrorKind, ModelPlugin, ModelStatus, Preset, PresetTreatment, Rule, Ruleset,
@@ -128,6 +128,30 @@ export const mappedCategories = (map: Record<string, string>): string[] => [...n
 /** The labels a label map sends to `category`, sorted: a category may have several labels, a label has one category. */
 export const labelsOfCategory = (map: Record<string, string>, category: string): string[] =>
   Object.keys(map).filter((l) => map[l] === category).sort();
+
+/**
+ * Who uses a user category, for deleting it. Rule sets whose rules report it keep it: it cannot be deleted
+ * while they do. Models whose mapping sends labels to it and schemes that set a treatment for it let go of it:
+ * those labels are no longer used and the setting is cleared. A model all of whose counted labels send to it
+ * would count none, so it keeps the category too (`last`).
+ */
+export interface CategoryUse {
+  rulesets: string[];
+  models: { name: string; labels: string[]; last: boolean }[];
+  presets: string[];
+}
+
+export function categoryUse(id: string, rulesets: Pick<Ruleset, "name" | "rules">[], models: Pick<ModelPlugin, "name" | "labels" | "mapping">[], presets: Pick<Preset, "name" | "cats" | "builtin">[]): CategoryUse {
+  return {
+    rulesets: rulesets.filter((r) => r.rules.some((x) => x.cat === id)).map((r) => r.name),
+    models: models.flatMap((m) => {
+      const map = effectiveLabels(m);
+      const labels = labelsOfCategory(map, id);
+      return labels.length ? [{ name: m.name, labels, last: labels.length === Object.keys(map).length }] : [];
+    }),
+    presets: presets.filter((p) => !p.builtin && (p.cats[id] === "mask" || p.cats[id] === "ph")).map((p) => p.name),
+  };
+}
 
 /** The labels of a model its current mapping sends to no category (what they find is dropped), sorted. */
 export function unmappedLabels(m: Pick<ModelPlugin, "labels" | "mapping">): string[] {
@@ -263,33 +287,32 @@ export interface Written {
   scheme: string;
   /** `schemeRev` is the stored version of the scheme object this version of the preset goes with. */
   preset: (schemeId: string, schemeRev?: number) => string;
-  /** Categories the scheme could not keep because nothing detects them. */
-  dropped: string[];
 }
 
 /**
  * The stored objects of a screen scheme. `previous` holds the stored scheme and preset so that settings the
- * screen has no control for (resource profile, extra engine categories) are kept as they were.
+ * screen has no control for (resource profile, categories the scheme does not list) are kept as they were.
+ * A listed category nothing detects keeps its setting: the kernel leaves it out of a run until a source
+ * comes back.
  */
-export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], previous?: { scheme?: ConfigItem; preset?: ConfigItem }): Written {
+export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], previous?: { scheme?: ConfigItem; preset?: ConfigItem }, catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): Written {
   const model = models.find((m) => m.id === p.model) ?? null;
   const prevScheme = { category_actions: {}, image_default: "remove", ...parse<Partial<SchemeJSON>>(previous?.scheme?.content ?? "{}", {}) } as SchemeJSON;
   const prevPreset = parse<Partial<PresetJSON>>(previous?.preset?.content ?? "{}", {});
   const chosen = p.rules.map((id) => rulesets.find((r) => r.id === id)).filter((r): r is Ruleset => !!r);
   const useModel = p.det === "model" && !!model;
-  const covered = ruleCategories(chosen);
-  if (useModel) model!.categories.forEach((c) => covered.add(c));
 
-  const offered = presetCategories(p, models, chosen);
-  // Hidden entities have no editable row. Keep their stored actions verbatim, including keep (read as off).
+  const listed = schemeCategories(p, models, chosen, catalog);
+  // Categories without a row keep their stored actions verbatim, including keep (read as off).
   const actions: Record<string, string> = Object.fromEntries(
-    Object.entries(prevScheme.category_actions).filter(([c]) => !offered.includes(c)),
+    Object.entries(prevScheme.category_actions).filter(([c]) => !listed.includes(c)),
   );
-  const dropped: string[] = [];
-  for (const c of new Set([...Object.keys(p.cats), ...offered])) {
+  const sources = presetCategorySources(p, models, chosen);
+  for (const c of listed) {
+    // a category nothing detects cannot be changed on screen: what is stored for it stays as it is
+    if (!sources.has(c) && c in prevScheme.category_actions) { actions[c] = prevScheme.category_actions[c]!; continue; }
     const t = presetTreatment(p, c);
     if (t !== "mask" && t !== "ph") continue;
-    if (!covered.has(c)) { if (!(c in actions)) dropped.push(c); continue; }
     actions[c] = t === "ph" ? "placeholder" : prevScheme.category_actions[c] === "delete" ? "delete" : "mask";
   }
   const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };
@@ -310,7 +333,7 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
     }
     return JSON.stringify(out);
   };
-  return { scheme: JSON.stringify(scheme), preset, dropped };
+  return { scheme: JSON.stringify(scheme), preset };
 }
 
 /* ── exchange files ───────────────────────────────────────────────────────── */

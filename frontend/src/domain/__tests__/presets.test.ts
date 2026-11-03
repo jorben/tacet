@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleGroupCount, ruleGroups, ruleSummary } from "../presets";
+import { availableRulesets, bumpVersion, categorySourceLabel, effectiveTreatment, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, presetTreatment, ruleGroupCount, ruleGroups, ruleSummary, schemeCategories } from "../presets";
 import { STANDARD_CATEGORIES, type CategoryInfo } from "../categories";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
 import type { Rule } from "../types";
@@ -46,6 +46,25 @@ describe("方案", () => {
     expect(presetCategories(p, [], sets, catalog)).toEqual(["phone", "organization", custom.id]);
     const plates = { id: "plates", categories: ["license_plate", "person"] };
     expect(presetCategories({ ...p, det: "model", model: "plates" }, [plates], sets, catalog)).toEqual(["person", "phone", "organization", custom.id, "license_plate"]);
+  });
+
+  it("方案列出全部类别（复核专用的公司名、其他只在有来源时列出）；无来源的类别关闭，设置保留", () => {
+    const p = { ...seedPresets()[0]!, det: "rules" as const, rules: ["only"], cats: { person: "ph" as const } };
+    const custom: CategoryInfo = { id: "cfg_x", name: "项目代号", placeholder: "[项目代号]", origin: "custom" };
+    const catalog = [...STANDARD_CATEGORIES, custom];
+    const rule = (cat: string): Rule => ({ name: cat, kind: "正则", cat, body: "x", on: true });
+    const sets = [{ id: "only", name: "only", ver: "v1", rules: [rule("phone"), rule("outside")] }];
+    const all = STANDARD_CATEGORIES.filter((c) => !["organization", "other"].includes(c.id)).map((c) => c.id);
+    expect(all).toHaveLength(11);
+    expect(schemeCategories(p, [], sets, catalog)).toEqual([...all, custom.id, "outside"]);
+    sets[0]!.rules.push(rule("organization"));
+    expect(schemeCategories(p, [], sets, catalog)).toContain("organization");
+    expect(schemeCategories(p, [], sets, catalog)).not.toContain("other");
+    const sources = presetCategorySources(p, [], sets);
+    expect(effectiveTreatment(p, "person", sources)).toBe("off");
+    expect(presetTreatment(p, "person")).toBe("ph");
+    expect(effectiveTreatment(p, "phone", sources)).toBe("mask"); // not stored yet: masked by default
+    expect(effectiveTreatment({ ...p, stored: { id: "s", version: 1 } }, "phone", sources)).toBe("off"); // stored: only what it lists
   });
 
   it("类别的检测来源：模型、规则或两者", () => {

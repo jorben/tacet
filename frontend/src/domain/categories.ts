@@ -15,6 +15,11 @@ export interface CategoryInfo {
   color?: string;
   /** Offered when a selection is marked by hand, whether or not the scheme detects it. */
   manual?: boolean;
+  /**
+   * Marked by hand in review (company names, other): a scheme lists it only when one of its models or rules
+   * reports it. Every other category is listed by every scheme.
+   */
+  reviewOnly?: boolean;
   origin: CategoryOrigin;
   /** Version of a user category's stored object (absent for shipped and model-declared ones). */
   version?: number;
@@ -36,8 +41,8 @@ export const STANDARD_CATEGORIES: CategoryInfo[] = [
   { id: "ip_address", name: "IP 地址", placeholder: "[IP]", color: "#2D7A5C", origin: "standard" },
   { id: "url", name: "网址", placeholder: "[链接]", color: "#3D5A99", origin: "standard" },
   { id: "secret", name: "凭证", placeholder: "[凭证]", color: "#A03E1F", origin: "standard" },
-  { id: "organization", name: "公司名", placeholder: "[机构]", color: "#8C6A1F", manual: true, origin: "standard" },
-  { id: "other", name: "其他", placeholder: "[已处理]", color: "#5B6470", manual: true, origin: "standard" },
+  { id: "organization", name: "公司名", placeholder: "[机构]", color: "#8C6A1F", manual: true, reviewOnly: true, origin: "standard" },
+  { id: "other", name: "其他", placeholder: "[已处理]", color: "#5B6470", manual: true, reviewOnly: true, origin: "standard" },
 ];
 
 /** The id hand marks fall back to, and the category of anything a person cannot otherwise name. */
