@@ -274,10 +274,9 @@ export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult
     toast("不支持前后断言（如 (?<!…)），请改用“前后边界”");
     return "lookaround";
   }
-  // The rule as saved. `on: true` re-enables a rule that was switched off (a known issue left as it is).
-  const x: Rule = { name: draft.name.trim(), kind: draft.kind, cat: draft.cat, bd: draft.kind === "正则" ? draft.bd || "" : "", body: draft.body.trim(), on: true };
   const rs = selectedRuleset(getState());
   const old = index != null ? rs.rules[index] : undefined;
+  const x: Rule = { name: draft.name.trim(), kind: draft.kind, cat: draft.cat, bd: draft.kind === "正则" ? draft.bd || "" : "", body: draft.body.trim(), on: old?.on ?? true };
   if (old && (["name", "kind", "cat", "bd", "body"] as const).every((k) => (old[k] || "") === x[k])) {
     closeModal();
     toast("内容未变，版本不变");

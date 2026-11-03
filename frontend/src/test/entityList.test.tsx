@@ -46,6 +46,20 @@ describe("实体清单 · 规则页", () => {
     demo([{ ...rule("词条", "other", false), kind: "词表", body: "甲\n乙", bd: "" }]); mount();
     expect(ruleRow("词条").querySelector(".rs")).toHaveTextContent("2 条");
   });
+  it.each([false, true])("编辑已有规则保留启停状态 %s，开关、组头计数和总开关状态不变", (on) => {
+    demo([rule("A"), rule("C", "phone", on)]); mount();
+    const beforeCount = group("phone").querySelector(".muted.sm")!.textContent;
+    const beforeState = within(group("phone")).getByRole("checkbox").getAttribute("aria-checked");
+    click(button("编辑", ruleRow("C"))); typeInto("#rdName", "C edited"); typeInto("#rdBody", "C[0-9]+"); press("保存", ".modal");
+    expect(selected().rules[1]!.on).toBe(on);
+    expect(button("启用 C edited", ruleRow("C edited"))).toHaveAttribute("aria-checked", String(on));
+    expect(group("phone").querySelector(".muted.sm")!.textContent).toBe(beforeCount);
+    expect(within(group("phone")).getByRole("checkbox")).toHaveAttribute("aria-checked", beforeState);
+  });
+  it("新建规则保存后默认启用", () => {
+    demo([]); mount(); press("添加规则"); typeInto("#rdName", "新规则"); typeInto("#rdBody", "甲\n乙"); press("保存", ".modal");
+    expect(selected().rules[0]!.on).toBe(true); expect(button("启用 新规则")).toHaveAttribute("aria-checked", "true");
+  });
   it("多条规则默认展开；收起展开不保存；切换规则集再返回恢复默认展开", () => {
     demo(); mount(); const before = selected();
     press("收起 电话"); expect(ruleRow("C")).toBeUndefined(); expect(selected()).toBe(before);

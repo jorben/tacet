@@ -152,6 +152,26 @@ describe("方案与规则集的存储同步", () => {
     expect(JSON.parse(fake.items.find((i) => i.id === id)!.content).rules[0].terms).toEqual(["张三", "李四"]);
   });
 
+  it.each([false, true])("编辑已有规则（原启用 %s）改名称或正则后保存仍保留 disabled；新建规则默认启用", async (on) => {
+    act(() => { newRuleset(); saveRule(null, { name: "原规则", kind: "正则", cat: "phone", bd: "digit", body: "[0-9]{11}" }); });
+    await flushConfig();
+    const rs = () => getState().rulesets.find((r) => r.id === getState().rulesetSel)!;
+    const storedRule = () => JSON.parse(fake.items.find((i) => i.id === rs().id)!.content).rules[0];
+    expect(rs().rules[0]!.on).toBe(true); expect(storedRule().disabled).not.toBe(true);
+    if (!on) {
+      const { toggleRule } = await import("../actions/presets");
+      act(() => toggleRule(0)); await flushConfig(); expect(storedRule().disabled).toBe(true);
+    }
+    for (const draft of [
+      { name: "改名称", kind: "正则" as const, cat: "phone", bd: "digit" as const, body: "[0-9]{11}" },
+      { name: "改名称", kind: "正则" as const, cat: "phone", bd: "digit" as const, body: "1[0-9]{10}" },
+    ]) {
+      act(() => { expect(saveRule(0, draft)).toBe("saved"); }); await flushConfig();
+      expect(storedRule().disabled === true).toBe(!on);
+      expect(rs().rules[0]!.on).toBe(on);
+    }
+  });
+
   it("在屏幕上删除方案：先删预设再删方案对象；删除规则集在方案之后", async () => {
     selectPreset("builtin-preset-model");
     act(() => copyPreset());
