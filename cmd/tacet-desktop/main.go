@@ -54,7 +54,7 @@ func main() {
 		if dir := os.Getenv("TACET_DESKTOP_WORKSPACE"); dir != "" && filepath.IsAbs(dir) {
 			ws = dir
 		}
-		return app.OpenWith(ctx, app.Config{Workspace: ws})
+		return app.OpenWith(ctx, app.Config{Workspace: ws, ProbeDevices: true})
 	}, host)
 	var trayAnimation *gui.TrayAnimation
 	a := application.New(application.Options{

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
@@ -455,6 +455,127 @@ describe("方案与规则集的存储同步", () => {
     expect(toastText()).toContain("AstrLink Guard GPU 版本 已就绪");
     // the model itself was never touched
     expect(fake.calls).not.toContain("downloadModel:astrlink-guard-int8");
+  });
+
+  const modelReads = () => fake.calls.filter((c) => c === "models").length;
+
+  it("启动时确认推理设备：只等检测时放慢刷新，确认后得到 GPU 结论并停止刷新", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
+      const n = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(700));
+      expect(modelReads()).toBe(n); // nothing but the probe to wait for: the slower interval
+      Object.assign(fake.modelList[0]!, { backend: "CoreMLExecutionProvider", device: "gpu", accelerated: true, detecting: false });
+      await act(() => vi.advanceTimersByTimeAsync(1300));
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "gpu", backend: "CoreMLExecutionProvider", detecting: false });
+      const settled = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(modelReads()).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检测期间读取失败一次：仍继续刷新，直到得到结论（检测未完成带原因码）", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failed = false;
+      fake.models = async () => {
+        if (failed) return read();
+        failed = true;
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      await act(() => vi.advanceTimersByTimeAsync(2000));
+      expect(failed).toBe(true);
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: true });
+      Object.assign(fake.modelList[0]!, { detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      await act(() => vi.advanceTimersByTimeAsync(4000)); // after a failed read the wait doubles
+      expect(getState().models[0]!.runtime).toMatchObject({ device: "auto", detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      const settled = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(10000));
+      expect(modelReads()).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检测期间读取一直失败：重试间隔逐次加倍，最长 30 秒；恢复后回到正常间隔", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failing = true;
+      fake.models = async () => {
+        if (!failing) return read();
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      const n = modelReads();
+      // 2s, then 4s, 8s, 16s, 30s, 30s after each failure
+      for (const wait of [2000, 4000, 8000, 16000, 30000, 30000]) {
+        await act(() => vi.advanceTimersByTimeAsync(wait - 1));
+        const before = modelReads();
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expect(modelReads()).toBe(before + 1);
+      }
+      expect(modelReads()).toBe(n + 6);
+      failing = false;
+      await act(() => vi.advanceTimersByTimeAsync(30000));
+      const ok = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(2000)); // a good read resets the wait
+      expect(modelReads()).toBe(ok + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("读取失败后不再需要刷新：下次开始刷新（下载 GPU 版本）时第一次读取又失败，重试间隔从正常间隔算起", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.modelList = [RT({ accelerable: true, backend: "auto", device: "auto", detecting: true, accel: { ...ACCEL } })];
+      await loadConfig();
+      const read = fake.models.bind(fake);
+      let failing = true;
+      fake.models = async () => {
+        if (!failing) return read();
+        fake.calls.push("models");
+        throw new Error("ENGINE_BUSY");
+      };
+      const n = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(2000 + 4000 + 8000)); // three failed reads: the next would wait 16s
+      expect(modelReads()).toBe(n + 3);
+      // the detection ended, and the settings were read again with the model states: nothing left to wait for
+      failing = false;
+      Object.assign(fake.modelList[0]!, { detecting: false, deviceCode: "PLUGIN_EXITED_EARLY" });
+      await act(() => loadConfig());
+      expect(getState().models[0]!.runtime).toMatchObject({ detecting: false });
+      const stopped = modelReads();
+      await act(() => vi.advanceTimersByTimeAsync(60000));
+      expect(modelReads()).toBe(stopped);
+      // a download starts the polling again, and its first read fails too
+      failing = true;
+      await act(async () => {
+        downloadAccel("astrlink-guard-int8");
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(getState().models[0]!.runtime!.accel!.status).toBe("downloading");
+      expect(modelReads()).toBe(stopped + 1);
+      // one failure: 700ms doubled once, not the 30s the earlier failures had reached
+      await act(() => vi.advanceTimersByTimeAsync(1399));
+      expect(modelReads()).toBe(stopped + 1);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(modelReads()).toBe(stopped + 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("GPU 版本校验未通过：重新下载前先丢弃残留；试运行失败时重新准备", async () => {

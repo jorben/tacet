@@ -79,10 +79,8 @@ func (e *Engine) modelRunner(ctx context.Context, a kernel.AttemptRef, id string
 	if err != nil {
 		return nil, nil, err
 	}
-	select {
-	case e.modelSem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+	if err = e.takeModelSlot(ctx); err != nil {
+		return nil, nil, err
 	}
 	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)
 	if err != nil {
@@ -166,6 +164,18 @@ func (e *Engine) launchWith(ctx context.Context, p plugin, args []string, files 
 
 // launchWithin starts a worker whose handshake may take up to timeout (a model build that compiles first).
 func (e *Engine) launchWithin(ctx context.Context, p plugin, args []string, files []*os.File, timeout time.Duration) (*host.Worker, error) {
+	w, err := e.spawn(p, args, files)
+	if err != nil {
+		return nil, err
+	}
+	if err = e.handshake(ctx, w, p, timeout); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+// spawn starts the process of one worker of p, marked as this run's.
+func (e *Engine) spawn(p plugin, args []string, files []*os.File) (*host.Worker, error) {
 	spec := host.Spec{Path: e.opt.Python, Args: append([]string{"-I", "-m", p.module}, args...), Dir: os.TempDir(), ExtraFiles: files,
 		Env:        []string{"PATH=/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE=1"},
 		Generation: e.marker()}
@@ -173,9 +183,14 @@ func (e *Engine) launchWithin(ctx context.Context, p plugin, args []string, file
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errSpawn, err)
 	}
+	return w, nil
+}
+
+// handshake initialises a started worker within timeout; one that does not answer is ended.
+func (e *Engine) handshake(ctx context.Context, w *host.Worker, p plugin, timeout time.Duration) error {
 	ictx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	if err = w.Session.Initialize(ictx, p.id.ID, p.id.Version, e.ws.Generation()); err != nil {
+	if err := w.Session.Initialize(ictx, p.id.ID, p.id.Version, e.ws.Generation()); err != nil {
 		// which of the three it was is all that is said: the worker's diagnostics are discarded (they may
 		// hold document values), so the reason code is what makes an occasional failure traceable
 		cause := errHandshake
@@ -195,9 +210,9 @@ func (e *Engine) launchWithin(ctx context.Context, p plugin, args []string, file
 			}
 		}
 		w.Terminate(time.Second)
-		return nil, fmt.Errorf("%w: %v", cause, err)
+		return fmt.Errorf("%w: %v", cause, err)
 	}
-	return w, nil
+	return nil
 }
 
 func (e *Engine) pluginFor(format string) (plugin, bool) {
@@ -242,9 +257,12 @@ func (e *Engine) markerPrefix() string { return workspacePrefix(e.opt.Dir) }
 // reapPrevious is the second step: worker processes an earlier run left behind (a crash, a kill) are gone
 // before anything is recovered. The workspace lock is ours and no worker of this run exists yet.
 func (e *Engine) reapPrevious(context.Context) error {
-	_, err := platform.ReapMarkedPrefix(e.markerPrefix())
+	_, err := e.reapWorkers()
 	return err
 }
+
+// reapWorkers ends every worker process of this workspace and tells how many it ended.
+func (e *Engine) reapWorkers() (int, error) { return platform.ReapMarkedPrefix(e.markerPrefix()) }
 
 // settlePublish is the third step: a publish that was interrupted between its steps is settled from what is
 // on disk (delivered, in conflict, or not started) before any task can run again.
@@ -266,6 +284,7 @@ func (e *Engine) recoverAll(ctx context.Context) error {
 func (e *Engine) startDispatch(context.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel, e.life = cancel, ctx
+	e.startProbe(ctx) // before any task can ask for the model slot, so every one of them can stop it
 	go func() {
 		defer close(e.done)
 		e.disp.Run(ctx, e.complete)

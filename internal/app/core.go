@@ -212,6 +212,10 @@ type ModelRuntime struct {
 	Dir        string `json:"dir"`        // absolute directory of its files once installed, else ""
 	Backend    string `json:"backend"`    // actual provider, or auto before the first load
 	Device     string `json:"device"`     // cpu, gpu or auto (not loaded yet)
+	// Detecting: Device is auto and the start-up probe is about to confirm it.
+	Detecting bool `json:"detecting"`
+	// DeviceCode: why the start-up probe could not confirm an auto device, e.g. PLUGIN_HANDSHAKE_TIMEOUT; empty otherwise.
+	DeviceCode string `json:"deviceCode,omitempty"`
 	// Repository is the model's Hugging Face id ("owner/name") from its integrity manifest; empty if unknown.
 	Repository string `json:"repository"`
 	// Accelerable identifies GPU-compatible weights; Accel is reserved for legacy clients.

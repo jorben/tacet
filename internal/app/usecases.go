@@ -68,6 +68,7 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 	stopper, err := lifecycle.NewStopper([]lifecycle.Step{
 		{Name: lifecycle.ExitStopDispatch, Run: func(context.Context) error {
 			e.queue.PauseDispatch(true)
+			e.stopProbe()
 			if mode == lifecycle.SystemShutdown {
 				// cancelled before the workers are reclaimed: a stage whose worker dies then ends as
 				// cancelled, which is not recorded, instead of as failed, which would be
@@ -78,12 +79,18 @@ func (e *Engine) close(mode lifecycle.ExitMode) error {
 		}},
 		// the dispatcher's context ends the stages it runs; whatever is not at a boundary after the grace
 		// period is reclaimed by the next steps
-		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error { e.cancel(); waitDone(ctx); e.act.stop(); return nil }},
+		{Name: lifecycle.ExitCancel, Run: func(ctx context.Context) error {
+			e.cancel()
+			waitDone(ctx)
+			e.act.stop()
+			return nil
+		}},
 		{Name: lifecycle.ExitCheckpoint, Run: e.recoverJobs},
 		{Name: lifecycle.ExitReap, Run: func(ctx context.Context) error {
-			err := e.reapPrevious(ctx)
+			e.probeStarted() // stopped by now: a probe worker already started is reaped, none starts later
+			n, err := e.reapWorkers()
 			if e.afterReap != nil {
-				e.afterReap()
+				e.afterReap(n)
 			}
 			return err
 		}},

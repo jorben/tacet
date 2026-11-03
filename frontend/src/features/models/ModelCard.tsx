@@ -163,7 +163,7 @@ function ModelRuntime({ id, runtime: r }: { id: string; runtime: NonNullable<Mod
     <dl className="model-runtime">
       <div>
         <dt>推理设备</dt>
-        <dd title={r.backend}>{r.device === "auto" ? "GPU 优先 · 启动时检测" : r.device === "gpu" ? "GPU · " + ({ CoreMLExecutionProvider: "Core ML", DmlExecutionProvider: "DirectML", CUDAExecutionProvider: "CUDA", ROCMExecutionProvider: "ROCm" }[r.backend] || "ONNX Runtime") : "CPU · ONNX Runtime"}</dd>
+        <dd title={r.device === "auto" && !r.detecting && r.deviceCode ? r.deviceCode : r.backend}>{r.device === "auto" ? (r.detecting ? "GPU 优先 · 正在检测" : r.deviceCode ? "GPU 优先 · 检测未完成，首次任务时确认" : "GPU 优先 · 首次任务时确认") : r.device === "gpu" ? "GPU · " + ({ CoreMLExecutionProvider: "Core ML", DmlExecutionProvider: "DirectML", CUDAExecutionProvider: "CUDA", ROCMExecutionProvider: "ROCm" }[r.backend] || "ONNX Runtime") : "CPU · ONNX Runtime"}</dd>
       </div>
       {r.dir && <div>
         <dt>存储位置</dt>

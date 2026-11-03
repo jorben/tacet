@@ -448,9 +448,14 @@ func (e *Engine) Models(ctx context.Context) ([]ModelRuntime, error) {
 			}
 		}
 		// Device selection never changes the build or its download state.
-		rt.Build, rt.Backend = m.id, e.reportedBackend(m, accelOn)
+		backend, detecting, code := e.deviceState(m, accelOn)
+		rt.Build, rt.Backend = m.id, backend
 		rt.Device = deviceOf(rt.Backend)
 		rt.Accelerable, rt.Accelerated = deviceOf(m.backend) == "gpu", rt.Device == "gpu"
+		rt.Detecting = detecting && rt.Dir != ""
+		if rt.Device == "auto" && rt.Dir != "" {
+			rt.DeviceCode = code
+		}
 		rt.Accel = nil
 		out = append(out, rt)
 	}
@@ -563,10 +568,10 @@ func (e *Engine) prepareInstalled(ctx context.Context, dir string, entry models.
 			if s.GPUAcceleration && deviceOf(m.backend) == "gpu" {
 				backend = "auto"
 			}
-			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath, "--backend", backend, "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout, true)
+			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", m.opt.ManifestPath, "--backend", backend, "--cache-dir", e.modelCache(m.digest)}, accelStartTimeout)
 		}
 		if v := m.accel; v != nil && v.entry.Key() == entry.Key() {
-			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout, true)
+			return e.trial(ctx, m, []string{"--model-dir", dir, "--manifest", v.manifest, "--cache-dir", e.accelCache(v)}, accelStartTimeout)
 		}
 	}
 	return ErrModelUnknown
@@ -574,19 +579,10 @@ func (e *Engine) prepareInstalled(ctx context.Context, dir string, entry models.
 
 var trialSeq atomic.Uint64
 
-// trial loads a build of m with args and runs its sample. wait: queue for the model slot instead of refusing.
-func (e *Engine) trial(ctx context.Context, m *modelInfo, args []string, timeout time.Duration, wait bool) error {
-	select {
-	case e.modelSem <- struct{}{}:
-	default:
-		if !wait {
-			return ErrModelBusy
-		}
-		select {
-		case e.modelSem <- struct{}{}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+// trial loads a build of m with args and runs its sample, queueing for the model slot.
+func (e *Engine) trial(ctx context.Context, m *modelInfo, args []string, timeout time.Duration) error {
+	if err := e.takeModelSlot(ctx); err != nil {
+		return err
 	}
 	defer func() { <-e.modelSem }()
 	w, err := e.launchWithin(ctx, m.plug, args, nil, timeout)

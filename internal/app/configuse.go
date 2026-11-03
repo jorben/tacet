@@ -204,6 +204,9 @@ func (e *Engine) SettingsSave(ctx context.Context, in Settings) (Settings, error
 	if err != nil {
 		return Settings{}, mapConfigErr(err)
 	}
+	if !in.GPUAcceleration {
+		e.stopProbe() // the CPU needs no confirmation
+	}
 	return e.SettingsGet(ctx)
 }
 
