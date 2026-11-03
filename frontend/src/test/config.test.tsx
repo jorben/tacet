@@ -11,6 +11,11 @@ beforeEach(() => {
 const preset = () => getState().presets.find((x) => x.id === getState().presetSel)!;
 /** The control of the row titled `title` (a select button, switch, …). */
 const rowControl = (title: string, sel = "button") => $$(".row").find((r) => r.querySelector(".rl")?.textContent?.startsWith(title))!.querySelector<HTMLElement>(sel)!;
+/** The scheme row of a category, its detection source, and whether its treatment can be changed. */
+const catRow = (name: string) => $$(".row").find((r) => r.querySelector(".rl")?.textContent === name);
+const sourceOf = (name: string) => catRow(name)?.querySelector("[data-source]")?.textContent;
+const locked = (name: string) => [...catRow(name)!.querySelectorAll<HTMLButtonElement>(".seg button")].every((b) => b.disabled);
+const pressed = (name: string) => catRow(name)!.querySelector(".seg button[aria-pressed=true]")?.textContent;
 
 describe("方案", () => {
   it("内建方案只读；列表含新建与导入", () => {
@@ -30,10 +35,15 @@ describe("方案", () => {
     expect(win()).toContain("办公外发 副本");
     press("仅规则");
     expect(win()).not.toContain("范围外");
-    expect($$(".row").some((r) => r.querySelector(".rl")?.textContent === "人名")).toBe(false);
-    expect(win()).not.toContain("IP 地址");
+    // every category is listed; what nothing detects any more is off and cannot be switched on
+    expect(sourceOf("人名")).toBe("不识别");
+    expect(locked("人名")).toBe(true);
+    expect(pressed("人名")).toBe("关闭");
+    expect(preset().cats.person).not.toBe("off"); // the setting stays for when a source comes back
+    expect(sourceOf("IP 地址")).toBe("不识别");
     press("模型 + 规则");
-    expect(win()).toContain("IP 地址");
+    expect(sourceOf("IP 地址")).toBe("模型");
+    expect(locked("人名")).toBe(false);
     click($$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button")[1]!);
     expect(preset().cats.phone).toBe("ph");
     expect(preset().ver).toMatch(/^v\d+$/);
@@ -55,12 +65,13 @@ describe("方案", () => {
     expect(preset().cats.account).toBe("off");
     click(rowControl("模型"));
     pick("Privacy Filter");
-    expect(win()).not.toContain("IP 地址");
-    expect(win()).toContain("账号");
-    expect(win()).toContain("凭证");
+    expect(sourceOf("IP 地址")).toBe("不识别");
+    expect(locked("IP 地址")).toBe(true);
+    expect(sourceOf("账号")).toMatch(/^模型/);
+    expect(sourceOf("凭证")).toMatch(/^模型/);
     click(rowControl("模型"));
     pick("AstrLink Guard");
-    expect(win()).toContain("IP 地址");
+    expect(sourceOf("IP 地址")).toBe("模型");
     expect(preset().cats.account).toBe("off");
   });
 
@@ -82,6 +93,21 @@ describe("方案", () => {
     expect(source("电话")).toBe("规则");
   });
 
+  it("无来源类别的提示只在方案自己存有遮盖或占位符时说设置会保留", () => {
+    const hint = (name: string) => catRow(name)!.querySelector("[data-source]")!.getAttribute("data-tip");
+    go("presets");
+    press("复制");
+    press("仅规则");
+    // the copy holds the builtin's setting for 人名: it is stored and applies again with a source
+    expect(hint("人名")).toContain("已保存的设置会在可识别后生效");
+    press("新建");
+    press("仅规则");
+    // a new scheme holds nothing for 人名: the default mask is not stored for a category nothing detects
+    expect(preset().cats).not.toHaveProperty("person");
+    expect(sourceOf("人名")).toBe("不识别");
+    expect(hint("人名")).not.toContain("已保存的设置");
+  });
+
   it("选择同一模型保持已设置的置信度", () => {
     go("presets");
     press("复制");
@@ -97,7 +123,7 @@ describe("方案", () => {
   it("规则集多选至少保留一个；历史版本回滚；删除", () => {
     go("presets");
     press("简历脱敏", ".plist");
-    click(rowControl("规则集"));
+    click(rowControl("规则组"));
     pick("金融行业规则包");
     // the menu stays available for further picks
     expect($("#layer .pop")).toBeTruthy();
@@ -106,7 +132,7 @@ describe("方案", () => {
     pick("企业词条");
     expect(preset().rules).toEqual(["cn"]);
     pick("中国场景规则集");
-    expect($(".toast")!.textContent).toContain("至少保留一个规则集");
+    expect($(".toast")!.textContent).toContain("至少保留一个规则组");
     expect(preset().rules).toEqual(["cn"]);
     press("更多");
     pick("历史版本");
@@ -207,7 +233,7 @@ describe("规则", () => {
     press("规则", "[role=tablist]");
     expect(win()).toContain("手机号");
     expect($('button[aria-label="启用 手机号"]')!.hasAttribute("disabled")).toBe(true);
-    expect($('[role=checkbox][aria-label="启用实体 电话"]')!.hasAttribute("disabled")).toBe(true);
+    expect($('[role=checkbox][aria-label="启用类别 电话"]')!.hasAttribute("disabled")).toBe(true);
     press("企业词条", ".plist");
     press("添加规则");
     expect($("#layer .modal")!.textContent).toContain("添加规则");
@@ -236,7 +262,7 @@ describe("规则", () => {
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!;
     expect(row.querySelector(".entity-name")!.textContent).toBe("账号");
     press("添加规则");
-    const options = $$("#layer .typegrid button:not(.typegrid-add)").map((b) => b.textContent);
+    const options = $$("#layer .typegrid button:not(.typegrid-add):not(.typegrid-del)").map((b) => b.textContent);
     expect(options).toEqual(getState().categories.map((c) => c.name));
     expect(options).toEqual(expect.arrayContaining(["账号", "IP 地址", "网址", "凭证", "公司名", "其他"]));
     press("取消", "#layer .modal");
@@ -299,13 +325,12 @@ describe("规则", () => {
     expect(astr().categories).toContain("organization");
     expect(astr().categories).not.toContain("person");
     expect(astr().categories).not.toContain("address");
-    // the scheme lists what the model produces now
+    // the scheme lists every category, with what the model produces now as its source
     press("方案", "[role=tablist]");
     press("办公外发", ".plist");
-    const names = $$(".row .rl").map((e) => e.textContent);
-    expect(names).toContain("公司名");
-    expect(names).not.toContain("人名");
-    expect(names).not.toContain("地址");
+    expect(sourceOf("公司名")).toBe("模型");
+    expect(sourceOf("人名")).toBe("不识别");
+    expect(sourceOf("地址")).toBe("不识别");
     // back to the default
     press("模型", "[role=tablist]");
     await act(async () => { press("恢复默认"); });
@@ -344,7 +369,7 @@ describe("规则", () => {
     go("presets");
     press("规则", "[role=tablist]");
     press("新建");
-    expect(win()).toContain("新规则集");
+    expect(win()).toContain("新规则组");
     press("企业词条", ".plist");
     press("更多");
     pick("删除");

@@ -3,7 +3,7 @@ import { openConfidenceMenu, openPresetModelMenu, openPresetMoreMenu, openPreset
 import { MODEL_LABELS } from "../../domain/catalog";
 import { categoryName } from "../../domain/categories";
 import {
-  availableRulesets, categorySourceLabel, confidenceOf, formatConfidence, modelById, presetConfidence, presetCategories, presetCategorySources, presetTreatment,
+  availableRulesets, categorySourceLabel, confidenceOf, effectiveTreatment, formatConfidence, modelById, presetConfidence, presetCategorySources, schemeCategories,
   type CategorySource,
 } from "../../domain/presets";
 import { openModal } from "../../overlay/store";
@@ -47,16 +47,26 @@ function ConfidenceRow({ preset: p, locked }: { preset: Preset; locked: boolean 
   );
 }
 
-function CategoryRow({ category, source, value, locked }: { category: string; source?: CategorySource; value: PresetTreatment; locked: boolean }) {
+const NO_SOURCE_HINT = "所选模型的标签与规则组的规则都不识别此类别，只能关闭";
+
+/**
+ * One category of the scheme: what detects it (the model, its rules, or both) and what is done with it. A
+ * category nothing detects is off and cannot be switched on; a mask or placeholder the scheme holds for it (not
+ * the default an unsaved scheme shows, which is not stored for it) stays stored and applies again once a source
+ * comes back (`kept`).
+ */
+function CategoryRow({ category, source, value, kept, locked }: { category: string; source?: CategorySource; value: PresetTreatment; kept: boolean; locked: boolean }) {
   const name = categoryName(useAppState((s) => s.categories), category);
+  const detected = !!source;
   return (
-    <div className="row">
+    <div className={detected ? "row" : "row row-nosource"} data-category={category}>
       <Swatch category={category} />
       <span className="rl">{name}</span>
       {/* which detector covers the category, so switching models shows what the model itself finds */}
-      <span className={source?.model ? "tag tp" : "tag"} data-source>{categorySourceLabel(source)}</span>
-      <span className="rv">
-        <Segmented value={value === "na" ? "off" : value} disabled={locked} onChange={(k) => setCategoryTreatment(category, k)} options={[...TREATMENT_OPTIONS]} />
+      {detected ? <span className={source.model ? "tag tp" : "tag"} data-source>{categorySourceLabel(source)}</span>
+        : <span className="tag tag-none" data-source tabIndex={0} {...tip(NO_SOURCE_HINT + (kept ? "；已保存的设置会在可识别后生效" : ""))}>不识别</span>}
+      <span className="rv" {...(detected ? {} : tip(NO_SOURCE_HINT, { align: "end" }))}>
+        <Segmented value={value === "na" ? "off" : value} disabled={locked || !detected} onChange={(k) => setCategoryTreatment(category, k)} options={[...TREATMENT_OPTIONS]} />
       </span>
     </div>
   );
@@ -107,7 +117,7 @@ export function SchemeEditor() {
             </Row>
           )}
           {p.det === "model" && <ConfidenceRow preset={p} locked={locked} />}
-          <Row icon="hash" title="规则集">
+          <Row icon="hash" title="规则组">
             <SelectButton disabled={locked} chevron={!locked} onClick={(e) => openPresetRulesMenu(e.currentTarget)}>
               {sets.length ? sets.map((x) => x.name).join(" · ") : <span style={{ color: "var(--bad)" }}>未选择</span>}
             </SelectButton>
@@ -119,8 +129,8 @@ export function SchemeEditor() {
           </Row>
         </List>
         <List>
-          {presetCategories(p, models, available, catalog).map((t) => (
-            <CategoryRow key={t} category={t} source={sources.get(t)} value={presetTreatment(p, t)} locked={locked} />
+          {schemeCategories(p, models, available, catalog).map((t) => (
+            <CategoryRow key={t} category={t} source={sources.get(t)} value={effectiveTreatment(p, t, sources)} kept={["mask", "ph"].includes(p.cats[t] ?? "")} locked={locked} />
           ))}
         </List>
       </div>

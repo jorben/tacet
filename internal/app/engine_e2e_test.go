@@ -926,8 +926,8 @@ func TestConfigObjectsAreListedEditedVersionedAndUsedByTheNextRun(t *testing.T) 
 	if err != nil || rs.Version != 1 {
 		t.Fatalf("%+v %v", rs, err)
 	}
-	if _, err = e.ConfigCreate(ctx, "ruleset", "工号", "", `{"rules":[]}`); err == nil {
-		t.Fatal("a name used twice must be refused")
+	if _, err = e.ConfigCreate(ctx, "ruleset", "工号", "", `{"rules":[{"id":"emp","category":"employee","pattern":"HZ\\d{7}"}]}`); err == nil || !strings.Contains(err.Error(), "CONFIG_NAME_CONFLICT") {
+		t.Fatalf("a name used twice must be refused: %v", err)
 	}
 	if _, err = e.ConfigCreate(ctx, "ruleset", "坏的", "", `{"rules":[{"id":"x","category":"c","pattern":"(?<=a)b"}]}`); err == nil || err.Error() != "RULE_LOOKAROUND_UNSUPPORTED" {
 		t.Fatalf("look-behind is refused with the rule engine's own code: %v", err)
@@ -1024,14 +1024,24 @@ func TestADisabledRuleDetectsNothingAndCoversNoCategory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// "employee" is in the scheme but its only rule is off: there is no detection source, so the run is refused
-	if err = e.Start(ctx, StartRequest{Batch: st.ID, Preset: pre.ID, Authorize: true}); err == nil || !errors.Is(err, ErrNotReady) {
-		t.Fatalf("a category nothing detects must block the start: %v", err)
+	// "employee" is in the scheme but its only rule is off: nothing detects it, so the run leaves it out of
+	// scope instead of claiming it (the scheme keeps its setting)
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Preset: pre.ID, Authorize: true}); err != nil {
+		t.Fatalf("a category nothing detects is out of scope, not a refused start: %v", err)
 	}
-	// switched on again, the same preset detects it
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["employee"] != 0 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output)); !strings.Contains(string(raw), "HZ123456") {
+		t.Fatalf("output %q", raw)
+	}
+	// switched on again, the same preset detects it in the next run
 	on, err := e.ConfigSave(ctx, rs.ID, 1, "工号", "", `{"rules":[{"id":"emp","category":"employee","pattern":"HZ\\d{6}"}]}`)
 	if err != nil || on.Version != 2 {
 		t.Fatalf("%+v %v", on, err)
+	}
+	if st, err = e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out, Preset: pre.ID}); err != nil {
+		t.Fatal(err)
 	}
 	if err = e.Start(ctx, StartRequest{Batch: st.ID, Preset: pre.ID, Authorize: true}); err != nil {
 		t.Fatal(err)

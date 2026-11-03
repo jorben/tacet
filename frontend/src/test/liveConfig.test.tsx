@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
-import { presetCategories } from "../domain/presets";
+import { presetCategories, presetTreatment } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -80,6 +80,18 @@ describe("方案与规则集的存储同步", () => {
     expect(sch.version).toBe(2);
   });
 
+  it("复制内建方案只存原有条目和有来源的类别", async () => {
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));
+    const copy = getState().presets.find((p) => !p.builtin)!;
+    const sch = fake.items.find((i) => i.id === JSON.parse(fake.items.find((x) => x.id === copy.id)!.content).scheme_id)!;
+    // the builtin's entries are its sourced categories here; nothing detects the rest, so they stay unwritten (off)
+    const actions = JSON.parse(sch.content).category_actions;
+    expect(Object.keys(actions).sort()).toEqual(["address", "email", "id_number", "person", "phone"]);
+    expect(actions).toEqual(JSON.parse(SCHEME.content).category_actions);
+  });
+
   it("新建方案：沿用内建方案的规则集存储编号，存为新的方案对象和预设对象", async () => {
     act(() => newPreset());
     await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));
@@ -88,13 +100,29 @@ describe("方案与规则集的存储同步", () => {
     expect(JSON.parse(fake.items.find((i) => i.id === p.stored!.id)!.content)).toMatchObject({ ruleset_id: "builtin-cn-office", model_profile_id: "builtin-model-astrlink", rules_only: false });
   });
 
-  it("新规则集与引用它的方案：先存规则集，方案里的编号换成存储编号", async () => {
+  it("新建方案存好后仍遮盖有来源的类别；之后改别的类别不会删掉它们", async () => {
+    act(() => newPreset());
+    await waitFor(() => expect(getState().presets.find((x) => x.name === "新方案")?.stored).toBeTruthy());
+    const p = () => getState().presets.find((x) => x.name === "新方案")!;
+    const actions = () => JSON.parse(fake.items.find((i) => i.id === p().stored!.schemeId)!.content).category_actions;
+    // what the first write stored by default is what the screen now holds
+    expect(actions()).toMatchObject({ phone: "mask", person: "mask" });
+    expect(presetTreatment(p(), "phone")).toBe("mask");
+    expect(unhandledCategories(p(), getState().models[0]!.categories!)).toEqual([]);
+    // an edit of another category keeps phone masked in storage
+    act(() => setCategoryTreatment("person", "ph"));
+    await waitFor(() => expect(actions().person).toBe("placeholder"));
+    expect(actions().phone).toBe("mask");
+    expect(presetTreatment(p(), "phone")).toBe("mask");
+  });
+
+  it("新规则组与引用它的方案：先存规则集，方案里的编号换成存储编号", async () => {
     act(() => newRuleset());
     const draftId = getState().rulesetSel!;
     act(() => { saveRule(null, { name: "工号", kind: "正则", cat: "other", bd: "", body: "HZ[0-9]{6}" }); });
     await waitFor(() => expect(fake.calls).toContain("configCreate:ruleset"));
-    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则集")?.stored).toBeTruthy());
-    const rs = getState().rulesets.find((r) => r.name === "新规则集")!;
+    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则组")?.stored).toBeTruthy());
+    const rs = getState().rulesets.find((r) => r.name === "新规则组")!;
     expect(rs.id).not.toBe(draftId);
     expect(getState().rulesetSel).toBe(rs.id);
     expect(JSON.parse(fake.items.find((i) => i.id === rs.id)!.content).rules[0]).toMatchObject({ name: "工号", category: "other", pattern: "HZ[0-9]{6}" });
@@ -110,7 +138,7 @@ describe("方案与规则集的存储同步", () => {
     });
     const draft = getState().presets.find((p) => !p.builtin)!.rules[1]!;
     await waitFor(() => expect(getState().presets.find((p) => !p.builtin)?.stored).toBeTruthy());
-    const rs = getState().rulesets.find((r) => r.name === "新规则集")!;
+    const rs = getState().rulesets.find((r) => r.name === "新规则组")!;
     expect(rs.id).not.toBe(draft);
     const p = getState().presets.find((x) => !x.builtin)!;
     expect(p.rules).toEqual(["builtin-cn-office", rs.id]);
@@ -128,7 +156,7 @@ describe("方案与规则集的存储同步", () => {
     await sleep(700);
     expect(writes()).toEqual([]);
     // an unrelated change makes the sync run; the stored scheme of the untouched one is left as it is
-    act(() => newRuleset());
+    act(() => { newRuleset(); saveRule(null, { name: "工号", kind: "正则", cat: "other", bd: "", body: "HZ[0-9]{6}" }); });
     await waitFor(() => expect(fake.calls).toContain("configCreate:ruleset"));
     await sleep(500);
     expect(writes()).toEqual(["configCreate:ruleset"]);
@@ -144,8 +172,8 @@ describe("方案与规则集的存储同步", () => {
   it("停用一条规则保存为停用，不删除", async () => {
     act(() => newRuleset());
     act(() => { saveRule(null, { name: "甲", kind: "词表", cat: "name", bd: "", body: "张三\n李四" }); });
-    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则集")?.stored).toBeTruthy());
-    const id = getState().rulesets.find((r) => r.name === "新规则集")!.id;
+    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则组")?.stored).toBeTruthy());
+    const id = getState().rulesets.find((r) => r.name === "新规则组")!.id;
     selectRuleset(id);
     const { toggleRule } = await import("../actions/presets");
     act(() => toggleRule(0));
@@ -191,8 +219,16 @@ describe("方案与规则集的存储同步", () => {
     expect(writes()).toEqual([]);
   });
 
-  it("存储拒绝时提示原因并按存储的内容重新载入屏幕", async () => {
+  it("新建的规则组在加入第一条规则后才保存", async () => {
     act(() => newRuleset());
+    await sleep(700);
+    expect(writes()).toEqual([]);
+    act(() => { saveRule(null, { name: "工号", kind: "正则", cat: "other", bd: "", body: "HZ[0-9]{6}" }); });
+    await waitFor(() => expect(writes()).toEqual(["configCreate:ruleset"]));
+  });
+
+  it("存储拒绝时提示原因并按存储的内容重新载入屏幕", async () => {
+    act(() => { newRuleset(); saveRule(null, { name: "工号", kind: "正则", cat: "other", bd: "", body: "HZ[0-9]{6}" }); });
     await waitFor(() => expect(fake.calls).toContain("configCreate:ruleset"));
     fake.configFails = new Error("CONFIG_NAME_CONFLICT");
     act(() => copyPreset());
@@ -234,25 +270,28 @@ describe("方案与规则集的存储同步", () => {
     expect(toastText()).not.toContain("未写入方案");
   });
 
-  it("原存储没有设置且没有检测来源的类别提示后不写入", async () => {
+  it("没有检测来源的类别不能设置处理方式；改为仅规则后，模型才识别的类别保留原设置", async () => {
     selectPreset("builtin-preset-model");
     act(() => copyPreset());
     await waitFor(() => expect(getState().presets.find((p) => !p.builtin)?.stored).toBeTruthy());
     act(() => setDetection("rules"));
     await flushConfig();
-    act(() => setCategoryTreatment("organization", "mask"));
-    await waitFor(() => expect(toastText()).toContain("公司名"));
+    const before = fake.calls.length;
+    act(() => { setCategoryTreatment("organization", "mask"); setCategoryTreatment("person", "mask"); });
+    await sleep(700);
+    expect(fake.calls.slice(before).filter((c) => c.startsWith("config"))).toEqual([]);
     const id = getState().presets.find((p) => !p.builtin)!.id;
     const scheme = fake.items.find((i) => i.id === JSON.parse(fake.items.find((x) => x.id === id)!.content).scheme_id)!;
     expect(JSON.parse(scheme.content).category_actions).toMatchObject({ address: "placeholder", person: "placeholder" });
     expect(JSON.parse(scheme.content).category_actions.organization).toBeUndefined();
+    expect(toastText()).not.toContain("未写入方案");
   });
 
   it("历史版本来自存储；回滚用所选版本保存为新版本", async () => {
     act(() => newRuleset());
     act(() => { saveRule(null, { name: "甲", kind: "词表", cat: "name", bd: "", body: "张三" }); });
-    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则集")?.stored).toBeTruthy());
-    const id = getState().rulesets.find((r) => r.name === "新规则集")!.id;
+    await waitFor(() => expect(getState().rulesets.find((r) => r.name === "新规则组")?.stored).toBeTruthy());
+    const id = getState().rulesets.find((r) => r.name === "新规则组")!.id;
     const v1 = fake.items.find((i) => i.id === id)!.content;
     selectRuleset(id);
     act(() => { saveRule(0, { name: "甲", kind: "词表", cat: "name", bd: "", body: "张三\n李四" }); });

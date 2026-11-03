@@ -91,17 +91,16 @@ describe("方案 ↔ 存储对象", () => {
     const w = presetContents(p, rs, models, { scheme, preset });
     expect(sameContent(w.scheme, scheme.content)).toBe(true);
     expect(sameContent(w.preset("sc"), preset.content)).toBe(true);
-    expect(w.dropped).toEqual([]);
   });
 
-  it("无来源且原存储没有设置的类别不写入并报告，原存储的隐藏类别保持原值", () => {
+  it("无来源的类别也保存方案里的设置（来源恢复后生效），方案不列出的类别保持原值", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.cats.address = "mask";
     const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
-    expect(w.dropped).toEqual(["address"]);
     const s = JSON.parse(w.scheme);
-    expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "person", "phone"]);
-    expect(s.category_actions.person).toBe("placeholder");
+    // address and person: nothing of a rules-only scheme detects them, the settings stay; employee is unknown to the catalog
+    expect(Object.keys(s.category_actions).sort()).toEqual(["address", "employee", "other", "payment_card", "person", "phone"]);
+    expect(s.category_actions).toMatchObject({ address: "mask", person: "placeholder", employee: "delete" });
     expect(JSON.parse(w.preset("sc"))).toMatchObject({ rules_only: true, ruleset_id: "cn" });
     expect(JSON.parse(w.preset("sc")).model_profile_id).toBeUndefined();
   });
@@ -124,6 +123,19 @@ describe("方案 ↔ 存储对象", () => {
     expect(imported.preset.cats).toMatchObject({ account: "mask", ip_address: "off", url: "ph", secret: "ph" });
     const plugin = modelFromItem({ ...MODEL, content: JSON.stringify({ ...JSON.parse(MODEL.content), label_map: { a: "account", b: "account", s: "secret" } }) })!.plugin;
     expect(plugin.categories).toEqual(["account", "secret"]);
+  });
+
+  it("新建方案不给无来源的类别写设置", () => {
+    // not stored yet, no setting of its own: categories with a source take the default mask, the rest stay off
+    const p = { ...presetFromItems(preset, scheme, rs, models), stored: undefined, cats: {} };
+    const a = JSON.parse(presetContents(p, rs, models).scheme).category_actions;
+    expect(Object.keys(a).sort()).toEqual(["address", "employee", "organization", "other", "payment_card", "person", "phone"]);
+    expect(a).toMatchObject({ phone: "mask", person: "mask" });
+    for (const c of ["email", "id_number", "date", "account", "ip_address", "url", "secret"]) expect(a).not.toHaveProperty(c);
+    // an explicit setting (an imported scheme's, say) is written even though nothing detects the category yet
+    const explicit = JSON.parse(presetContents({ ...p, cats: { email: "ph", date: "off" } }, rs, models).scheme).category_actions;
+    expect(explicit).toMatchObject({ email: "placeholder" });
+    expect(explicit).not.toHaveProperty("date");
   });
 
   it("置信度不低于模型的适配器下限；新方案的资源档位取默认", () => {

@@ -36,10 +36,10 @@ const confirm = async () => { await act(async () => { click($(".loss-modal .btn-
 afterEach(() => { cleanup(); stopConfigSync(); setService(null); });
 
 describe("实体清单 · 规则页", () => {
-  it("目录顺序分组，无空组；目录外原始 id 排最后并标未登记实体；单行和组内保留边界 Tag 与摘要", () => {
+  it("目录顺序分组，无空组；目录外原始 id 排最后并标未登记类别；单行和组内保留边界 Tag 与摘要", () => {
     demo([rule("外部", "outside"), rule("B", "email"), rule("A"), rule("C")]); mount();
     expect($$(".rule-group").map((e) => e.dataset.category)).toEqual(["phone", "email", "outside"]);
-    expect(group("outside")).toHaveTextContent("outside未登记实体");
+    expect(group("outside")).toHaveTextContent("outside未登记类别");
     expect(group("email").querySelector(".rule-group-head")).toBeNull();
     for (const n of ["A", "B", "C"]) { expect(ruleRow(n)).toHaveTextContent("边界 · 数字"); expect(ruleRow(n).querySelector(".rs")).toHaveTextContent(n); }
   });
@@ -72,7 +72,7 @@ describe("实体清单 · 规则页", () => {
     demo(Array.from({ length: 5 }, (_, i) => rule("R" + i, "phone", i < 2))); mount();
     const box = () => within(group("phone")).getByRole("checkbox");
     expect(box()).toHaveAttribute("aria-checked", "mixed"); expect(group("phone")).toHaveTextContent("2/5 已启用");
-    expect(box().parentElement).toHaveAttribute("data-tip", "只影响本规则集内的规则；实体要不要处理，请在方案页设置");
+    expect(box().parentElement).toHaveAttribute("data-tip", "只影响本规则组内的规则；类别要不要处理，请在方案页设置");
     click(box()); expect(selected().ver).toBe("v2"); expect(selected().hist).toHaveLength(1);
     expect(selected().rules.every((r) => r.on)).toBe(true); expect(box()).toHaveAttribute("aria-checked", "true");
     click(box()); expect(selected().rules).toHaveLength(5); expect(selected().rules.every((r) => !r.on)).toBe(true);
@@ -97,7 +97,7 @@ describe("实体清单 · 规则页", () => {
   it("每组（含单行）添加规则默认本实体，全局默认 other；编辑原实体；改实体后立即重算单行和空组", () => {
     demo(); mount();
     for (const cat of ["phone", "email"]) {
-      click(button("在此实体下添加规则", group(cat)));
+      click(button("在此类别下添加规则", group(cat)));
       expect($('[aria-pressed=true]', $(".typegrid")!)!.textContent).toBe(categoryNameFor(cat));
       press("取消", ".modal");
     }
@@ -107,13 +107,13 @@ describe("实体清单 · 规则页", () => {
     expect(group("phone").querySelector(".rule-group-head")).toBeNull(); expect(group("email").querySelectorAll(".rule-row")).toHaveLength(2);
     click(button("编辑", ruleRow("A"))); press("邮箱", ".typegrid"); press("保存", ".modal");
     expect(group("phone")).toBeNull(); expect(group("email").querySelectorAll(".rule-row")).toHaveLength(3);
-    click(button("在此实体下添加规则", group("email"))); typeInto("#rdName", "D"); typeInto("#rdBody", "D"); press("保存", ".modal");
+    click(button("在此类别下添加规则", group("email"))); typeInto("#rdName", "D"); typeInto("#rdBody", "D"); press("保存", ".modal");
     expect(group("email").querySelectorAll(".rule-row")).toHaveLength(4);
   });
   it.each(["builtin", "plugin"])("%s 只读：总开关与单条置灰，没有编辑和添加入口", (kind) => {
     demo(); store.update((d) => { if (kind === "builtin") d.rulesets.at(-1)!.builtin = true; else d.rulesets.at(-1)!.plugin = "fin"; }); mount();
     for (const e of $$('.preset-detail [role=checkbox],.preset-detail [role=switch]')) expect(e).toBeDisabled();
-    expect($$('.preset-detail button[aria-label=编辑]')).toHaveLength(0); expect(screen.queryByText("在此实体下添加规则")).toBeNull(); expect(screen.queryByText("添加规则")).toBeNull();
+    expect($$('.preset-detail button[aria-label=编辑]')).toHaveLength(0); expect(screen.queryByText("在此类别下添加规则")).toBeNull(); expect(screen.queryByText("添加规则")).toBeNull();
   });
   it.each(["总开关", "单规则"])("仅规则方案 X 失去来源：%s 先确认列出 X，取消不改，确认后停用且无持续提醒", async (kind) => {
     demo(kind === "总开关" ? [rule("A"), rule("C")] : [rule("C")]);
@@ -121,13 +121,18 @@ describe("实体清单 · 规则页", () => {
     const control = () => kind === "总开关" ? within(group("phone")).getByRole("checkbox") : button("启用 C");
     const before = selected(); click(control());
     expect(overlayStore.get().modal?.type).toBe("detectionLoss");
-    expect($(".loss-modal")).toHaveTextContent("方案『X』将无法开始任务"); expect($(".loss-modal")).toHaveTextContent("方案『X』将没有任何启用的规则，开始任务会失败");
+    expect($(".loss-modal")).toHaveTextContent("方案『X』中的 电话 将没有检测来源，改为关闭"); expect($(".loss-modal")).toHaveTextContent("方案『X』将没有任何启用的规则");
     press("取消", ".loss-modal"); expect(selected()).toBe(before);
     click(control()); await confirm(); expect(selected().rules.every((r) => !r.on)).toBe(true);
     expect(group("phone").querySelector("[role=note]")).toBeNull();
   });
+  it("规则组至少保留一条规则：删除最后一条被拒绝，规则不变", () => {
+    demo([rule("C")]); mount();
+    click(button("编辑", ruleRow("C"))); press("删除", ".modal");
+    expect($(".toast")).toHaveTextContent("规则组至少保留一条规则"); expect(selected().rules.map((r) => r.name)).toEqual(["C"]);
+  });
   it.each(["改实体", "删除"])("%s 也确认，取消返回草稿且不改规则", async (kind) => {
-    demo([rule("C")]); store.update((d) => { d.presets.push({ ...d.presets[0]!, id: "X", name: "X", rules: ["test"], det: "rules", cats: { phone: "mask" } }); }); mount();
+    demo([rule("C"), rule("B", "email")]); store.update((d) => { d.presets.push({ ...d.presets[0]!, id: "X", name: "X", rules: ["test"], det: "rules", cats: { phone: "mask" } }); }); mount();
     click(button("编辑", ruleRow("C"))); typeInto("#rdName", "草稿");
     if (kind === "改实体") { press("邮箱", ".typegrid"); press("保存", ".modal"); } else press("删除", ".modal");
     expect($(".loss-modal")).toHaveTextContent("X"); press("取消", ".loss-modal"); expect($("#rdName")).toHaveValue("草稿"); expect(selected().rules[0]!.cat).toBe("phone");
@@ -213,7 +218,7 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     for (const c of ["payment_card", "ip_address", "id_number", "organization", "other", "user"]) expect(mapping(c).querySelector(".mapping-labels .muted")).toHaveTextContent("未设置");
     expect(mapping("person").querySelector(".tag.mono")).toHaveTextContent("private_person");
     act(() => store.update((d) => { d.models[0]!.mapping = { map: { ...privacy.label_map, private_person: "unknown" } }; }));
-    expect($$(".mapping-row").at(-1)).toBe(mapping("unknown")); expect(mapping("unknown")).toHaveTextContent("unknown未登记实体"); expect(mapping("unknown")).toHaveTextContent("private_person");
+    expect($$(".mapping-row").at(-1)).toBe(mapping("unknown")); expect(mapping("unknown")).toHaveTextContent("unknown未登记类别"); expect(mapping("unknown")).toHaveTextContent("private_person");
   });
   it("取消模型最后标签先确认 X，取消不改，确认后未关联可再分配；恢复默认删除映射和已修改；mapping-warn 保留", async () => {
     const fake = await live(); mount("model"); choose("person"); pick("private_person"); await finish();

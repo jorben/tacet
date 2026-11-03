@@ -71,6 +71,8 @@ function change(modelId: string, edit: MappingEdit, approved = false): Promise<v
     if (!m) return;
     const { map, message } = edit(m);
     if (sameMapping(map, effectiveLabels(m))) return;
+    // a model none of whose labels count detects nothing: a scheme that wants that detects with rules only
+    if (!Object.keys(map).length) { toast("至少保留一个标签关联到类别"); return; }
     const loss = mappingChangeLoss(s.presets, { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models }, modelId, map);
     if (!approved && !losesNothing(loss)) {
       confirmLoss("保存映射", loss, () => { void change(modelId, edit, true); });

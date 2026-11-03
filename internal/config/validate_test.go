@@ -35,7 +35,7 @@ func seedReferences(t *testing.T, db *store.DB, r *Repository) {
 			kind  Kind
 			value any
 		}{
-			{"rules", RuleSet, RulesContent{Rules: []RuleContent{}}},
+			{"rules", RuleSet, RulesContent{Rules: []RuleContent{{ID: "phone", Category: "phone", Pattern: `1\d{10}`}}}},
 			{"scheme", Scheme, SchemeContent{CategoryActions: map[string]string{"person": "delete"}, ImageDefault: "remove"}},
 			{"model1", ModelProfile, ModelContent{ModelID: "astrlink", ManifestDigest: "sha256:" + strings.Repeat("a", 64), Backend: "CPUExecutionProvider", AdapterFloor: 0.5, Calibrated: 0.8, LabelMap: map[string]string{"private_person": "person"}, MemoryBytes: 100}},
 			{"model2", ModelProfile, ModelContent{ModelID: "astrlink", ManifestDigest: "sha256:" + strings.Repeat("b", 64), Backend: "CPUExecutionProvider", AdapterFloor: 0.6, Calibrated: 0.9, LabelMap: map[string]string{"private_person": "person"}, MemoryBytes: 100}},

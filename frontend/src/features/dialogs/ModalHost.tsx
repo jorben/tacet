@@ -1,7 +1,7 @@
 import type { ModalSpec } from "../../overlay/store";
 import { UpdateAppDialog, AboutLinkDialog, LicensesDialog, CleanWorkspaceDialog, CloseWindowDialog } from "./appDialogs";
 import { BulkConfirmDialog, ExportReadyDialog, LiveBlockedDialog, LivePasswordDialog, PasswordDialog } from "./batchDialogs";
-import { DetectionLossDialog, ImportConflictDialog, RuleEditorDialog, VersionsDialog } from "./configDialogs";
+import { DeleteCategoryDialog, DetectionLossDialog, ImportConflictDialog, RuleEditorDialog, VersionsDialog } from "./configDialogs";
 import { HistoryItemDialog, RecentTasksDialog, ResumeBatchDialog } from "./history";
 import { PresetTestDialog } from "./presetTest";
 import { InstallPluginDialog, UninstallPluginDialog } from "./pluginDialogs";
@@ -22,6 +22,7 @@ export function ModalContent({ spec }: { spec: ModalSpec }) {
     case "liveBlocked": return <LiveBlockedDialog targets={spec.targets} />;
     case "ruleEditor": return <RuleEditorDialog rulesetId={spec.rulesetId} index={spec.index} category={spec.category} initial={spec.draft} />;
     case "detectionLoss": return <DetectionLossDialog action={spec.action} lost={spec.lost} noRules={spec.noRules} go={spec.go} back={spec.back} />;
+    case "deleteCategory": return <DeleteCategoryDialog id={spec.id} back={spec.back} />;
     case "versions": return <VersionsDialog kind={spec.kind} />;
     case "importConflict": return <ImportConflictDialog kind={spec.kind} name={spec.name} />;
     case "installPlugin": return <InstallPluginDialog />;

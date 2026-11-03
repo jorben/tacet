@@ -2,7 +2,11 @@
 import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
 import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryId, type CategoryInfo } from "./categories";
 
-export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
+/**
+ * The setting the scheme holds for a category. Without one, a scheme not stored yet masks it (the screens'
+ * default) and a stored scheme leaves it off: the kernel acts only on what the stored scheme lists.
+ */
+export const presetTreatment = (p: Pick<Preset, "cats" | "stored">, id: string): PresetTreatment => p.cats[id] ?? (p.stored ? "off" : "mask");
 
 /** What detects a category in a scheme: the selected model, its active rules, or both. */
 export interface CategorySource { model: boolean; rules: boolean }
@@ -30,6 +34,22 @@ export const categorySourceLabel = (s: CategorySource | undefined): string => (s
 export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[], catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): string[] {
   return byCatalogOrder(catalog, presetCategorySources(p, models, rulesets).keys());
 }
+
+/**
+ * Every category a scheme lists, in catalog order: all of the catalog except review-only categories, which
+ * are listed only when the scheme's model or rules report them, and anything its sources report that the
+ * catalog does not know. A listed category nothing detects is shown switched off and cannot be switched on.
+ */
+export function schemeCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[], catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): string[] {
+  return byCatalogOrder(catalog, [...catalog.filter((c) => !c.reviewOnly).map((c) => c.id), ...presetCategorySources(p, models, rulesets).keys()]);
+}
+
+/**
+ * What a run does with a category: the scheme's setting while its model or rules detect the category, off
+ * otherwise. The setting stays stored, so it applies again once a source comes back.
+ */
+export const effectiveTreatment = (p: Pick<Preset, "cats" | "stored">, id: string, sources: Map<string, CategorySource>): PresetTreatment =>
+  (sources.has(id) ? presetTreatment(p, id) : "off");
 
 /** Model scores are not comparable across models: the default (calibrated) value and the floor come from the bound model. */
 export const confidenceOf = (m: ModelPlugin | undefined): { rec: number; min: number } => ({ rec: m?.confRec ?? 0.5, min: m?.confMin ?? 0.3 });
@@ -83,7 +103,7 @@ export const ruleGroupCount = (g: Pick<RuleGroup, "items">): { on: number; total
  * categories its stored scheme lists, and a category nothing detected was not written there.
  */
 export function presetHandles(p: Pick<Preset, "cats" | "stored">, category: CategoryId): boolean {
-  const t = p.cats[category] ?? (p.stored ? undefined : "mask");
+  const t = presetTreatment(p, category);
   return t === "mask" || t === "ph";
 }
 
@@ -96,8 +116,8 @@ export interface DetectionSources {
 /** What a change of rules or of a model's labels would cost the schemes it affects. */
 export interface DetectionLoss {
   /**
-   * Schemes that mask or replace a category nothing would detect in them any more: the kernel refuses to start
-   * a task with them (no detection source).
+   * Schemes that mask or replace a category nothing would detect in them any more: their tasks leave it alone
+   * (out of scope) until a source comes back. The setting stays stored.
    */
   categories: { preset: Preset; categories: CategoryId[] }[];
   /** Schemes whose rule sets would have no rule switched on between them: a task with them fails. */

@@ -76,10 +76,13 @@ export type ModalSpec =
    */
   | { type: "ruleEditor"; rulesetId: string; index: number | null; category?: CategoryId; draft?: RuleDraft }
   /**
-   * A change would leave schemes unable to start a task: they are listed and the change waits for a yes. `back`
-   * is the dialog that cancelling returns to.
+   * A change would take a category's detection source away in schemes that handle it (it turns off there), or
+   * leave a scheme no rule switched on: they are listed and the change waits for a yes. `back` is the dialog
+   * that cancelling returns to.
    */
   | { type: "detectionLoss"; action: string; lost: { preset: string; categories: CategoryId[] }[]; noRules: string[]; go: () => void; back?: ModalSpec }
+  /** Deleting a user category: what lets go of it is listed first. `back` is the dialog to return to. */
+  | { type: "deleteCategory"; id: CategoryId; back?: ModalSpec }
   | { type: "versions"; kind: "preset" | "ruleset" }
   | { type: "importConflict"; kind: "preset" | "ruleset"; name: string }
   | { type: "installPlugin" }

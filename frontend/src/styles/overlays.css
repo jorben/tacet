@@ -51,6 +51,9 @@
 .typegrid button:hover{background:var(--line)}
 .typegrid button[aria-pressed=true]{background:var(--primary-soft);box-shadow:inset 0 0 0 1.5px var(--primary)}
 .typegrid button.typegrid-add{background:none;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink-2)}
+.typegrid-item{display:inline-flex;align-items:center}
+.typegrid button.typegrid-del{width:22px;height:22px;padding:0;margin-left:-2px;justify-content:center;background:none;color:var(--muted)}
+.typegrid button.typegrid-del:hover{background:var(--line);color:var(--bad)}
 .newcat{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px;border-radius:9px;background:var(--surface-2)}
 .newcat-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .newcat-err{margin-right:auto;font-size:12px;color:var(--bad)}

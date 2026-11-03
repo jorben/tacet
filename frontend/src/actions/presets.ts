@@ -1,7 +1,7 @@
 // Schemes (presets) and rule sets: editing, versions, import and the menus of the configuration pages.
 import { MODEL_LABELS } from "../domain/catalog";
 import {
-  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, losesNothing, modelById, presetConfidence, presetCategories, rulesetChangeLoss,
+  availableRulesets, bumpVersion, confidenceOf, duplicate, formatConfidence, losesNothing, modelById, presetConfidence, presetCategories, presetCategorySources, rulesetChangeLoss,
   type DetectionLoss, type Versioned,
 } from "../domain/presets";
 import type { CategoryId, Preset, PresetTab, PresetTreatment, Rule, RuleDraft, Ruleset } from "../domain/types";
@@ -69,7 +69,10 @@ export function setDetection(det: "model" | "rules"): void {
   });
 }
 
+/** Sets what the scheme does with a category; a category nothing of the scheme detects stays off. */
 export function setCategoryTreatment(t: string, k: PresetTreatment): void {
+  const s = getState();
+  if (!presetCategorySources(selectedPreset(s), s.models, availableRulesets(s.rulesets, s.plugins)).has(t)) return;
   store.update((d) => {
     const p = presetOf(d);
     if (p.cats[t] === k) return;
@@ -132,14 +135,16 @@ export function openPresetRulesMenu(anchor: HTMLElement): void {
   const s = getState();
   const p = selectedPreset(s);
   openMenu(anchor, [
-    { h: "规则集 · 可多选" },
-    ...availableRulesets(s.rulesets, s.plugins).map((rs) => ({ l: rs.name, s: rs.ver, k: rs.id, on: p.rules.includes(rs.id) })),
+    { h: "规则组 · 可多选" },
+    // a rule set without rules (one being written) detects nothing and is not stored yet
+    ...availableRulesets(s.rulesets, s.plugins).filter((rs) => rs.rules.length || p.rules.includes(rs.id))
+      .map((rs) => ({ l: rs.name, s: rs.ver + " · " + rs.rules.length + " 条规则", k: rs.id, on: p.rules.includes(rs.id) })),
     "-",
     { l: "管理规则", ic: "sliders", k: "_r" },
   ], (it) => {
     if (it.k === "_r") { openSubpage("presets", { presetTab: "rules" }); return; }
     const has = p.rules.includes(String(it.k));
-    if (has && p.rules.length === 1) { toast("至少保留一个规则集"); return; }
+    if (has && p.rules.length === 1) { toast("至少保留一个规则组"); return; }
     store.update((d) => {
       const x = presetOf(d);
       bumpVersion(x);
@@ -177,7 +182,7 @@ export function selectRuleset(id: string): void {
 
 export function newRuleset(): void {
   const id = nextId("rs");
-  store.update((d) => { d.rulesets.push({ id, name: "新规则集", ver: "v1", rules: [] }); d.rulesetSel = id; });
+  store.update((d) => { d.rulesets.push({ id, name: "新规则组", ver: "v1", rules: [] }); d.rulesetSel = id; });
 }
 
 export function copyRuleset(): void {
@@ -297,6 +302,7 @@ export function saveRule(index: number | null, draft: RuleDraft): SaveRuleResult
 /** Deletes a rule, addressed by its index in the rule set. `draft` is what the editor holds, for going back to it. */
 export function deleteRule(index: number, draft?: RuleDraft): void {
   const rs = selectedRuleset(getState());
+  if (rs.rules.length === 1) { toast("规则组至少保留一条规则；不再需要时，可从「更多」删除整个规则组"); return; }
   editRuleset("删除", (r) => { r.rules.splice(index, 1); }, (r) => {
     closeModal();
     toast("已删除 · 保存为 " + r.ver);
