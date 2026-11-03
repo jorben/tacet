@@ -80,6 +80,18 @@ describe("方案与规则集的存储同步", () => {
     expect(sch.version).toBe(2);
   });
 
+  it("复制内建方案只存原有条目和有来源的类别", async () => {
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));
+    const copy = getState().presets.find((p) => !p.builtin)!;
+    const sch = fake.items.find((i) => i.id === JSON.parse(fake.items.find((x) => x.id === copy.id)!.content).scheme_id)!;
+    // the builtin's entries are its sourced categories here; nothing detects the rest, so they stay unwritten (off)
+    const actions = JSON.parse(sch.content).category_actions;
+    expect(Object.keys(actions).sort()).toEqual(["address", "email", "id_number", "person", "phone"]);
+    expect(actions).toEqual(JSON.parse(SCHEME.content).category_actions);
+  });
+
   it("新建方案：沿用内建方案的规则集存储编号，存为新的方案对象和预设对象", async () => {
     act(() => newPreset());
     await waitFor(() => expect(writes()).toEqual(["configCreate:scheme", "configCreate:preset"]));

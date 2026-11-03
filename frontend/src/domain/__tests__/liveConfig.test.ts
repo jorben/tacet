@@ -125,6 +125,19 @@ describe("方案 ↔ 存储对象", () => {
     expect(plugin.categories).toEqual(["account", "secret"]);
   });
 
+  it("新建方案不给无来源的类别写设置", () => {
+    // not stored yet, no setting of its own: categories with a source take the default mask, the rest stay off
+    const p = { ...presetFromItems(preset, scheme, rs, models), stored: undefined, cats: {} };
+    const a = JSON.parse(presetContents(p, rs, models).scheme).category_actions;
+    expect(Object.keys(a).sort()).toEqual(["address", "employee", "organization", "other", "payment_card", "person", "phone"]);
+    expect(a).toMatchObject({ phone: "mask", person: "mask" });
+    for (const c of ["email", "id_number", "date", "account", "ip_address", "url", "secret"]) expect(a).not.toHaveProperty(c);
+    // an explicit setting (an imported scheme's, say) is written even though nothing detects the category yet
+    const explicit = JSON.parse(presetContents({ ...p, cats: { email: "ph", date: "off" } }, rs, models).scheme).category_actions;
+    expect(explicit).toMatchObject({ email: "placeholder" });
+    expect(explicit).not.toHaveProperty("date");
+  });
+
   it("置信度不低于模型的适配器下限；新方案的资源档位取默认", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.conf = 0.1;

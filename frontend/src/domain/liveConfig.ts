@@ -293,7 +293,7 @@ export interface Written {
  * The stored objects of a screen scheme. `previous` holds the stored scheme and preset so that settings the
  * screen has no control for (resource profile, categories the scheme does not list) are kept as they were.
  * A listed category nothing detects keeps its setting: the kernel leaves it out of a run until a source
- * comes back.
+ * comes back. A scheme not stored yet writes only an explicit setting for it, never the default mask.
  */
 export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], previous?: { scheme?: ConfigItem; preset?: ConfigItem }, catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): Written {
   const model = models.find((m) => m.id === p.model) ?? null;
@@ -309,9 +309,11 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
   );
   const sources = presetCategorySources(p, models, chosen);
   for (const c of listed) {
-    // a category nothing detects cannot be changed on screen: what is stored for it stays as it is
-    if (!sources.has(c) && c in prevScheme.category_actions) { actions[c] = prevScheme.category_actions[c]!; continue; }
-    const t = presetTreatment(p, c);
+    const sourced = sources.has(c);
+    // a category nothing detects cannot be changed on screen: what is stored for it stays as it is, and an
+    // unsaved scheme writes only an explicit setting (never the default mask, which the screen shows as off)
+    if (!sourced && c in prevScheme.category_actions) { actions[c] = prevScheme.category_actions[c]!; continue; }
+    const t = sourced ? presetTreatment(p, c) : p.cats[c];
     if (t !== "mask" && t !== "ph") continue;
     actions[c] = t === "ph" ? "placeholder" : prevScheme.category_actions[c] === "delete" ? "delete" : "mask";
   }
