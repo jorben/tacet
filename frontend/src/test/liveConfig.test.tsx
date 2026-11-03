@@ -216,6 +216,73 @@ describe("方案与规则集的存储同步", () => {
     expect(getState().rulesets.find((r) => r.id === id)!.rules[0]!.body).toBe("张三");
   });
 
+  // A rules-only scheme stored by an earlier version still names a model: the screen shows it as rules-only and would
+  // write it without the binding. Opening its history must not write anything.
+  const legacyPreset = async () => {
+    stopConfigSync();
+    fake.items.push(item("scheme", "cfg_s", "方案 x", { category_actions: { phone: "placeholder" }, image_default: "remove" }, false),
+      item("preset", "cfg_p", "旧方案", { ruleset_id: "builtin-cn-office", scheme_id: "cfg_s", model_profile_id: "builtin-model-astrlink", mode: "guided", rules_only: true, memory_bytes: 1, dpi: 200, style: "solid", retention_days: 0 }, false));
+    await loadConfig();
+    expect(getState().presets.find((p) => p.id === "cfg_p")).toMatchObject({ det: "rules", builtin: false });
+    await sleep(500);
+    expect(writes()).toEqual([]);
+    selectPreset("cfg_p");
+    fake.history.cfg_p = [{ v: { number: 1, savedAt: Math.floor(Date.now() / 1000) }, content: fake.items.find((i) => i.id === "cfg_p")!.content }];
+  };
+
+  it("打开方案的历史版本不重写方案：存储版本不变，仅规则的旧方案保留模型绑定", async () => {
+    await legacyPreset();
+    await act(async () => { await openVersions("preset"); });
+    expect(overlayStore.get().modal).toMatchObject({ type: "versions", kind: "preset" });
+    expect(getState().presets.find((p) => p.id === "cfg_p")!.edited).toBe("刚刚");
+    await sleep(500);
+    await act(async () => { await flushConfig(); });
+    const stored = fake.items.find((i) => i.id === "cfg_p")!;
+    expect(stored.version).toBe(1);
+    expect(JSON.parse(stored.content)).toHaveProperty("model_profile_id", "builtin-model-astrlink");
+    expect(writes()).toEqual([]);
+    // a real change after that is still saved
+    act(() => setCategoryTreatment("email", "mask"));
+    await waitFor(() => expect(fake.calls).toContain("configSave:cfg_s"));
+  });
+
+  it("打开历史版本期间改了方案：改动照常保存，不被当成与存储一致", async () => {
+    await legacyPreset();
+    let release!: () => void;
+    let asked = false;
+    const gate = new Promise<void>((r) => { release = r; });
+    fake.configHistory = async (id: string) => { asked = true; await gate; return (fake.history[id] ?? []).map((h) => h.v); };
+    const opening = openVersions("preset");
+    await waitFor(() => expect(asked).toBe(true));
+    act(() => setCategoryTreatment("email", "mask"));
+    release();
+    await act(async () => { await opening; });
+    expect(overlayStore.get().modal).toMatchObject({ type: "versions", kind: "preset" });
+    await sleep(500);
+    await act(async () => { await flushConfig(); });
+    expect(JSON.parse(fake.items.find((i) => i.id === "cfg_s")!.content).category_actions).toMatchObject({ email: "mask" });
+  });
+
+  it("打开规则集的历史版本不重写规则集：存储版本不变", async () => {
+    stopConfigSync();
+    // stored in a form the screen would write differently (a name equal to the rule's id is left out)
+    const content = { rules: [{ id: "a", name: "a", category: "other", terms: ["甲"] }] };
+    fake.items.push(item("ruleset", "cfg_r", "词条", content, false));
+    await loadConfig();
+    await sleep(500);
+    expect(writes()).toEqual([]);
+    selectRuleset("cfg_r");
+    fake.history.cfg_r = [{ v: { number: 1, savedAt: Math.floor(Date.now() / 1000) }, content: JSON.stringify(content) }];
+    await act(async () => { await openVersions("ruleset"); });
+    expect(overlayStore.get().modal).toMatchObject({ type: "versions", kind: "ruleset" });
+    await sleep(500);
+    await act(async () => { await flushConfig(); });
+    const stored = fake.items.find((i) => i.id === "cfg_r")!;
+    expect(stored.version).toBe(1);
+    expect(JSON.parse(stored.content)).toEqual(content);
+    expect(writes()).toEqual([]);
+  });
+
   it("导出写文件（不含模型）；导入读文件，名称相同时先让人改名，不覆盖", async () => {
     await exportLive("preset", "builtin-preset-model");
     expect(fake.saved!.name).toBe("办公外发.json");
