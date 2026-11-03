@@ -199,6 +199,15 @@ export type Detection = "model" | "rules";
 export type RuleKind = "词表" | "正则" | "校验";
 export type Boundary = "" | "digit" | "word";
 
+/** A rule as the rule editor holds it until it is saved. */
+export interface RuleDraft {
+  name: string;
+  kind: RuleKind;
+  cat: CategoryId;
+  bd: Boundary;
+  body: string;
+}
+
 export interface Rule {
   name: string;
   kind: RuleKind;

@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { resetModelMapping, setLabelCategory } from "../../actions/modelMapping";
+import { resetModelMapping, setCategoryLabels, setLabelCategory } from "../../actions/modelMapping";
 import { byCatalogOrder, categoryName } from "../../domain/categories";
-import { effectiveLabels } from "../../domain/liveConfig";
+import { effectiveLabels, labelsOfCategory, unmappedLabels } from "../../domain/liveConfig";
 import { presetTreatment } from "../../domain/presets";
 import type { Preset } from "../../domain/types";
-import { openMenu } from "../../overlay/store";
+import { openMenu, openMultiMenu } from "../../overlay/store";
 import { useAppState } from "../../store";
-import { Button, Empty, List, SelectButton, Swatch, Tag } from "../../ui";
+import { Button, Empty, List, SelectButton, Swatch, Tag, tip } from "../../ui";
 import { ItemList } from "./ItemList";
 
-const NOT_USED = "\u0000none";
 
 /** The categories a model now produces that a scheme using it does not handle: what it finds there is dropped. */
 export function unhandledCategories(p: Preset, categories: string[]): string[] {
@@ -21,23 +20,21 @@ export function ModelMappingEditor() {
   const models = useAppState((s) => s.models);
   const presets = useAppState((s) => s.presets);
   const catalog = useAppState((s) => s.categories);
+  const loading = useAppState((s) => s.categoryStatus) === "loading";
   const [selected, setSelected] = useState<string | null>(null);
   const m = models.find((x) => x.id === selected) ?? models[0];
   if (!m) return <Empty padding="36px 0">还没有模型</Empty>;
   const labels = m.labels ?? {};
   const current = effectiveLabels(m);
-  // by what the label means by default, in catalog order, then by label
-  const order = byCatalogOrder(catalog, Object.values(labels));
-  const rows = Object.keys(labels).sort((a, b) => order.indexOf(labels[a]!) - order.indexOf(labels[b]!) || a.localeCompare(b));
+  const entityName = (category: string) => loading ? category : categoryName(catalog, category);
+  const rows = byCatalogOrder(catalog, [...catalog.map((c) => c.id), ...Object.values(current)]);
+  const unused = unmappedLabels(m);
   const using = presets.filter((p) => p.det === "model" && p.model === m.id);
   const gaps = using.map((p) => [p, unhandledCategories(p, m.categories ?? [])] as const).filter(([, c]) => c.length);
-  const pick = (anchor: HTMLElement, label: string) =>
-    openMenu(anchor, [
-      { h: label },
-      ...catalog.map((c) => ({ l: c.name, k: c.id, on: current[label] === c.id, s: c.id === labels[label] ? "默认" : undefined })),
-      "-",
-      { l: "不使用", k: NOT_USED, on: !(label in current), s: "命中丢弃" },
-    ], (it) => void setLabelCategory(m.id, label, it.k === NOT_USED ? null : String(it.k)), { alignRight: true });
+  const pick = (anchor: HTMLElement, category: string) =>
+    openMultiMenu(anchor, entityName(category) + " · 可多选标签", Object.keys(labels).sort().map((l) => ({
+      k: l, l, s: current[l] ? categoryName(catalog, current[l]!) : "未关联",
+    })), labelsOfCategory(current, category), (chosen) => { void setCategoryLabels(m.id, category, chosen); }, { alignRight: true });
 
   return (
     <div className="split">
@@ -78,24 +75,30 @@ export function ModelMappingEditor() {
           </div>
         )}
         <List>
-          {rows.length ? rows.map((label) => {
-            const to = current[label];
+          {rows.map((category) => {
+            const chosen = labelsOfCategory(current, category);
+            const defaults = labelsOfCategory(labels, category);
+            const modified = JSON.stringify(chosen) !== JSON.stringify(defaults);
             return (
-              <div className="row mapping-row" key={label}>
-                <Swatch category={to ?? "other"} />
-                <span className="rl">
-                  <span className="mono">{label}</span>
-                  {to !== labels[label] && <span className="muted sm">默认：{categoryName(catalog, labels[label]!)}</span>}
-                </span>
-                <span className="rv">
-                  <SelectButton aria-label={label + " 计入的类别"} onClick={(e) => pick(e.currentTarget, label)}>
-                    {to ? categoryName(catalog, to) : <span className="muted">不使用</span>}
-                  </SelectButton>
-                </span>
+              <div className="row mapping-row" data-category={category} key={category}>
+                <Swatch category={category} />
+                <div className="mapping-main">
+                  <div className="rl"><span className="entity-name">{entityName(category)}</span>
+                    {!loading && !catalog.some((c) => c.id === category) && <Tag>未登记实体</Tag>}
+                    {modified && <Tag {...tip("默认值：" + (defaults.join("、") || "未设置"))}>已修改</Tag>}
+                  </div>
+                  <div className="mapping-labels">{chosen.length ? chosen.map((l) => <span key={l} className="tag mono">{l}</span>) : <span className="muted sm">未设置</span>}</div>
+                </div>
+                <span className="rv"><SelectButton disabled={!Object.keys(labels).length} aria-label={entityName(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>选择标签</SelectButton></span>
               </div>
             );
-          }) : <Empty padding="36px 0">这个模型没有声明标签</Empty>}
+          })}
         </List>
+        <div className="unmapped-labels">
+          <div className="sec-t">未关联的标签</div>
+          {unused.length ? unused.map((label) => <Button key={label} className="mono" onClick={(e) => openMenu(e.currentTarget, catalog.map((c) => ({ l: c.name, k: c.id })), (it) => { void setLabelCategory(m.id, label, String(it.k)); })}>{label}</Button>) : <span className="muted sm">没有未关联的标签</span>}
+          {!Object.keys(labels).length && <p className="muted sm">这个模型没有声明标签</p>}
+        </div>
       </div>
     </div>
   );

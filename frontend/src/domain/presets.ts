@@ -1,6 +1,6 @@
 // Schemes (presets), rule sets and their version history.
-import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Ruleset } from "./types";
-import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
+import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
+import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryId, type CategoryInfo } from "./categories";
 
 export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
 
@@ -44,6 +44,104 @@ export const presetConfidence = (p: Preset, models: ModelPlugin[]): number => p.
 /** Rule sets that ship with a plugin are only available while the plugin is on. */
 export const availableRulesets = (rulesets: Ruleset[], plugins: PluginInfo[]): Ruleset[] =>
   rulesets.filter((rs) => !rs.plugin || plugins.find((p) => p.id === rs.plugin)?.on);
+
+/** The rules of a rule set that report one category. */
+export interface RuleGroup {
+  category: CategoryId;
+  /** The catalog lists the category. */
+  known: boolean;
+  /**
+   * The group's rules in rule-set order, each with its index in the rule set: editing, deleting and switching a
+   * rule address it by that index (a rule not stored yet has no id).
+   */
+  items: { rule: Rule; index: number }[];
+}
+
+/**
+ * The rules grouped by the category they report, in catalog order (the order the scheme page lists categories
+ * in); categories the catalog does not know come last. A category no rule reports has no group.
+ */
+export function ruleGroups(rules: readonly Rule[], catalog: readonly CategoryInfo[]): RuleGroup[] {
+  const byCategory = new Map<CategoryId, RuleGroup["items"]>();
+  rules.forEach((rule, index) => {
+    const items = byCategory.get(rule.cat) ?? [];
+    items.push({ rule, index });
+    byCategory.set(rule.cat, items);
+  });
+  return byCatalogOrder(catalog, byCategory.keys()).map((category) => ({
+    category, known: catalog.some((c) => c.id === category), items: byCategory.get(category)!,
+  }));
+}
+
+/** How many rules of a group are on, of how many. */
+export const ruleGroupCount = (g: Pick<RuleGroup, "items">): { on: number; total: number } =>
+  ({ on: g.items.filter((x) => x.rule.on).length, total: g.items.length });
+
+/**
+ * The scheme masks or replaces the category. A setting the scheme holds counts; without one, a scheme not stored
+ * yet masks it (the screens' default), while a stored scheme does not handle it: the kernel only acts on the
+ * categories its stored scheme lists, and a category nothing detected was not written there.
+ */
+export function presetHandles(p: Pick<Preset, "cats" | "stored">, category: CategoryId): boolean {
+  const t = p.cats[category] ?? (p.stored ? undefined : "mask");
+  return t === "mask" || t === "ph";
+}
+
+/** What the schemes detect with: the rule sets they may choose from and the models with their categories. */
+export interface DetectionSources {
+  rulesets: Ruleset[];
+  models: Pick<ModelPlugin, "id" | "categories">[];
+}
+
+/** What a change of rules or of a model's labels would cost the schemes it affects. */
+export interface DetectionLoss {
+  /**
+   * Schemes that mask or replace a category nothing would detect in them any more: the kernel refuses to start
+   * a task with them (no detection source).
+   */
+  categories: { preset: Preset; categories: CategoryId[] }[];
+  /** Schemes whose rule sets would have no rule switched on between them: a task with them fails. */
+  noRules: Preset[];
+}
+
+export const losesNothing = (l: DetectionLoss): boolean => !l.categories.length && !l.noRules.length;
+
+const rulesOn = (p: Pick<Preset, "rules">, rulesets: Ruleset[]): number =>
+  rulesets.filter((r) => p.rules.includes(r.id)).reduce((n, r) => n + r.rules.filter((x) => x.on).length, 0);
+
+/**
+ * Compares, for each scheme `affects` picks, what detects its categories before and after a change: each scheme
+ * counts its own detection (rules only leaves the model out) and all its rule sets.
+ */
+export function detectionLoss(presets: Preset[], before: DetectionSources, after: DetectionSources, affects: (p: Preset) => boolean): DetectionLoss {
+  const out: DetectionLoss = { categories: [], noRules: [] };
+  presets.filter(affects).forEach((p) => {
+    const was = presetCategorySources(p, before.models, before.rulesets);
+    const now = presetCategorySources(p, after.models, after.rulesets);
+    const lost = [...was.keys()].filter((c) => !now.has(c) && presetHandles(p, c));
+    if (lost.length) out.categories.push({ preset: p, categories: lost });
+    if (rulesOn(p, before.rulesets) > 0 && rulesOn(p, after.rulesets) === 0) out.noRules.push(p);
+  });
+  return out;
+}
+
+/** What changing a rule set to `changed` would cost the schemes that choose it (as their first rule set or another). */
+export function rulesetChangeLoss(presets: Preset[], sources: DetectionSources, changed: Ruleset): DetectionLoss {
+  const after = sources.rulesets.map((r) => (r.id === changed.id ? changed : r));
+  return detectionLoss(presets, sources, { ...sources, rulesets: after }, (p) => p.rules.includes(changed.id));
+}
+
+/** What giving a model the label map `map` would cost the schemes that detect with it. */
+export function mappingChangeLoss(presets: Preset[], sources: DetectionSources, modelId: string, map: Record<string, string>): DetectionLoss {
+  const categories = [...new Set(Object.values(map))];
+  const after = sources.models.map((m) => (m.id === modelId ? { id: m.id, categories } : m));
+  return detectionLoss(presets, sources, { ...sources, models: after }, (p) => p.det === "model" && p.model === modelId);
+}
+
+/** The schemes `uses` picks that mask or replace `category` while nothing detects it in them now. */
+export function presetsWithoutSource(presets: Preset[], sources: DetectionSources, uses: (p: Preset) => boolean, category: CategoryId): Preset[] {
+  return presets.filter((p) => uses(p) && presetHandles(p, category) && !presetCategorySources(p, sources.models, sources.rulesets).has(category));
+}
 
 export function ruleSummary(r: { kind: string; n?: number; body: string }): string {
   return r.kind === "词表" ? (r.n || r.body.split("\n").filter((x) => x.trim()).length) + " 条" : r.body;

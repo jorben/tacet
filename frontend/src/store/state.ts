@@ -13,6 +13,8 @@ export interface AppState {
   models: ModelPlugin[];
   /** The category catalog: names, placeholders and colors of the ids rules, schemes and findings carry. */
   categories: CategoryInfo[];
+  /** Demo categories are ready immediately; live requests temporarily suspend registration labels. */
+  categoryStatus: "loading" | "ready" | "failed";
   modelPending: ModelPending | null;
 
   theme: "light" | "dark";
@@ -27,6 +29,8 @@ export interface AppState {
   presetSel: string;
   presetTab: PresetTab;
   rulesetSel: string | null;
+  /** A fresh configuration load resets transient editor state, even if the selected id stays the same. */
+  configLoad: number;
 
   /** One single-file task and one batch run at a time (see `needSlot`). */
   single: Single | null;
@@ -51,6 +55,7 @@ export function createInitialState(): AppState {
     navStack: [],
     models: seedModels(),
     categories: STANDARD_CATEGORIES.map((c) => ({ ...c })),
+    categoryStatus: "ready",
     modelPending: null,
     theme: prefersDark() ? "dark" : "light",
     themePref: "system",
@@ -63,6 +68,7 @@ export function createInitialState(): AppState {
     presetSel: "office",
     presetTab: "scheme",
     rulesetSel: null,
+    configLoad: 0,
     single: null,
     batch: null,
     behind: null,

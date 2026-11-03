@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleSummary } from "../presets";
+import { availableRulesets, bumpVersion, categorySourceLabel, presetCategorySources, confidenceOf, duplicate, findPresetByName, formatConfidence, presetConfidence, presetCategories, presetModelId, presetNeedsModel, ruleGroupCount, ruleGroups, ruleSummary } from "../presets";
 import { STANDARD_CATEGORIES, type CategoryInfo } from "../categories";
 import { seedModels, seedPlugins, seedPresets, seedRulesets } from "../seed";
 import type { Rule } from "../types";
@@ -120,5 +120,48 @@ describe("规则集", () => {
     expect(ruleSummary({ kind: "词表", n: 36, body: "" })).toBe("36 条");
     expect(ruleSummary({ kind: "词表", body: "a\nb\n\n" })).toBe("2 条");
     expect(ruleSummary({ kind: "正则", body: "\\d+" })).toBe("\\d+");
+  });
+});
+
+describe("规则按类别分组", () => {
+  const rule = (name: string, cat: string, on = true): Rule => ({ name, kind: "正则", cat, body: "x", on });
+  /** Each group as category → [rule name, index in the rule set]. */
+  const shape = (rules: Rule[], catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES) =>
+    ruleGroups(rules, catalog).map((g) => [g.category, g.items.map((x) => [x.rule.name, x.index])]);
+
+  it("实体交错排列时，每条规则保留它在规则集里的原始下标", () => {
+    const rules = [rule("A", "phone"), rule("B", "email"), rule("C", "phone")];
+    expect(shape(rules)).toEqual([["phone", [["A", 0], ["C", 2]]], ["email", [["B", 1]]]]);
+    // the items are the rules themselves: an action given the index reaches the same rule
+    ruleGroups(rules, STANDARD_CATEGORIES).forEach((g) => g.items.forEach((x) => expect(rules[x.index]).toBe(x.rule)));
+  });
+
+  it("分组按类别目录的顺序，不按规则在数组里的顺序；没有规则的类别不成组", () => {
+    // the enterprise terms list other, organization, account: the reverse of the catalog
+    const corp = seedRulesets().find((r) => r.id === "corp")!.rules;
+    expect(shape(corp)).toEqual([["account", [["员工工号", 2]]], ["organization", [["合作方简称", 1]]], ["other", [["项目代号", 0]]]]);
+    expect(ruleGroups(corp, STANDARD_CATEGORIES).every((g) => g.known)).toBe(true);
+  });
+
+  it("目录里没有的类别排在最后、标为未登记；组内仍按规则集里的顺序", () => {
+    const custom: CategoryInfo = { id: "cfg_0123456789abcdef01234567", name: "项目代号", placeholder: "[项目代号]", origin: "custom" };
+    const catalog = [...STANDARD_CATEGORIES, custom];
+    const rules = [rule("A", "zz_plate"), rule("B", custom.id), rule("C", "phone"), rule("D", "aa_unknown"), rule("E", "zz_plate")];
+    expect(shape(rules, catalog)).toEqual([
+      ["phone", [["C", 2]]], [custom.id, [["B", 1]]], ["aa_unknown", [["D", 3]]], ["zz_plate", [["A", 0], ["E", 4]]],
+    ]);
+    expect(ruleGroups(rules, catalog).map((g) => g.known)).toEqual([true, true, false, false]);
+  });
+
+  it("没有规则时没有分组", () => {
+    expect(ruleGroups([], STANDARD_CATEGORIES)).toEqual([]);
+  });
+
+  it("组内启用数与总数", () => {
+    const rules = [rule("a", "secret", false), rule("b", "secret"), rule("c", "secret", false), rule("d", "secret"), rule("e", "secret", false), rule("f", "url", false)];
+    const [url, secret] = ruleGroups(rules, STANDARD_CATEGORIES); // the catalog lists url before secret
+    expect(ruleGroupCount(secret!)).toEqual({ on: 2, total: 5 });
+    expect(ruleGroupCount(url!)).toEqual({ on: 0, total: 1 });
+    expect(ruleGroupCount({ items: [] })).toEqual({ on: 0, total: 0 });
   });
 });

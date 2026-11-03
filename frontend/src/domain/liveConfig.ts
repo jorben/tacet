@@ -125,6 +125,34 @@ export const effectiveLabels = (m: Pick<ModelPlugin, "labels" | "mapping">): Rec
 /** The categories a label map produces, sorted. */
 export const mappedCategories = (map: Record<string, string>): string[] => [...new Set(Object.values(map))].sort();
 
+/** The labels a label map sends to `category`, sorted: a category may have several labels, a label has one category. */
+export const labelsOfCategory = (map: Record<string, string>, category: string): string[] =>
+  Object.keys(map).filter((l) => map[l] === category).sort();
+
+/** The labels of a model its current mapping sends to no category (what they find is dropped), sorted. */
+export function unmappedLabels(m: Pick<ModelPlugin, "labels" | "mapping">): string[] {
+  const map = effectiveLabels(m);
+  return Object.keys(m.labels ?? {}).filter((l) => !(l in map)).sort();
+}
+
+/**
+ * `map` with exactly `labels` sending to `category`. A label has one category, so a chosen label of another
+ * category moves here (`moved` lists it with where it came from); a label of this category left out is no longer
+ * used. Labels the model does not emit (`known`) are ignored.
+ */
+export function withCategoryLabels(map: Record<string, string>, category: string, labels: readonly string[], known: Record<string, string>): { map: Record<string, string>; moved: { label: string; from: string }[] } {
+  const want = new Set(labels.filter((l) => l in known));
+  const out = { ...map };
+  for (const [l, c] of Object.entries(map)) if (c === category && !want.has(l)) delete out[l];
+  const moved: { label: string; from: string }[] = [];
+  for (const l of [...want].sort()) {
+    const from = map[l];
+    if (from != null && from !== category) moved.push({ label: l, from });
+    out[l] = category;
+  }
+  return { map: out, moved };
+}
+
 /** Two label maps are the same mapping. */
 export const sameMapping = (a: Record<string, string>, b: Record<string, string>): boolean =>
   Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
@@ -252,13 +280,16 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
   const covered = ruleCategories(chosen);
   if (useModel) model!.categories.forEach((c) => covered.add(c));
 
-  const actions: Record<string, string> = {};
-  const dropped: string[] = [];
   const offered = presetCategories(p, models, chosen);
+  // Hidden entities have no editable row. Keep their stored actions verbatim, including keep (read as off).
+  const actions: Record<string, string> = Object.fromEntries(
+    Object.entries(prevScheme.category_actions).filter(([c]) => !offered.includes(c)),
+  );
+  const dropped: string[] = [];
   for (const c of new Set([...Object.keys(p.cats), ...offered])) {
     const t = presetTreatment(p, c);
     if (t !== "mask" && t !== "ph") continue;
-    if (!covered.has(c)) { dropped.push(c); continue; }
+    if (!covered.has(c)) { if (!(c in actions)) dropped.push(c); continue; }
     actions[c] = t === "ph" ? "placeholder" : prevScheme.category_actions[c] === "delete" ? "delete" : "mask";
   }
   const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };

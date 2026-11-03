@@ -63,8 +63,9 @@ export function engineSchemeId(name: string): string | undefined {
 export async function loadConfig(): Promise<void> {
   const e = liveEngine();
   if (!e) return;
+  const catalogReady = loadCategories();
   const [rs, sc, pr, mp, mm] = await Promise.all(["ruleset", "scheme", "preset", "model_profile", "model_mapping"].map((k) => e.configList(k)));
-  await loadCategories();
+  await catalogReady;
   synced = new Map([...rs, ...sc, ...pr, ...mp].map((i) => [i.id, i]));
   // the catalog decides the order (its first model is the default one); a profile without an entry keeps its place last
   const rts = mp.length ? await e.models().catch(() => []) : [];
@@ -83,6 +84,7 @@ export async function loadConfig(): Promise<void> {
   const homeId = mi.length ? BUILTIN_MODEL_PRESET : BUILTIN_RULES_PRESET;
   const home = presets.find((p) => p.stored?.id === homeId) ?? presets[0];
   store.update((d) => {
+    d.configLoad++;
     d.rulesets = rulesets;
     d.presets = presets;
     d.models = mi.map((x) => x.plugin);
@@ -104,14 +106,19 @@ export function setModelCategories(modelId: string, categories: string[]): void 
   models = models.map((m) => (m.id === modelId ? { ...m, categories } : m));
 }
 
-/** Reads the category catalog. Until it answers (or if it fails) the screens keep the standard vocabulary. */
+/** Reads the catalog; a failed or empty response keeps the current vocabulary as the fallback. */
 export async function loadCategories(): Promise<void> {
   const e = liveEngine();
-  const list = e ? await e.categories().catch(() => null) : null;
-  if (!list?.length) return;
+  if (!e) return;
+  store.update((d) => { d.categoryStatus = "loading"; });
+  const list = await e.categories().catch(() => null);
+  if (!list?.length) {
+    store.update((d) => { d.categoryStatus = "failed"; });
+    return;
+  }
   const cats: CategoryInfo[] = list.map((c) => ({ ...c }));
   applyCategoryColors(cats);
-  store.update((d) => { d.categories = cats; });
+  store.update((d) => { d.categories = cats; d.categoryStatus = "ready"; });
 }
 
 const MODEL_POLL_MS = 700;
@@ -193,7 +200,11 @@ export function flushConfig(): Promise<void> {
       } while (again);
     } catch (err) {
       toast(configErrorText(err));
+      const selectedRuleset = getState().rulesetSel;
       await loadConfig().catch(() => {});
+      if (selectedRuleset && getState().rulesets.some((r) => r.id === selectedRuleset)) {
+        store.update((d) => { d.rulesetSel = selectedRuleset; });
+      }
     } finally {
       running = null;
     }

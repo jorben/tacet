@@ -94,13 +94,14 @@ describe("方案 ↔ 存储对象", () => {
     expect(w.dropped).toEqual([]);
   });
 
-  it("没有任何规则或模型检测的类别不写入，并报告", () => {
+  it("无来源且原存储没有设置的类别不写入并报告，原存储的隐藏类别保持原值", () => {
     const p = presetFromItems(preset, scheme, rs, models);
     p.cats.address = "mask";
     const w = presetContents({ ...p, rules: ["cn"], det: "rules" }, rs, [], { scheme, preset });
-    expect(w.dropped.sort()).toEqual(["address", "person"]);
+    expect(w.dropped).toEqual(["address"]);
     const s = JSON.parse(w.scheme);
-    expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "phone"]);
+    expect(Object.keys(s.category_actions).sort()).toEqual(["employee", "other", "payment_card", "person", "phone"]);
+    expect(s.category_actions.person).toBe("placeholder");
     expect(JSON.parse(w.preset("sc"))).toMatchObject({ rules_only: true, ruleset_id: "cn" });
     expect(JSON.parse(w.preset("sc")).model_profile_id).toBeUndefined();
   });

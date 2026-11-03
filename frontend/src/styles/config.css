@@ -26,6 +26,22 @@
 .rule-row .rs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rule-row .rv{flex:none;white-space:nowrap}
 
+.rule-group+.rule-group{border-top:1px solid var(--line)}
+.rule-group-head{flex-wrap:wrap}
+.rule-expand{display:flex;align-items:center;gap:10px;font-weight:600;min-height:32px}
+.rule-row>.entity-name{flex:0 0 74px;font-weight:500}
+.rule-child{padding-left:42px}
+.rule-add{padding:0 14px 8px 36px}
+.rule-add .btn{font-size:12px}
+.source-warning{font-size:12px;color:var(--warn);padding:4px 16px 8px;overflow-wrap:anywhere}
+.loss-list{padding-left:18px;display:grid;gap:10px}
+.loss-modal .mb{max-height:50vh;overflow:auto}
+.mapping-main{min-width:0;flex:1}
+.mapping-labels{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.unmapped-labels>.btn{margin:0 6px 6px 0}
+.pop:has(.multi-done){max-height:70vh;overflow:auto;max-width:calc(100% - 16px)}
+.multi-done{color:var(--primary);font-weight:600}
+
 /* settings */
 .text-link{color:var(--primary);font-size:12px;white-space:nowrap}
 .text-link:hover{text-decoration:underline;text-underline-offset:3px}

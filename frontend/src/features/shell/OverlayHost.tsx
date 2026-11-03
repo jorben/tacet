@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { closeModal, closePop, overlayStore, useOverlay } from "../../overlay/store";
 import { MenuList } from "../../overlay/MenuList";
+import { MultiMenu } from "../../overlay/MultiMenu";
 import { Popover } from "../../overlay/Popover";
 import { Toast } from "../../overlay/Toast";
 import { ModalContent } from "../dialogs/ModalHost";
@@ -13,6 +14,7 @@ function PopContent({ spec }: { spec: PopSpec }) {
   const c = spec.content;
   switch (c.kind) {
     case "menu": return <MenuList items={c.items} onPick={c.onPick} />;
+    case "multi": return <MultiMenu title={c.title} items={c.items} selected={c.selected} />;
     case "hit": return <HitPopover hitId={c.hitId} />;
     case "keys": return <KeyboardHelp />;
     case "selection": return <SelectionPicker selection={c.selection} />;

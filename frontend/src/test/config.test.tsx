@@ -206,7 +206,8 @@ describe("规则", () => {
     go("presets");
     press("规则", "[role=tablist]");
     expect(win()).toContain("手机号");
-    expect($$(".row button.tg")[0]!.hasAttribute("disabled")).toBe(true);
+    expect($('button[aria-label="启用 手机号"]')!.hasAttribute("disabled")).toBe(true);
+    expect($('[role=checkbox][aria-label="启用实体 电话"]')!.hasAttribute("disabled")).toBe(true);
     press("企业词条", ".plist");
     press("添加规则");
     expect($("#layer .modal")!.textContent).toContain("添加规则");
@@ -214,8 +215,7 @@ describe("规则", () => {
     typeInto("#rdBody", "甲\n乙");
     press("保存", "#layer .modal");
     expect($(".toast")!.textContent).toContain("已保存为 v3");
-    const rows = $$(".row").filter((r) => r.querySelector('button[aria-label="编辑"]'));
-    click(rows.at(-1)!.querySelector('button[aria-label="编辑"]')!);
+    click(button("编辑", $$(".rule-row").find((r) => r.querySelector(".rule-name")?.textContent === "测试词")!));
     press("删除", "#layer .modal");
     expect($(".toast")!.textContent).toContain("已删除");
   });
@@ -224,7 +224,7 @@ describe("规则", () => {
     go("presets");
     press("规则", "[role=tablist]");
     press("企业词条", ".plist");
-    click($$('button[aria-label="编辑"]')[2]!);
+    click(button("编辑", $$(".rule-row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!));
     press("保存", "#layer .modal");
     expect($(".toast")!.textContent).toContain("内容未变，版本不变");
   });
@@ -234,7 +234,7 @@ describe("规则", () => {
     press("规则", "[role=tablist]");
     press("企业词条", ".plist");
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!;
-    expect(row.querySelector(".rv")!.textContent).toContain("账号");
+    expect(row.querySelector(".entity-name")!.textContent).toBe("账号");
     press("添加规则");
     const options = $$("#layer .typegrid button:not(.typegrid-add)").map((b) => b.textContent);
     expect(options).toEqual(getState().categories.map((c) => c.name));
@@ -261,7 +261,7 @@ describe("规则", () => {
     expect($$("#layer .typegrid button[aria-pressed=true]").map((b) => b.textContent)).toEqual(["项目代号"]);
     press("保存", "#layer .modal");
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "代号")!;
-    expect(row.querySelector(".rv")!.textContent).toContain("项目代号");
+    expect(row.querySelector(".entity-name")!.textContent).toBe("项目代号");
     expect(getState().rulesets.find((r) => r.name === "企业词条")!.rules.at(-1)!.cat).toBe(made.id);
     // 简历脱敏 uses the enterprise terms: the new category is one of its categories, with the rules as source
     press("方案", "[role=tablist]");
@@ -275,19 +275,27 @@ describe("规则", () => {
     press("模型", "[role=tablist]");
     expect(win()).toContain("AstrLink Guard");
     expect(win()).toContain("默认映射");
-    const row = (label: string) => $$(".mapping-row").find((r) => r.querySelector(".mono")?.textContent === label)!;
-    expect(row("private_person").querySelector(".rv")!.textContent).toBe("人名");
-    // a label sent to another category
-    await act(async () => { click(row("private_person").querySelector("button")!); });
-    await act(async () => { pick("公司名"); });
+    const row = (category: string) => $(`.mapping-row[data-category="${category}"]`)!;
+    expect(row("person").querySelector(".mapping-labels")!.textContent).toBe("private_person");
+    // Move a label into another entity; closing the menu commits once.
+    click(row("organization").querySelector("button")!);
+    pick("private_person");
+    await act(async () => { press("完成", "#layer .pop"); });
+    expect($(".loss-modal")!.textContent).toContain("办公外发");
+    await act(async () => { press("仍要保存映射", ".loss-modal"); });
     const astr = () => getState().models.find((m) => m.id === "astr")!;
     expect(astr().mapping?.map.private_person).toBe("organization");
-    expect(row("private_person").textContent).toContain("默认：人名");
+    expect(row("person").querySelector('[data-tip="默认值：private_person"]')).toBeTruthy();
+    expect(row("organization").textContent).toContain("private_person");
+    expect($(".toast")!.textContent).toBe("已将 private_person 从 人名 移到 公司名");
     expect(win()).toContain("已自定义");
-    // a label not used
-    await act(async () => { click(row("private_address").querySelector("button")!); });
-    await act(async () => { pick("不使用"); });
+    // Uncheck a label and verify the unassociated section offers it for reassignment.
+    click(row("address").querySelector("button")!);
+    pick("private_address");
+    await act(async () => { press("完成", "#layer .pop"); });
+    await act(async () => { press("仍要保存映射", ".loss-modal"); });
     expect(astr().mapping?.map).not.toHaveProperty("private_address");
+    expect($(".unmapped-labels")!.textContent).toContain("private_address");
     expect(astr().categories).toContain("organization");
     expect(astr().categories).not.toContain("person");
     expect(astr().categories).not.toContain("address");
@@ -301,6 +309,7 @@ describe("规则", () => {
     // back to the default
     press("模型", "[role=tablist]");
     await act(async () => { press("恢复默认"); });
+    if ($(".loss-modal")) await act(async () => { press("仍要保存映射", ".loss-modal"); });
     expect(astr().mapping).toBeUndefined();
     expect(astr().categories).toContain("person");
     expect(win()).toContain("默认映射");
