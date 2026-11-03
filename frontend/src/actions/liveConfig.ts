@@ -320,6 +320,11 @@ export async function openVersions(kind: "preset" | "ruleset"): Promise<void> {
   if (!target || !id) { toast("这个对象还没有保存过"); return; }
   try {
     const versions = await e.configHistory(id);
+    // `edited` and `hist` are only for the dialog: an object that was in step with storage stays so and is not written
+    // again (a stored form the screen writes differently would change; a legacy rules-only scheme still bound to a
+    // model would lose the binding). One changed while the history was being read is still written.
+    const listOf = (): (Ruleset | Preset)[] => (kind === "ruleset" ? getState().rulesets : getState().presets) as (Ruleset | Preset)[];
+    const wasKnown = known.has(listOf().find((o) => o.id === target.id) ?? {});
     store.update((d) => {
       const list = (kind === "ruleset" ? d.rulesets : d.presets) as (Ruleset | Preset)[];
       const x = list.find((o) => o.id === target.id);
@@ -328,6 +333,7 @@ export async function openVersions(kind: "preset" | "ruleset"): Promise<void> {
       x.edited = versions.find((v) => v.number === cur) ? ago(versions.find((v) => v.number === cur)!.savedAt) : "";
       x.hist = versions.filter((v) => v.number !== cur).map((v) => ({ ver: "v" + v.number, when: ago(v.savedAt), data: undefined as never }));
     });
+    if (wasKnown) markKnown(listOf().find((o) => o.id === target.id));
     openModal({ type: "versions", kind });
   } catch (err) { toast(configErrorText(err)); }
 }
