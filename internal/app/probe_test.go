@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -28,6 +29,10 @@ const (
 // fakeModelPython is an interpreter for the engine: the AstrLink worker it starts appends its arguments to args,
 // then (as mode says) waits until release exists and answers the handshake as the real plugin does on Core ML,
 // without loading a model, or exits, or answers without naming a provider. Every other module runs on the real interpreter.
+//
+// It is a Python script run by the real interpreter, not a shell script. On macOS 26 the environment of an Apple
+// platform binary such as /bin/sh cannot be read (kern.procargs2 returns its arguments only), so a worker waiting as a
+// shell carries no marker the exit's reap can see: it would be neither reclaimed nor found left running (#15).
 func fakeModelPython(t *testing.T, py, mode string) (python, args, release string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -41,18 +46,23 @@ func fakeModelPython(t *testing.T, py, mode string) (python, args, release strin
 		"def run(task, params):\n    raise RuntimeError('no model')\n" +
 		"sys.exit(Worker(sys.stdin.buffer, sys.stdout.buffer, 'tacet.astrlink', '0.1.0', ['detect'], {'detect.run': run}, " +
 		"capabilities=" + caps + ").run())\n"
-	script := "#!/bin/sh\n" +
-		"if [ \"$3\" = tacet_detect_astrlink ]; then\n" +
-		"  shift 3\n" +
-		"  echo \"$@\" >> '" + args + "'\n" +
-		"  mode='" + mode + "'\n" +
-		"  if [ \"$mode\" = " + workerFails + " ]; then exit 1; fi\n" +
-		"  if [ \"$mode\" = " + workerWaits + " ] || { [ \"$mode\" = " + workerWaitsFirst + " ] && [ \"$(wc -l < '" + args + "' | tr -d ' ')\" -le 1 ]; }; then\n" +
-		"    while [ ! -e '" + release + "' ]; do sleep 0.05; done\n" +
-		"  fi\n" +
-		"  exec '" + py + "' -I -c \"" + worker + "\"\n" +
-		"fi\n" +
-		"exec '" + py + "' \"$@\"\n"
+	q := strconv.Quote // a Go quoted ASCII string is a Python string literal
+	script := "#!" + py + " -I\n" +
+		"import os, sys, time\n" +
+		"py, argv = " + q(py) + ", sys.argv[1:]\n" +
+		"if len(argv) >= 3 and argv[2] == 'tacet_detect_astrlink':\n" +
+		"    with open(" + q(args) + ", 'a') as f:\n" +
+		"        f.write(' '.join(argv[3:]) + '\\n')\n" +
+		"    mode = " + q(mode) + "\n" +
+		"    if mode == " + q(workerFails) + ":\n" +
+		"        sys.exit(1)\n" +
+		"    with open(" + q(args) + ") as f:\n" +
+		"        first = len(f.readlines()) <= 1\n" +
+		"    if mode == " + q(workerWaits) + " or (mode == " + q(workerWaitsFirst) + " and first):\n" +
+		"        while not os.path.exists(" + q(release) + "):\n" +
+		"            time.sleep(0.05)\n" +
+		"    os.execv(py, [py, '-I', '-c', " + q(worker) + "])\n" +
+		"os.execv(py, [py] + argv)\n"
 	if err := os.WriteFile(python, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}

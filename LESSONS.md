@@ -54,6 +54,21 @@
   - 断言“X 没发生”的测试，要另有断言证明前提成立（这里是 worker 真的启动过），否则前提不成立时它也会通过。
 - 出现：1 次（2026-11-03）
 
+**测试用假进程替代真实进程时，假进程在被检查的属性上要和真实进程一致；“没有 X”的断言，要先做一次 X 确实存在的对照。**
+- `probe_test.go` 的假 AstrLink worker 原来是一个 `#!/bin/sh` 脚本，在 `exec python` 之前以 `/bin/sh` 的身份等待。在 macOS 26.6.2 上，Apple 平台二进制的 `kern.procargs2` 不返回环境变量，退出流程按 `TACET_TREE` 标记回收时看不到这个进程。
+  - `TestAProbeStartingItsWorkerWhenStoppedHasItReaped` 因此在本机必定失败（`the exit reclaimed 0 workers`），在 CI 的 macOS 15 上通过（#15）。
+  - 更隐蔽的是“关闭后没有残留”的断言（`ReapMarkedPrefix(...) n != 0`）：去掉回收这一步后，`TestClosingDuringTheDeviceProbeEndsItsWorker` 在 sh 版本上照样通过，因为它根本看不到 sh 进程。
+- 修复：fix/probe-test-platform-binary。假解释器改成用真实解释器运行的 Python 脚本（shebang 指向 venv 的 python），worker 从第一次 exec 起就带着可见的标记。验证：
+  - sh 版本上测试失败，新版本通过；
+  - 把 `probeStarted` 改成空函数，新版本报 `it started after the reap`；
+  - 去掉回收这一步，新版本报 `left running after the close: 1`，sh 版本不报；
+  - `-race -count=20` 全部通过。
+- 规则：
+  - 被检查的属性（这里是能否读到进程的环境变量）随平台或二进制类型变化时，假进程要用和真实进程同类的二进制，不能为了方便换成 shell；
+  - 断言“没有残留”“没有发生”的测试，要另有一次 X 确实存在、断言确实报错的对照，否则检查手段失效时它也会通过；
+  - 本机失败、CI 通过时，先比较两边的系统版本和二进制类型。
+- 出现：1 次（2026-11-03）
+
 ## CI 耗时
 
 **优化 CI 耗时之前，先拿到 job 里每一段的实测时间，再给出预计；不要只按最慢的那一段推算。**
