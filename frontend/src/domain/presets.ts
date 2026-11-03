@@ -1,6 +1,6 @@
 // Schemes (presets), rule sets and their version history.
-import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Ruleset } from "./types";
-import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryInfo } from "./categories";
+import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
+import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryId, type CategoryInfo } from "./categories";
 
 export const presetTreatment = (p: Preset, id: string): PresetTreatment => p.cats[id] ?? "mask";
 
@@ -44,6 +44,38 @@ export const presetConfidence = (p: Preset, models: ModelPlugin[]): number => p.
 /** Rule sets that ship with a plugin are only available while the plugin is on. */
 export const availableRulesets = (rulesets: Ruleset[], plugins: PluginInfo[]): Ruleset[] =>
   rulesets.filter((rs) => !rs.plugin || plugins.find((p) => p.id === rs.plugin)?.on);
+
+/** The rules of a rule set that report one category. */
+export interface RuleGroup {
+  category: CategoryId;
+  /** The catalog lists the category. */
+  known: boolean;
+  /**
+   * The group's rules in rule-set order, each with its index in the rule set: editing, deleting and switching a
+   * rule address it by that index (a rule not stored yet has no id).
+   */
+  items: { rule: Rule; index: number }[];
+}
+
+/**
+ * The rules grouped by the category they report, in catalog order (the order the scheme page lists categories
+ * in); categories the catalog does not know come last. A category no rule reports has no group.
+ */
+export function ruleGroups(rules: readonly Rule[], catalog: readonly CategoryInfo[]): RuleGroup[] {
+  const byCategory = new Map<CategoryId, RuleGroup["items"]>();
+  rules.forEach((rule, index) => {
+    const items = byCategory.get(rule.cat) ?? [];
+    items.push({ rule, index });
+    byCategory.set(rule.cat, items);
+  });
+  return byCatalogOrder(catalog, byCategory.keys()).map((category) => ({
+    category, known: catalog.some((c) => c.id === category), items: byCategory.get(category)!,
+  }));
+}
+
+/** How many rules of a group are on, of how many. */
+export const ruleGroupCount = (g: Pick<RuleGroup, "items">): { on: number; total: number } =>
+  ({ on: g.items.filter((x) => x.rule.on).length, total: g.items.length });
 
 export function ruleSummary(r: { kind: string; n?: number; body: string }): string {
   return r.kind === "词表" ? (r.n || r.body.split("\n").filter((x) => x.trim()).length) + " 条" : r.body;
