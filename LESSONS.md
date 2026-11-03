@@ -70,6 +70,17 @@
   - 本机失败、CI 通过时，先比较两边的系统版本和二进制类型。
 - 出现：1 次（2026-11-03）
 
+**测试 setup 里替换全局函数的拦截，要放进一个单独、最先加载、不经 import 连到被拦对象的 setup 文件；并用测试证明拦截真的拦到了目标。**
+- `frontend/src/test/setup.ts` 替换了 `window.setInterval`，打算在每个测试文件结束时清掉 `@wailsio/runtime` 的 `drag.js` 在导入时启动的轮询（每 50ms 一次，最长 5 秒）。但 setup.ts 自己的 import 链（`../dev/scenes` → `../actions/window` → `../services` → `./wails` → `@wailsio/runtime`）会在它的正文之前执行，runtime 启动轮询时替换还没装上，所以这个拦截从来没生效过。
+  - PR #12 的 b11dcf4 在 CI `windows-latest` 上（运行 41592626908）：303 个测试全部通过，vitest 却报 `window is not defined`（`drag.js:69`，来自 `presetTest.test.ts`），以退出码 1 失败（#16）。
+  - 这个 runner 慢，测试环境拆掉的时间正好落在定时器触发的间隙里，才会出错；其他运行都是绿的，本机也没有复现。
+- 验证：在替换函数里按调用栈打印，旧位置没有打印，放进单独、最先加载的 setup 文件后打印了。
+- 修复：fix/vitest-runtime-interval。拦截移到 `src/test/intervals.ts`，在 `setupFiles` 里排第一个。新测试断言 runtime 的轮询在“文件结束时会被清掉”的集合里；旧代码只补上测试要用的计数、不改变行为，测试报 `expected 0 to be greater than 0`。
+- 规则：
+  - 测试 setup 要在被测代码导入之前改掉全局对象时，放进单独的 setup 文件，排在最前，并确认它的 import 连不到被拦的模块（ES 模块的 import 会先于正文执行）；
+  - 为防偶发问题加的拦截，要有一个测试证明它拦到了目标，不能只凭“之后没再出现”就认定有效。
+- 出现：1 次（2026-11-03）
+
 ## CI 耗时
 
 **优化 CI 耗时之前，先拿到 job 里每一段的实测时间，再给出预计；不要只按最慢的那一段推算。**

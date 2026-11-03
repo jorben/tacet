@@ -4,7 +4,8 @@ export default defineConfig({
   define: { __SCENES__: true },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    // intervals.ts first: it must see the intervals the runtime starts while setup.ts imports it (#16)
+    setupFiles: ["./src/test/intervals.ts", "./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
   },
