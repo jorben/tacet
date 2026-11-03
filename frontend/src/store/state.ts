@@ -13,6 +13,8 @@ export interface AppState {
   models: ModelPlugin[];
   /** The category catalog: names, placeholders and colors of the ids rules, schemes and findings carry. */
   categories: CategoryInfo[];
+  /** Demo categories are ready immediately; live requests temporarily suspend registration labels. */
+  categoryStatus: "loading" | "ready" | "failed";
   modelPending: ModelPending | null;
 
   theme: "light" | "dark";
@@ -53,6 +55,7 @@ export function createInitialState(): AppState {
     navStack: [],
     models: seedModels(),
     categories: STANDARD_CATEGORIES.map((c) => ({ ...c })),
+    categoryStatus: "ready",
     modelPending: null,
     theme: prefersDark() ? "dark" : "light",
     themePref: "system",

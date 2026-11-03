@@ -20,6 +20,7 @@ export function ModelMappingEditor() {
   const models = useAppState((s) => s.models);
   const presets = useAppState((s) => s.presets);
   const catalog = useAppState((s) => s.categories);
+  const loading = useAppState((s) => s.categoryStatus) === "loading";
   const rulesets = useAppState((s) => s.rulesets);
   const plugins = useAppState((s) => s.plugins);
   const [selected, setSelected] = useState<string | null>(null);
@@ -27,12 +28,13 @@ export function ModelMappingEditor() {
   if (!m) return <Empty padding="36px 0">还没有模型</Empty>;
   const labels = m.labels ?? {};
   const current = effectiveLabels(m);
+  const entityName = (category: string) => loading ? category : categoryName(catalog, category);
   const rows = byCatalogOrder(catalog, [...catalog.map((c) => c.id), ...Object.values(current)]);
   const unused = unmappedLabels(m);
   const using = presets.filter((p) => p.det === "model" && p.model === m.id);
   const gaps = using.map((p) => [p, unhandledCategories(p, m.categories ?? [])] as const).filter(([, c]) => c.length);
   const pick = (anchor: HTMLElement, category: string) =>
-    openMultiMenu(anchor, categoryName(catalog, category) + " · 可多选标签", Object.keys(labels).sort().map((l) => ({
+    openMultiMenu(anchor, entityName(category) + " · 可多选标签", Object.keys(labels).sort().map((l) => ({
       k: l, l, s: current[l] ? categoryName(catalog, current[l]!) : "未关联",
     })), labelsOfCategory(current, category), (chosen) => { void setCategoryLabels(m.id, category, chosen); }, { alignRight: true });
 
@@ -84,14 +86,14 @@ export function ModelMappingEditor() {
               <div className="row mapping-row" data-category={category} key={category}>
                 <Swatch category={category} />
                 <div className="mapping-main">
-                  <div className="rl"><span className="entity-name">{categoryName(catalog, category)}</span>
-                    {!catalog.some((c) => c.id === category) && <Tag>未登记实体</Tag>}
+                  <div className="rl"><span className="entity-name">{entityName(category)}</span>
+                    {!loading && !catalog.some((c) => c.id === category) && <Tag>未登记实体</Tag>}
                     {modified && <Tag {...tip("默认值：" + (defaults.join("、") || "未设置"))}>已修改</Tag>}
                   </div>
                   <div className="mapping-labels">{chosen.length ? chosen.map((l) => <span key={l} className="tag mono">{l}</span>) : <span className="muted sm">未设置</span>}</div>
                   {lost.map((p) => <div role="note" className="source-warning" key={p.id}>方案『{p.name}』将无法开始任务：该实体没有检测来源</div>)}
                 </div>
-                <span className="rv"><SelectButton disabled={!Object.keys(labels).length} aria-label={categoryName(catalog, category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>选择标签</SelectButton></span>
+                <span className="rv"><SelectButton disabled={!Object.keys(labels).length} aria-label={entityName(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>选择标签</SelectButton></span>
               </div>
             );
           })}

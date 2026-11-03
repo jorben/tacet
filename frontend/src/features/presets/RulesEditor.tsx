@@ -18,16 +18,17 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const catalog = useAppState((s) => s.categories);
   const s = useAppState((s) => s);
+  const loading = s.categoryStatus === "loading";
   const sources = { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models };
   return <List className="rule-groups">
-    {ruleGroups(r.rules, catalog).map((g) => {
+    {ruleGroups(r.rules, loading ? [] : catalog).map((g) => {
       const key = JSON.stringify([r.id, g.category]);
       const { on, total } = ruleGroupCount(g);
       const multi = total > 1;
       const expanded = !collapsed.has(key);
-      const name = categoryName(catalog, g.category);
+      const name = loading ? g.category : categoryName(catalog, g.category);
       const lost = presetsWithoutSource(s.presets, sources, (p) => p.rules.includes(r.id), g.category);
-      const entity = <><Swatch category={g.category} /><span className="entity-name">{name}</span>{!g.known && <Tag>未登记实体</Tag>}</>;
+      const entity = <><Swatch category={g.category} /><span className="entity-name">{name}</span>{!loading && !g.known && <Tag>未登记实体</Tag>}</>;
       return <section className="rule-group" data-category={g.category} key={key} aria-label={name}>
         {multi && <div className="row rule-group-head">
           <button type="button" className="rule-expand" aria-label={(expanded ? "收起 " : "展开 ") + name} aria-expanded={expanded} onClick={() => setCollapsed((was) => {
