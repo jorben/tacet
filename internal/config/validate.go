@@ -148,15 +148,27 @@ func (v *Validator) Validate(tx store.Tx, kind Kind, content json.RawMessage) er
 		if json.Unmarshal(content, &object) != nil {
 			return ErrContent
 		}
+		// A rule set reports at least one category: it has at least one rule. Rules switched off still count
+		// (a switch the person can turn back on); category coverage is worked out when a task starts.
+		if len(object.Rules) == 0 {
+			return ErrContent
+		}
 		if len(object.Enabled()) == 0 {
 			return nil
-		} // an empty rule set is valid; category compatibility is checked at Start
+		}
 		compiled := make([]rules.Rule, 0, len(object.Rules))
 		for _, rule := range object.Enabled() {
 			compiled = append(compiled, rules.Rule{ID: rule.ID, Category: rule.Category, Pattern: rule.Pattern, Terms: rule.Terms, Boundary: rule.Boundary, Validator: rule.Validator, Suspect: rule.Suspect, FoldCase: rule.FoldCase, Context: rule.Context, ContextWindow: rule.Window})
 		}
 		_, err := rules.Compile(compiled, v.budget)
 		return err
+	case ModelMapping:
+		// A mapping sends at least one label to a category: a model none of whose labels count is not a
+		// mapping but no model at all (a scheme detects with rules only for that).
+		var object MappingContent
+		if json.Unmarshal(content, &object) != nil || len(object.LabelMap) == 0 {
+			return ErrContent
+		}
 	case ModelProfile:
 		var object ModelContent
 		if json.Unmarshal(content, &object) != nil || object.Calibrated < object.AdapterFloor {
@@ -198,6 +210,10 @@ func (v *Validator) Validate(tx store.Tx, kind Kind, content json.RawMessage) er
 			if ref.Kind != RuleSet || id == object.RuleSetID {
 				return ErrContent
 			}
+		}
+		// Detecting with a model needs the model: "model + rules" names one, "rules only" may name none.
+		if !object.RulesOnly && object.ModelProfileID == "" {
+			return ErrContent
 		}
 		if object.ModelProfileID != "" {
 			model, err := modelFor(tx, object.ModelProfileID)

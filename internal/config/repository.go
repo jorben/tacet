@@ -545,15 +545,9 @@ func (r *Repository) Import(tx store.Tx, p Package) (Object, error) {
 	return r.Create(tx, id, p.Kind, p.Name, p.Note, p.Content)
 }
 
-// categoryInUse reports whether a rule of any rule set reports the category, a model mapping maps a label
-// to it, or a scheme handles it (that scheme could not start once nothing detects it).
-func categoryInUse(t *store.Txn, id string) (bool, error) {
-	if used, err := mappedInUse(t, id); err != nil || used {
-		return used, err
-	}
-	if used, err := handledInUse(t, id); err != nil || used {
-		return used, err
-	}
+// reportedByRule reports whether a rule of any rule set reports the category. Such a category cannot be
+// deleted: the rule would report a category that no longer exists.
+func reportedByRule(t *store.Txn, id string) (bool, error) {
 	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(RuleSet))
 	if err != nil {
 		return false, err
@@ -577,57 +571,123 @@ func categoryInUse(t *store.Txn, id string) (bool, error) {
 	return false, rows.Err()
 }
 
-func handledInUse(t *store.Txn, id string) (bool, error) {
-	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(Scheme))
+// userObjects lists the ids of the user's objects of a kind (built-in ones are read-only).
+func userObjects(t *store.Txn, kind Kind) ([]string, error) {
+	rows, err := t.Query("SELECT id FROM config_object WHERE kind=? AND readonly=0 ORDER BY id", string(kind))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer rows.Close()
+	var ids []string
 	for rows.Next() {
-		var content []byte
-		if err = rows.Scan(&content); err != nil {
-			return false, err
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
 		}
-		var s SchemeContent
-		if json.Unmarshal(content, &s) != nil {
-			continue
-		}
-		if _, ok := s.CategoryActions[id]; ok {
-			return true, nil
-		}
+		ids = append(ids, id)
 	}
-	return false, rows.Err()
+	return ids, rows.Err()
 }
 
-func mappedInUse(t *store.Txn, id string) (bool, error) {
-	rows, err := t.Query("SELECT content FROM config_object WHERE kind=?", string(ModelMapping))
-	if err != nil {
-		return false, err
+// withoutCategory is the content of a model mapping or scheme with category id taken out: the labels that
+// count as it are no longer used, a scheme holds no setting for it. Members the category is not part of are
+// kept as stored. changed is false when the object does not refer to it.
+func withoutCategory(kind Kind, content []byte, id string) (out []byte, changed bool, err error) {
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(content, &doc) != nil {
+		return nil, false, ErrContent
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var content []byte
-		if err = rows.Scan(&content); err != nil {
-			return false, err
+	switch kind {
+	case ModelMapping:
+		var labels map[string]string
+		if json.Unmarshal(doc["label_map"], &labels) != nil {
+			return nil, false, ErrContent
 		}
-		var m MappingContent
-		if json.Unmarshal(content, &m) != nil {
-			continue
+		for label, category := range labels {
+			if category == id {
+				delete(labels, label)
+				changed = true
+			}
 		}
-		for _, c := range m.LabelMap {
-			if c == id {
-				return true, nil
+		if !changed {
+			return content, false, nil
+		}
+		if len(labels) == 0 {
+			return nil, false, ErrInUse // the mapping would count none of the model's labels
+		}
+		doc["label_map"], err = json.Marshal(labels)
+	case Scheme:
+		var actions map[string]string
+		if json.Unmarshal(doc["category_actions"], &actions) != nil {
+			return nil, false, ErrContent
+		}
+		if _, ok := actions[id]; !ok {
+			return content, false, nil
+		}
+		delete(actions, id)
+		changed = true
+		if doc["category_actions"], err = json.Marshal(actions); err != nil {
+			return nil, false, err
+		}
+		if raw, ok := doc["human_review"]; ok {
+			var review []string
+			if json.Unmarshal(raw, &review) != nil {
+				return nil, false, ErrContent
+			}
+			kept := []string{}
+			for _, c := range review {
+				if c != id {
+					kept = append(kept, c)
+				}
+			}
+			doc["human_review"], err = json.Marshal(kept)
+		}
+	default:
+		return content, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	out, err = json.Marshal(doc)
+	return out, changed, err
+}
+
+// detachCategory takes a category that is being deleted out of the model mappings and schemes that refer
+// to it, each changed object saved as a new version of its own. A mapping whose labels all count as the
+// category would be left with none, so the category stays (ErrInUse). Task snapshots hold their content
+// and are not touched.
+func (r *Repository) detachCategory(tx store.Tx, t *store.Txn, id string) error {
+	for _, kind := range []Kind{ModelMapping, Scheme} {
+		ids, err := userObjects(t, kind)
+		if err != nil {
+			return err
+		}
+		for _, oid := range ids {
+			o, err := r.Get(tx, oid)
+			if err != nil {
+				return err
+			}
+			content, changed, err := withoutCategory(kind, o.Content, id)
+			if err != nil {
+				return err
+			}
+			if !changed {
+				continue
+			}
+			if _, err = r.Save(tx, o.ID, o.Version, content, o.Name, o.Note); err != nil {
+				return err
 			}
 		}
 	}
-	return false, rows.Err()
+	return nil
 }
 
-// ErrInUse says a preset still refers to the object (or a rule or model mapping to a category).
+// ErrInUse says a preset still refers to the object, or a rule reports the category.
 var ErrInUse = errors.New("CONFIG_IN_USE")
 
 // Delete removes a user object and its history. Built-in objects stay, and so does an object a preset
-// still refers to: deleting it would leave that preset unable to start. Tasks already running keep their
+// still refers to: deleting it would leave that preset unable to start. A category a rule reports stays
+// too; one that model mappings or schemes refer to is taken out of them first (detachCategory). Tasks already running keep their
 // frozen copy of the configuration (the snapshot holds content, not references).
 func (r *Repository) Delete(tx store.Tx, id string, expectedVersion uint64) error {
 	object, err := r.Get(tx, id)
@@ -645,10 +705,15 @@ func (r *Repository) Delete(tx store.Tx, id string, expectedVersion uint64) erro
 		return err
 	}
 	if object.Kind == Category {
-		if used, err := categoryInUse(t, id); err != nil || used {
+		// A rule that reports the category keeps it. Model mappings and schemes are shared configuration that
+		// only refers to it: they let go of it (the screens say so before the person confirms).
+		if used, err := reportedByRule(t, id); err != nil || used {
 			if err == nil {
 				err = ErrInUse
 			}
+			return err
+		}
+		if err = r.detachCategory(tx, t, id); err != nil {
 			return err
 		}
 	}

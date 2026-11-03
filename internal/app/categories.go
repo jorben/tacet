@@ -18,6 +18,8 @@ type CategoryInfo struct {
 	Color       string `json:"color,omitempty"`
 	// Manual: offered when a selection is marked by hand, whether or not the scheme detects it.
 	Manual bool `json:"manual,omitempty"`
+	// ReviewOnly: marked by hand in review; a scheme lists it only when a source of the scheme reports it.
+	ReviewOnly bool `json:"reviewOnly,omitempty"`
 	// Origin: "standard" (shipped vocabulary), "model" (declared by a model's manifest) or "custom".
 	Origin string `json:"origin"`
 	// Version of a user category's stored object (ConfigSave / ConfigDelete check it); 0 otherwise.
@@ -152,7 +154,7 @@ func (e *Engine) Categories(ctx context.Context) ([]CategoryInfo, error) {
 	}
 	out := make([]CategoryInfo, 0, len(cat))
 	for _, c := range cat {
-		out = append(out, CategoryInfo{ID: c.ID, Name: c.Name, Placeholder: c.Placeholder, Color: c.Color, Manual: c.Manual, Origin: string(c.Origin), Version: versions[c.ID]})
+		out = append(out, CategoryInfo{ID: c.ID, Name: c.Name, Placeholder: c.Placeholder, Color: c.Color, Manual: c.Manual, ReviewOnly: c.ReviewOnly, Origin: string(c.Origin), Version: versions[c.ID]})
 	}
 	return out, nil
 }

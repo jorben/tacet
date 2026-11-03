@@ -192,6 +192,7 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 		content.Detect.AdapterFloor = model.AdapterFloor
 		content.Detect.Calibrated = model.Calibrated
 	}
+	narrowToSources(&content, environment)
 	for _, format := range environment.Formats {
 		plugin, ok := content.Runtime.Formats[format]
 		if !ok || plugin.ID == "" || plugin.Digest == "" || plugin.Env == "" {
@@ -204,6 +205,43 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 		return Content{}, CompatReport{}, err
 	}
 	return detached, Check(detached, environment), nil
+}
+
+// narrowToSources leaves out of the run every category the scheme handles that nothing of the run
+// detects: no enabled rule of its rule sets reports it, and its model (when the preset detects with one)
+// maps no label to it. Such a category is listed as out of scope, not handled, instead of the start being
+// refused: the scheme keeps the person's setting for it, so it applies again once a source comes back,
+// and the screens ask before a change of rules or of a model's labels takes a category's source away
+// (requirements FR-18: narrowed with the person's confirmation, never reported as checked).
+func narrowToSources(c *Content, env Env) {
+	covered := map[string]bool{}
+	for category := range env.RuleCategories {
+		covered[category] = true
+	}
+	if c.Detect.ModelID != "" && !c.Detect.RulesOnly {
+		for _, category := range env.Models[c.Detect.ModelID].Categories {
+			covered[category] = true
+		}
+	}
+	kept := c.Detect.Categories[:0]
+	for _, category := range c.Detect.Categories {
+		if covered[category] {
+			kept = append(kept, category)
+			continue
+		}
+		c.Detect.OutOfScope = append(c.Detect.OutOfScope, category)
+		delete(c.Dispose.CategoryAction, category)
+	}
+	c.Detect.Categories = kept
+	if len(c.Dispose.HumanReview) > 0 {
+		review := []string{}
+		for _, category := range c.Dispose.HumanReview {
+			if covered[category] {
+				review = append(review, category)
+			}
+		}
+		c.Dispose.HumanReview = review
+	}
 }
 
 // renderStyle is the concrete style a task is frozen with: the preset's, or for "default" the application's

@@ -31,8 +31,11 @@ type Category struct {
 	Placeholder string `json:"placeholder"`
 	Color       string `json:"color,omitempty"`
 	// Manual: offered when a person marks a selection by hand, even if no source of the scheme detects it.
-	Manual bool   `json:"manual,omitempty"`
-	Origin Origin `json:"origin"`
+	Manual bool `json:"manual,omitempty"`
+	// ReviewOnly: a category a person marks in review but a scheme does not list (company names, other)
+	// unless a model or rule of the scheme reports it.
+	ReviewOnly bool   `json:"review_only,omitempty"`
+	Origin     Origin `json:"origin"`
 }
 
 var (
@@ -57,6 +60,7 @@ type Decl struct {
 	Placeholder string `json:"placeholder"`
 	Color       string `json:"color,omitempty"`
 	Manual      bool   `json:"manual,omitempty"`
+	ReviewOnly  bool   `json:"review_only,omitempty"`
 }
 
 // CheckText validates a display name and placeholder (shared with user categories).
@@ -83,7 +87,7 @@ func FromDecls(decls []Decl, origin Origin) ([]Category, error) {
 			return nil, ErrInvalid
 		}
 		ids[d.ID], names[d.Name] = true, true
-		out = append(out, Category{ID: d.ID, Name: d.Name, Placeholder: d.Placeholder, Color: d.Color, Manual: d.Manual, Origin: origin})
+		out = append(out, Category{ID: d.ID, Name: d.Name, Placeholder: d.Placeholder, Color: d.Color, Manual: d.Manual, ReviewOnly: d.ReviewOnly, Origin: origin})
 	}
 	return out, nil
 }

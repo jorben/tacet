@@ -30,11 +30,14 @@ type DetectContent struct {
 	RuleContent   json.RawMessage   `json:"rule_content"`
 	ModelProfile  ConfigRef         `json:"model_profile"`
 	// LabelMapping is the user's mapping of the model's labels LabelMap was taken from; nil: the profile's.
-	LabelMapping    *ConfigRef        `json:"label_mapping,omitempty"`
-	RulePacks       map[string]string `json:"rule_packs"` // pack id -> version digest
-	Categories      []string          `json:"categories"` // enabled
-	RulesOnly       bool              `json:"rules_only"`
-	FieldRuleDigest string            `json:"field_rule_digest"`
+	LabelMapping *ConfigRef        `json:"label_mapping,omitempty"`
+	RulePacks    map[string]string `json:"rule_packs"` // pack id -> version digest
+	Categories   []string          `json:"categories"` // enabled
+	// OutOfScope are categories the scheme handles that nothing of the run detects: the run leaves them
+	// alone and says so (requirements FR-18). Sorted; absent when there are none.
+	OutOfScope      []string `json:"out_of_scope,omitempty"`
+	RulesOnly       bool     `json:"rules_only"`
+	FieldRuleDigest string   `json:"field_rule_digest"`
 	// Execution freezes the exact model build and device policy for this batch.
 	// Backend auto permits GPU-to-CPU fallback on the same graph; it never substitutes weights.
 	Execution *ModelExecution `json:"execution,omitempty"`

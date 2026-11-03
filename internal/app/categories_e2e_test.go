@@ -86,21 +86,39 @@ func TestAUserCategoryIsCreatedUsedByARuleAndWrittenAsItsPlaceholder(t *testing.
 		t.Fatalf("renamed: %+v", list[len(list)-1])
 	}
 
-	// a category a rule reports or a scheme handles cannot go; once nothing uses it, it can
+	// a category a rule reports cannot go; once no rule reports it, it can, and the scheme lets go of it
 	if err = e.ConfigDelete(ctx, cat.ID, 2); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("in use: %v", err)
 	}
 	if _, err = e.ConfigSave(ctx, rs.ID, 1, "项目", "", `{"rules":[{"id":"p","category":"other","terms":["北斗"]}]}`); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.ConfigDelete(ctx, cat.ID, 2); !errors.Is(err, ErrNotAllowed) {
-		t.Fatalf("still handled by the scheme: %v", err)
-	}
-	if _, err = e.ConfigSave(ctx, sch.ID, 1, "含项目", "", `{"category_actions":{"phone":"placeholder"},"image_default":"remove"}`); err != nil {
+	// the scheme still handles the category, which nothing detects now: the run starts with it out of scope
+	st, err = e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out, Preset: pre.ID})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Preset: pre.ID, Authorize: true}); err != nil {
+		t.Fatalf("start with a category nothing detects: %v", err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories[cat.ID] != 0 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(out, st.Files[0].Output))
+	if s := string(raw); s != "北斗 由 [手机号] 负责\n" {
+		t.Fatalf("output %q", s)
 	}
 	if err = e.ConfigDelete(ctx, cat.ID, 2); err != nil {
+		t.Fatalf("handled only by a scheme: %v", err)
+	}
+	if schemes, err := e.ConfigList(ctx, "scheme"); err != nil {
 		t.Fatal(err)
+	} else {
+		for _, s := range schemes {
+			if s.ID == sch.ID && (s.Version != 2 || strings.Contains(s.Content, cat.ID)) {
+				t.Fatalf("the scheme still handles the deleted category: %+v", s)
+			}
+		}
 	}
 	if list, _ = e.Categories(ctx); len(list) != 13 || strings.HasPrefix(list[len(list)-1].ID, "cfg_") {
 		t.Fatalf("%+v", list)

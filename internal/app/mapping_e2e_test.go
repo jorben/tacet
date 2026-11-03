@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,12 +14,13 @@ import (
 	"time"
 
 	"github.com/jorben/tacet/internal/config"
+	"github.com/jorben/tacet/internal/store"
 )
 
 // A model's labels map onto the application's categories, and the mapping is the user's to change: the
 // real AstrLink Guard reports a person, the user's mapping makes it a category of their own, and the run
-// writes that category's placeholder. A scheme that does not handle what the mapping now produces cannot
-// start, rather than dropping what the model finds.
+// writes that category's placeholder. A scheme that handles persons, which nothing detects any more, starts
+// with persons out of scope; deleting the category takes it out of the mapping and the scheme.
 func TestAModelMappingSendsALabelToAUserCategory(t *testing.T) {
 	m := modelOption(t)
 	ws, in, out := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir()
@@ -62,16 +64,21 @@ func TestAModelMappingSendsALabelToAUserCategory(t *testing.T) {
 
 	p := filepath.Join(in, "m.txt")
 	os.WriteFile(p, []byte("请联系张伟，电话 13812345678。\n"), 0o600)
-	// the office preset handles persons, which nothing detects any more: it does not start
+	// the office preset handles persons, which nothing detects any more: persons are out of scope, the
+	// rest is handled, and the new category the scheme has no setting for is not
 	st, err := e.Import(ctx, ImportRequest{Kind: "batch", Files: []string{p}, OutputDir: out})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); !errors.Is(err, ErrNotReady) || !strings.Contains(err.Error(), "no_detection_source") {
-		t.Fatalf("start with an uncovered category: %v", err)
+	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatalf("start with a category nothing detects: %v", err)
 	}
-	if err = e.Cancel(ctx, st.ID); err != nil {
-		t.Fatal(err)
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["person"] != 0 || st.Files[0].Categories["phone"] != 1 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
+	if s := string(raw); !strings.Contains(s, "张伟") || strings.Contains(s, "13812345678") {
+		t.Fatalf("output %q", s)
 	}
 
 	// a scheme that handles the new category instead of persons runs, and writes its placeholder
@@ -93,28 +100,33 @@ func TestAModelMappingSendsALabelToAUserCategory(t *testing.T) {
 	if st2, err = e.Wait(ctx, st2.ID); err != nil || st2.Files[0].State != "completed" || st2.Files[0].Categories[cat.ID] < 1 || st2.Files[0].Categories["person"] != 0 {
 		t.Fatalf("%+v %v", st2, err)
 	}
-	raw, _ := os.ReadFile(filepath.Join(out, st2.Files[0].Output))
+	raw, _ = os.ReadFile(filepath.Join(out, st2.Files[0].Output))
 	if s := string(raw); !strings.Contains(s, "[联系人]") || strings.Contains(s, "张伟") || strings.Contains(s, "13812345678") {
 		t.Fatalf("output %q", s)
 	}
 
-	// the category a mapping uses cannot go; resetting the mapping (deleting it) brings the default back
-	if err = e.ConfigDelete(ctx, cat.ID, 1); !errors.Is(err, ErrNotAllowed) {
-		t.Fatalf("in use by the mapping: %v", err)
-	}
-	if err = e.ConfigDelete(ctx, mp.ID, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err = e.ConfigDelete(ctx, cat.ID, 1); !errors.Is(err, ErrNotAllowed) {
-		t.Fatalf("still handled by a scheme: %v", err)
-	}
-	if err = e.ConfigDelete(ctx, pre.ID, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err = e.ConfigDelete(ctx, sch.ID, 1); err != nil {
-		t.Fatal(err)
-	}
+	// no rule reports the category: deleting it takes it out of the mapping (the label is no longer used,
+	// the others stay) and out of the scheme, each as a new version
 	if err = e.ConfigDelete(ctx, cat.ID, 1); err != nil {
-		t.Fatalf("nothing uses it any more: %v", err)
+		t.Fatalf("used only by a mapping and a scheme: %v", err)
+	}
+	var mc config.MappingContent
+	var sc config.SchemeContent
+	err = e.ws.Commit(ctx, func(tx store.Tx) error {
+		m, err := e.cfg.Get(tx, mp.ID)
+		if err != nil || m.Version != 2 || json.Unmarshal(m.Content, &mc) != nil {
+			return fmt.Errorf("mapping %+v %v", m, err)
+		}
+		s, err := e.cfg.Get(tx, sch.ID)
+		if err != nil || s.Version != 2 || json.Unmarshal(s.Content, &sc) != nil {
+			return fmt.Errorf("scheme %+v %v", s, err)
+		}
+		return nil
+	})
+	if _, used := mc.LabelMap["private_person"]; err != nil || used || len(mc.LabelMap) != len(labels)-1 {
+		t.Fatalf("%v %v", mc.LabelMap, err)
+	}
+	if _, used := sc.CategoryActions[cat.ID]; used || sc.CategoryActions["phone"] != "placeholder" {
+		t.Fatalf("%v", sc.CategoryActions)
 	}
 }
