@@ -4,7 +4,7 @@ import { copyRuleset, newRuleset, openRulesetMoreMenu, selectRuleset, setCategor
 import { openModal } from "../../overlay/store";
 import { BOUNDARY_LABELS } from "../../domain/catalog";
 import { categoryName } from "../../domain/categories";
-import { availableRulesets, presetsWithoutSource, ruleGroups, ruleGroupCount, ruleSummary } from "../../domain/presets";
+import { availableRulesets, ruleGroups, ruleGroupCount, ruleSummary } from "../../domain/presets";
 import type { Ruleset } from "../../domain/types";
 import { Button, Empty, IconButton, List, Switch, Swatch, Tag, tip } from "../../ui";
 import { TriCheckbox } from "../../ui/TriCheckbox";
@@ -19,7 +19,6 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
   const catalog = useAppState((s) => s.categories);
   const s = useAppState((s) => s);
   const loading = s.categoryStatus === "loading";
-  const sources = { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models };
   return <List className="rule-groups">
     {ruleGroups(r.rules, loading ? [] : catalog).map((g) => {
       const key = JSON.stringify([r.id, g.category]);
@@ -27,7 +26,6 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
       const multi = total > 1;
       const expanded = !collapsed.has(key);
       const name = loading ? g.category : categoryName(catalog, g.category);
-      const lost = presetsWithoutSource(s.presets, sources, (p) => p.rules.includes(r.id), g.category);
       const entity = <><Swatch category={g.category} /><span className="entity-name">{name}</span>{!loading && !g.known && <Tag>未登记实体</Tag>}</>;
       return <section className="rule-group" data-category={g.category} key={key} aria-label={name}>
         {multi && <div className="row rule-group-head">
@@ -53,7 +51,6 @@ function RuleGroups({ r, locked }: { r: Ruleset; locked: boolean }) {
             <span {...(!multi ? tip(GROUP_HINT, { align: "end" }) : {})}><Switch checked={x.on} disabled={locked} label={"启用 " + x.name} onChange={() => toggleRule(index)} /></span>
           </span>
         </div>)}
-        {lost.map((p) => <div role="note" className="source-warning" key={p.id}>方案『{p.name}』将无法开始任务：该实体没有检测来源</div>)}
         {!locked && (!multi || expanded) && <div className="rule-add"><Button variant="ghost" icon="plus" onClick={() => openModal({ type: "ruleEditor", rulesetId: r.id, index: null, category: g.category })}>在此实体下添加规则</Button></div>}
       </section>;
     })}

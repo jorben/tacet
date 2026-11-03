@@ -280,13 +280,16 @@ export function presetContents(p: Preset, rulesets: Ruleset[], models: Model[], 
   const covered = ruleCategories(chosen);
   if (useModel) model!.categories.forEach((c) => covered.add(c));
 
-  const actions: Record<string, string> = {};
-  const dropped: string[] = [];
   const offered = presetCategories(p, models, chosen);
+  // Hidden entities have no editable row. Keep their stored actions verbatim, including keep (read as off).
+  const actions: Record<string, string> = Object.fromEntries(
+    Object.entries(prevScheme.category_actions).filter(([c]) => !offered.includes(c)),
+  );
+  const dropped: string[] = [];
   for (const c of new Set([...Object.keys(p.cats), ...offered])) {
     const t = presetTreatment(p, c);
     if (t !== "mask" && t !== "ph") continue;
-    if (!covered.has(c)) { dropped.push(c); continue; }
+    if (!covered.has(c)) { if (!(c in actions)) dropped.push(c); continue; }
     actions[c] = t === "ph" ? "placeholder" : prevScheme.category_actions[c] === "delete" ? "delete" : "mask";
   }
   const scheme: SchemeJSON = { category_actions: actions, image_default: p.img === "keep" ? "review" : "remove" };

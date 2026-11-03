@@ -115,7 +115,7 @@ describe("实体清单 · 规则页", () => {
     for (const e of $$('.preset-detail [role=checkbox],.preset-detail [role=switch]')) expect(e).toBeDisabled();
     expect($$('.preset-detail button[aria-label=编辑]')).toHaveLength(0); expect(screen.queryByText("在此实体下添加规则")).toBeNull(); expect(screen.queryByText("添加规则")).toBeNull();
   });
-  it.each(["总开关", "单规则"])("仅规则方案 X 失去来源：%s 先确认列出 X，取消不改，确认后停用并显示提醒", async (kind) => {
+  it.each(["总开关", "单规则"])("仅规则方案 X 失去来源：%s 先确认列出 X，取消不改，确认后停用且无持续提醒", async (kind) => {
     demo(kind === "总开关" ? [rule("A"), rule("C")] : [rule("C")]);
     store.update((d) => { d.presets.push({ ...d.presets[0]!, id: "X", name: "X", builtin: false, det: "rules", rules: ["test"], cats: { phone: "ph" } }); }); mount();
     const control = () => kind === "总开关" ? within(group("phone")).getByRole("checkbox") : button("启用 C");
@@ -124,7 +124,7 @@ describe("实体清单 · 规则页", () => {
     expect($(".loss-modal")).toHaveTextContent("方案『X』将无法开始任务"); expect($(".loss-modal")).toHaveTextContent("方案『X』将没有任何启用的规则，开始任务会失败");
     press("取消", ".loss-modal"); expect(selected()).toBe(before);
     click(control()); await confirm(); expect(selected().rules.every((r) => !r.on)).toBe(true);
-    expect(group("phone").querySelector("[role=note]")).toHaveTextContent("方案『X』将无法开始任务：该实体没有检测来源");
+    expect(group("phone").querySelector("[role=note]")).toBeNull();
   });
   it.each(["改实体", "删除"])("%s 也确认，取消返回草稿且不改规则", async (kind) => {
     demo([rule("C")]); store.update((d) => { d.presets.push({ ...d.presets[0]!, id: "X", name: "X", rules: ["test"], det: "rules", cats: { phone: "mask" } }); }); mount();

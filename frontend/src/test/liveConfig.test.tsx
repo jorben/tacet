@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
+import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
+import { presetCategories } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -203,17 +204,48 @@ describe("方案与规则集的存储同步", () => {
     expect(getState().presets.filter((p) => !p.builtin)).toHaveLength(0);
   });
 
-  it("没有任何规则或模型检测的类别提示后不写入", async () => {
+  it.each(["mask", "placeholder", "delete", "keep"])("规则全停后保存方案其他改动，隐藏实体 category_actions 原始 %s 保留，可见实体关闭仍删除", async (original) => {
+    stopConfigSync();
+    fake.items.push(
+      item("ruleset", "cfg_phone", "电话规则", { rules: [{ id: "phone", category: "phone", pattern: "[0-9]+" }] }, false),
+      item("ruleset", "cfg_email", "邮箱规则", { rules: [{ id: "email", category: "email", pattern: "x@y" }] }, false),
+      item("scheme", "cfg_hidden_scheme", "隐藏实体方案", { category_actions: { phone: original, email: "mask" }, image_default: "remove" }, false),
+      item("preset", "cfg_hidden_preset", "保留设置", { ruleset_id: "cfg_phone", extra_ruleset_ids: ["cfg_email"], scheme_id: "cfg_hidden_scheme", rules_only: true }, false),
+    );
+    await loadConfig();
+    const preset = () => getState().presets.find((p) => p.id === "cfg_hidden_preset")!;
+    expect(preset().cats.phone).toBe(original === "keep" ? "off" : original === "placeholder" ? "ph" : "mask");
+    selectRuleset("cfg_phone"); act(() => setCategoryRulesOn("phone", false));
+    const confirmation = overlayStore.get().modal;
+    if (original !== "keep") {
+      expect(confirmation?.type).toBe("detectionLoss");
+      if (confirmation?.type === "detectionLoss") act(() => confirmation.go());
+    }
+    await flushConfig();
+    expect(presetCategories(preset(), getState().models, getState().rulesets)).toEqual(["email"]);
+    const save = vi.spyOn(fake, "configSave");
+    selectPreset("cfg_hidden_preset"); act(() => setCategoryTreatment("email", "off")); await flushConfig();
+    const written = save.mock.calls.find(([id]) => id === "cfg_hidden_scheme");
+    expect(written).toBeDefined();
+    const actions = JSON.parse(written![4]).category_actions;
+    expect(actions.phone).toBe(original);
+    expect(actions).not.toHaveProperty("email");
+    expect(JSON.parse(fake.items.find((i) => i.id === "cfg_hidden_scheme")!.content).category_actions.phone).toBe(original);
+    expect(toastText()).not.toContain("未写入方案");
+  });
+
+  it("原存储没有设置且没有检测来源的类别提示后不写入", async () => {
     selectPreset("builtin-preset-model");
     act(() => copyPreset());
     await waitFor(() => expect(getState().presets.find((p) => !p.builtin)?.stored).toBeTruthy());
     act(() => setDetection("rules"));
     await flushConfig();
-    act(() => setCategoryTreatment("addr", "mask"));
-    await waitFor(() => expect(toastText()).toContain("地址"));
+    act(() => setCategoryTreatment("organization", "mask"));
+    await waitFor(() => expect(toastText()).toContain("公司名"));
     const id = getState().presets.find((p) => !p.builtin)!.id;
     const scheme = fake.items.find((i) => i.id === JSON.parse(fake.items.find((x) => x.id === id)!.content).scheme_id)!;
-    expect(JSON.parse(scheme.content).category_actions.address).toBeUndefined();
+    expect(JSON.parse(scheme.content).category_actions).toMatchObject({ address: "placeholder", person: "placeholder" });
+    expect(JSON.parse(scheme.content).category_actions.organization).toBeUndefined();
   });
 
   it("历史版本来自存储；回滚用所选版本保存为新版本", async () => {

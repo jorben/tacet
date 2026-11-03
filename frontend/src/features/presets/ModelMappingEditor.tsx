@@ -2,7 +2,7 @@ import { useState } from "react";
 import { resetModelMapping, setCategoryLabels, setLabelCategory } from "../../actions/modelMapping";
 import { byCatalogOrder, categoryName } from "../../domain/categories";
 import { effectiveLabels, labelsOfCategory, unmappedLabels } from "../../domain/liveConfig";
-import { presetTreatment, presetsWithoutSource, availableRulesets } from "../../domain/presets";
+import { presetTreatment } from "../../domain/presets";
 import type { Preset } from "../../domain/types";
 import { openMenu, openMultiMenu } from "../../overlay/store";
 import { useAppState } from "../../store";
@@ -21,8 +21,6 @@ export function ModelMappingEditor() {
   const presets = useAppState((s) => s.presets);
   const catalog = useAppState((s) => s.categories);
   const loading = useAppState((s) => s.categoryStatus) === "loading";
-  const rulesets = useAppState((s) => s.rulesets);
-  const plugins = useAppState((s) => s.plugins);
   const [selected, setSelected] = useState<string | null>(null);
   const m = models.find((x) => x.id === selected) ?? models[0];
   if (!m) return <Empty padding="36px 0">还没有模型</Empty>;
@@ -81,7 +79,6 @@ export function ModelMappingEditor() {
             const chosen = labelsOfCategory(current, category);
             const defaults = labelsOfCategory(labels, category);
             const modified = JSON.stringify(chosen) !== JSON.stringify(defaults);
-            const lost = presetsWithoutSource(presets, { rulesets: availableRulesets(rulesets, plugins), models }, (p) => p.det === "model" && p.model === m.id, category);
             return (
               <div className="row mapping-row" data-category={category} key={category}>
                 <Swatch category={category} />
@@ -91,7 +88,6 @@ export function ModelMappingEditor() {
                     {modified && <Tag {...tip("默认值：" + (defaults.join("、") || "未设置"))}>已修改</Tag>}
                   </div>
                   <div className="mapping-labels">{chosen.length ? chosen.map((l) => <span key={l} className="tag mono">{l}</span>) : <span className="muted sm">未设置</span>}</div>
-                  {lost.map((p) => <div role="note" className="source-warning" key={p.id}>方案『{p.name}』将无法开始任务：该实体没有检测来源</div>)}
                 </div>
                 <span className="rv"><SelectButton disabled={!Object.keys(labels).length} aria-label={entityName(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>选择标签</SelectButton></span>
               </div>
