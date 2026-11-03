@@ -9,38 +9,87 @@
 .presets-page .preset-sidebar,.presets-page .preset-detail{min-width:0;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:56px}
 /* A long list stays independently accessible without moving the tabs or editor. */
 @media (max-width:860px){.presets-page .split{grid-template-columns:180px minmax(0,1fr)}}
+/* the column of schemes, rule sets or models: “新建” and “导入” in its heading, which stays put while it scrolls */
+.plist-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:2px;min-height:36px;padding:0 2px 6px 12px;background:var(--win);font-size:12px;font-weight:600;color:var(--muted)}
 .plist{display:flex;flex-direction:column;gap:2px}
-.pitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;width:100%}
+.pitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;width:100%;text-align:left;scroll-margin-top:44px}
 .pitem:hover{background:var(--hover)}
 .pitem[aria-current=true]{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
-.pitem .pn{font-weight:500}
+.pitem-text{display:flex;flex-direction:column;min-width:0;flex:1}
+.pitem .pn{display:flex;align-items:center;gap:5px;min-width:0;font-weight:500}
+.pitem .pn-t,.pitem .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem .pn-lock{flex:none;display:inline-flex;color:var(--muted)}
 .pitem .pv{font-size:12px;color:var(--muted)}
+/* one head on every tab: name and tag, then one line of references (always there, so its height never changes) */
 .phead{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.phead-text{min-width:0}
+.phead-title{display:flex;align-items:center;gap:10px;min-width:0}
+.phead-title .h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phead-title .tag{flex:none}
+.phead-sub{margin-top:4px;min-height:18px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ref-link{color:var(--primary);font:inherit;padding:0;border-radius:3px}
+.ref-link:hover{text-decoration:underline;text-underline-offset:3px}
+.config-note{display:flex;align-items:center;gap:8px;margin:-4px 0 14px;padding:7px 8px 7px 12px;border-radius:9px;background:var(--surface-2);color:var(--ink-2);font-size:12.5px}
+.config-note>.i{flex:none;color:var(--muted)}
+.config-note>span{flex:1;min-width:0}
+.config-note .link{flex:none;font-size:12.5px}
+.config-note.warn{background:var(--warn-soft);color:var(--warn)}
+.config-note.warn>.i{color:var(--warn)}
+.guide-card{margin-top:8px;padding:36px 24px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+.guide-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
+.guide-title{font-weight:600;font-size:15px}
+.guide-card p{max-width:360px;margin:0}
+.guide-actions{display:flex;gap:8px;margin-top:6px}
+.sec-t .sec-note{font-weight:400}
+.sec-t>.btn{height:28px;padding:0 8px;font-size:12px;margin:-6px 0}
+.sec-help{display:inline-flex;color:var(--muted);cursor:help;border-radius:4px}
+.warn-text{display:inline-flex;align-items:center;gap:4px;color:var(--warn)}
 .tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--muted);font-weight:500}
 .tag.tp{background:var(--primary-soft);color:var(--primary)}
-.tag.tag-none{background:none;box-shadow:inset 0 0 0 1px var(--line)}
+.tag-link{cursor:pointer;line-height:inherit}
+.tag-link:hover{box-shadow:inset 0 0 0 1px currentColor}
+/* a category, laid out the same on the three tabs: swatch and name start at one x, the name has one width rule */
+.cat-row .cat-body{flex:1 1 auto;min-width:0}
+.cat-line{display:flex;align-items:center;gap:8px;min-width:0}
+.cat-line .cat-name{flex:0 1 auto;min-width:96px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.cat-line>:not(.cat-name){flex:none;white-space:nowrap}
+.cat-sub{margin-top:5px;min-width:0}
+.cat-row>.rv{flex:none;white-space:nowrap}
+.skel{display:inline-block;width:56px;height:10px;border-radius:4px;background:var(--line);vertical-align:middle;animation:skel 1.2s ease-in-out infinite alternate}
+@keyframes skel{from{opacity:.45}to{opacity:1}}
+.cat-flash{animation:catflash 1.6s var(--ease)}
+@keyframes catflash{from{background:var(--primary-soft)}}
 .row-nosource .rl{color:var(--muted)}
-.mapping-row .ib{margin-left:4px}
-/* Rule rows: the text column absorbs any squeeze so the category, edit button and switch keep their width. */
+.cat-off{padding-right:12px}
+/* the categories nothing of the scheme detects: folded, the reason said once in the heading */
+.cat-fold{border-top:1px solid var(--line-2)}
+.cat-fold:first-child{border-top:0}
+.cat-fold>summary{list-style:none;cursor:pointer;min-height:44px;gap:8px}
+.cat-fold>summary::-webkit-details-marker{display:none}
+.cat-fold>summary:hover{background:var(--surface-2)}
+.cat-fold-chev{color:var(--muted);transition:transform .15s}
+.cat-fold[open] .cat-fold-chev{transform:rotate(90deg)}
+.cat-fold-head .rl{color:var(--ink-2)}
+.cat-fold-why{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list>.cat-fold:last-child>:last-child{border-radius:0 0 12px 12px}
+/* rule rows: the text column absorbs any squeeze; the rule name starts under the category name */
 .rule-row .rule-main{flex:1 1 auto;min-width:0}
 .rule-row .rl{display:flex;align-items:center;gap:8px;min-width:0}
 .rule-row .rule-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rule-row .rl .tag{flex:none;white-space:nowrap}
 .rule-row .rs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rule-row .rv{flex:none;white-space:nowrap}
-
-.rule-group+.rule-group{border-top:1px solid var(--line)}
-.rule-group-head{flex-wrap:wrap}
-.rule-expand{display:flex;align-items:center;gap:10px;font-weight:600;min-height:32px}
-.rule-row>.entity-name{flex:0 0 74px;font-weight:500}
-.rule-child{padding-left:42px}
-.rule-add{padding:0 14px 8px 36px}
-.rule-add .btn{font-size:12px}
-.source-warning{font-size:12px;color:var(--warn);padding:4px 16px 8px;overflow-wrap:anywhere}
+.rule-group+.rule-group{border-top:1px solid var(--line-2)}
+.rule-group-head .rv{gap:4px}
+.rule-child{padding-left:38px}
 .loss-list{padding-left:18px;display:grid;gap:10px}
 .loss-modal .mb{max-height:50vh;overflow:auto}
-.mapping-main{min-width:0;flex:1}
-.mapping-labels{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.mapping-labels{display:flex;flex-wrap:wrap;gap:5px}
+.label-chip{cursor:pointer}
+.label-chip:hover{box-shadow:inset 0 0 0 1px var(--line);color:var(--ink)}
+.mapping-row .ib{margin-left:4px}
+.sel-off{opacity:.45;cursor:not-allowed}
+.sel-off:hover{background:none;color:var(--ink-2)}
 .unmapped-labels>.btn{margin:0 6px 6px 0}
 .pop:has(.multi-done){max-height:70vh;overflow:auto;max-width:calc(100% - 16px)}
 .multi-done{color:var(--primary);font-weight:600}
@@ -70,7 +119,7 @@
 .pt-row .pt-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pt-row .rv{flex:none;white-space:nowrap;gap:6px}
 /* models tab: labels and the categories they count as */
-.mapping-hint{margin:2px 0 12px}
 .mapping-warn{margin:0 0 12px;padding:10px 12px;border-radius:9px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;display:flex;flex-direction:column;gap:4px}
-.mapping-row .rl{display:flex;align-items:baseline;gap:8px;min-width:0}
-.mapping-row .rl .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mapping-warn-line{display:flex;align-items:baseline;gap:10px}
+.mapping-warn-line>span{flex:1;min-width:0}
+.mapping-warn .ref-link{flex:none;color:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px}

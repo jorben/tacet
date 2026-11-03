@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "@testing-library/react";
 import { getState, store } from "../store";
-import { $, $$, button, click, go, mountApp, pick, press, tick, type as typeInto, win } from "./helpers";
+import { $, $$, button, buttons, click, go, key, mountApp, pick, press, tick, type as typeInto, win } from "./helpers";
 
 beforeAll(mountApp);
 beforeEach(() => {
@@ -13,9 +13,15 @@ const preset = () => getState().presets.find((x) => x.id === getState().presetSe
 const rowControl = (title: string, sel = "button") => $$(".row").find((r) => r.querySelector(".rl")?.textContent?.startsWith(title))!.querySelector<HTMLElement>(sel)!;
 /** The scheme row of a category, its detection source, and whether its treatment can be changed. */
 const catRow = (name: string) => $$(".row").find((r) => r.querySelector(".rl")?.textContent === name);
-const sourceOf = (name: string) => catRow(name)?.querySelector("[data-source]")?.textContent;
+/** “不识别” for a category folded under the undetected heading, else its source tags (“模型 + 规则”). */
+const sourceOf = (name: string) => {
+  const r = catRow(name);
+  if (!r) return undefined;
+  return r.closest(".cat-fold") ? "不识别" : $$("[data-source]", r).map((t) => t.textContent).join(" + ");
+};
 const locked = (name: string) => [...catRow(name)!.querySelectorAll<HTMLButtonElement>(".seg button")].every((b) => b.disabled);
-const pressed = (name: string) => catRow(name)!.querySelector(".seg button[aria-pressed=true]")?.textContent;
+const pressed = (name: string) => catRow(name)!.querySelector(".seg button[aria-pressed=true]")?.textContent ?? catRow(name)!.querySelector(".cat-off")?.textContent;
+const treatments = (name: string) => catRow(name)!.querySelectorAll<HTMLButtonElement>(".seg button");
 
 describe("方案", () => {
   it("内建方案只读；列表含新建与导入", () => {
@@ -44,7 +50,7 @@ describe("方案", () => {
     press("模型 + 规则");
     expect(sourceOf("IP 地址")).toBe("模型");
     expect(locked("人名")).toBe(false);
-    click($$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button")[1]!);
+    click(treatments("电话")[1]!);
     expect(preset().cats.phone).toBe("ph");
     expect(preset().ver).toMatch(/^v\d+$/);
     click(rowControl("最低置信度"));
@@ -58,10 +64,9 @@ describe("方案", () => {
     act(() => store.update((d) => {
       d.models.push({ ...d.models[0]!, id: "privacy", name: "Privacy Filter", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
     }));
-    click(rowControl("账号"));
+    click(rowControl("账号", ".seg button"));
     expect(preset().cats.account).toBe("mask");
-    const accountButtons = $$(".row").find((r) => r.querySelector(".rl")?.textContent === "账号")!.querySelectorAll("button");
-    click(accountButtons[2]!);
+    click(treatments("账号")[2]!);
     expect(preset().cats.account).toBe("off");
     click(rowControl("模型"));
     pick("Privacy Filter");
@@ -81,7 +86,7 @@ describe("方案", () => {
     act(() => store.update((d) => {
       d.models.push({ ...d.models[0]!, id: "privacy", name: "Privacy Filter", categories: ["person", "address", "date", "phone", "email", "account", "url", "secret"] });
     }));
-    const source = (label: string) => $$(".row").find((r) => r.querySelector(".rl")?.textContent === label)?.querySelector("[data-source]")?.textContent;
+    const source = sourceOf;
     expect(source("人名")).toBe("模型");
     expect(source("银行卡")).toBe("模型 + 规则");
     expect(source("身份证")).toBe("规则");
@@ -94,18 +99,127 @@ describe("方案", () => {
   });
 
   it("无来源类别的提示只在方案自己存有遮盖或占位符时说设置会保留", () => {
-    const hint = (name: string) => catRow(name)!.querySelector("[data-source]")!.getAttribute("data-tip");
+    const kept = (name: string) => catRow(name)!.querySelector(".cat-kept")?.getAttribute("data-tip") ?? "";
     go("presets");
     press("复制");
     press("仅规则");
     // the copy holds the builtin's setting for 人名: it is stored and applies again with a source
-    expect(hint("人名")).toContain("已保存的设置会在可识别后生效");
+    expect(kept("人名")).toContain("可识别后会再次生效");
     press("新建");
     press("仅规则");
     // a new scheme holds nothing for 人名: the default mask is not stored for a category nothing detects
     expect(preset().cats).not.toHaveProperty("person");
     expect(sourceOf("人名")).toBe("不识别");
-    expect(hint("人名")).not.toContain("已保存的设置");
+    expect(kept("人名")).toBe("");
+  });
+
+  it("不识别的类别默认折叠在列表末尾，组头写数量，原因在页面里只出现一次", () => {
+    go("presets");
+    click($$(".pitem").find((b) => b.textContent!.includes("日志清理"))!);
+    const fold = $(".cat-fold") as HTMLDetailsElement;
+    expect(fold.open).toBe(false);
+    const folded = $$(".cat-row", fold).map((r) => r.querySelector(".cat-name")!.textContent);
+    expect(folded).toEqual(expect.arrayContaining(["人名", "地址", "账号", "IP 地址", "网址"]));
+    expect($(".cat-fold-head")!.textContent).toContain("不识别的类别（" + folded.length + "）");
+    // detected categories first, the fold last
+    expect($(".cat-list")!.lastElementChild).toBe(fold);
+    expect(document.body.innerHTML.split("只能关闭").length - 1).toBe(1);
+    expect($(".preset-detail")!.textContent).toContain(folded.length ? "个可设置" : "");
+    // another scheme starts folded again
+    fold.open = true;
+    press("简历脱敏", ".plist");
+    press("日志清理", ".plist");
+    expect(($(".cat-fold") as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("来源 Tag 与头部引用可点击：跳到对应页签并选中对象；模型页选中的模型切走再回来保持不变", () => {
+    go("presets");
+    act(() => store.update((d) => { d.models.push({ ...d.models[0]!, id: "privacy", name: "Privacy Filter", mapping: undefined }); }));
+    press("简历脱敏", ".plist");
+    // 身份证 is detected by the rules of 中国场景规则集
+    click(catRow("身份证")!.querySelector("[data-source=rules]")!);
+    expect(getState().presetTab).toBe("rules");
+    expect(getState().rulesetSel).toBe("cn");
+    expect($(".rule-group[data-category=id_number]")).toBeTruthy();
+    // “用于 …” leads back to the scheme
+    press("简历脱敏", ".preset-detail .phead-sub");
+    expect(getState().presetTab).toBe("scheme");
+    expect(preset().name).toBe("简历脱敏");
+    click(catRow("人名")!.querySelector("[data-source=model]")!);
+    expect(getState().presetTab).toBe("models");
+    expect(getState().modelSel).toBe("astr");
+    expect($(".preset-detail .h1")!.textContent).toBe("AstrLink Guard");
+    // the model chosen on the models tab stays when coming back
+    press("Privacy Filter", ".plist");
+    press("方案", "[role=tablist]");
+    press("模型", "[role=tablist]");
+    expect($(".preset-detail .h1")!.textContent).toBe("Privacy Filter");
+    // the scheme head links its model and rule sets
+    press("方案", "[role=tablist]");
+    press("AstrLink Guard", ".preset-detail .phead-sub");
+    expect(getState().presetTab).toBe("models");
+    expect($(".preset-detail .h1")!.textContent).toBe("AstrLink Guard");
+    act(() => store.update((d) => { d.models = d.models.filter((m) => m.id !== "privacy"); }));
+  });
+
+  it("三个页签的头部都是两行；左栏新建与导入在栏顶不随列表滚动，只读条目带锁", () => {
+    go("presets");
+    for (const tab of ["方案", "规则", "模型"]) {
+      press(tab, "[role=tablist]");
+      expect($$(".preset-detail .phead .phead-title")).toHaveLength(1);
+      expect($$(".preset-detail .phead .phead-sub")).toHaveLength(1);
+      expect($(".plist")!.contains(buttons("新建")[0] ?? null)).toBe(false);
+    }
+    press("方案", "[role=tablist]");
+    const head = $(".plist-head")!;
+    expect(button("新建", head)).toBeTruthy();
+    expect(button("导入", head)).toBeTruthy();
+    const lock = (name: string) => !!$$(".pitem").find((b) => b.textContent!.includes(name))!.querySelector(".pn-lock");
+    expect(lock("办公外发")).toBe(true);
+    expect(lock("简历脱敏")).toBe(false);
+    press("规则", "[role=tablist]");
+    expect(lock("中国场景规则集")).toBe(true);
+    expect(lock("企业词条")).toBe(false);
+  });
+
+  it("内建方案在头部下方说明只读，可直接复制；控件置灰；图像与嵌入是说明行", () => {
+    go("presets");
+    expect($(".config-note")!.textContent).toContain("内建方案，只读。");
+    expect(button("仅规则")).toBeDisabled();
+    expect(win()).toContain("固定涂抹，暂不支持修改");
+    press("复制后编辑", ".config-note");
+    expect(preset().name).toBe("办公外发 副本");
+    expect($(".config-note")).toBeNull();
+  });
+
+  it("方案选用的规则组都不可用时，规则组一行说明原因而不是只写未选择", () => {
+    go("presets");
+    press("复制");
+    act(() => store.update((d) => { d.presets.find((x) => x.id === d.presetSel)!.rules = ["gone"]; }));
+    expect(rowControl("规则组").textContent).toContain("所选规则组不可用");
+    expect(rowControl("规则组").querySelector("[data-tip]")!.getAttribute("data-tip")).toContain("已删除或所属插件已停用");
+  });
+
+  it("没有方案、没有规则组时保留左栏的新建与导入，右侧给出引导", () => {
+    go("presets");
+    act(() => store.update((d) => { d.presets = []; }));
+    expect($(".guide-card")!.textContent).toContain("还没有方案");
+    expect(button("新建", $(".plist-head")!)).toBeTruthy();
+    press("新建方案", ".guide-card");
+    expect(preset().name).toBe("新方案");
+    press("规则", "[role=tablist]");
+    act(() => store.update((d) => { d.rulesets = []; }));
+    expect($(".guide-card")!.textContent).toContain("还没有规则组");
+    expect(button("导入", $(".plist-head")!)).toBeTruthy();
+    press("新建规则组", ".guide-card");
+    expect(win()).toContain("新规则组");
+    press("模型", "[role=tablist]");
+    const models = getState().models;
+    act(() => store.update((d) => { d.models = []; }));
+    expect($(".guide-card")!.textContent).toContain("还没有模型");
+    press("去插件页安装", ".guide-card");
+    expect(getState().view).toBe("plugins");
+    act(() => store.update((d) => { d.models = models; }));
   });
 
   it("选择同一模型保持已设置的置信度", () => {
@@ -148,7 +262,7 @@ describe("方案", () => {
   it("版本记录最多保留 5 个，回滚另存为新版本", () => {
     go("presets");
     press("复制");
-    const phoneButtons = () => $$(".row").find((r) => r.querySelector(".rl")?.textContent === "电话")!.querySelectorAll("button");
+    const phoneButtons = () => treatments("电话");
     for (let i = 0; i < 8; i++) click(phoneButtons()[i % 2 ? 1 : 2]!);
     expect(preset().ver).toBe("v9");
     // current + the latest four earlier ones = five versions
@@ -260,7 +374,7 @@ describe("规则", () => {
     press("规则", "[role=tablist]");
     press("企业词条", ".plist");
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "员工工号")!;
-    expect(row.querySelector(".entity-name")!.textContent).toBe("账号");
+    expect(row.closest(".rule-group")!.querySelector(".cat-name")!.textContent).toBe("账号");
     press("添加规则");
     const options = $$("#layer .typegrid button:not(.typegrid-add):not(.typegrid-del)").map((b) => b.textContent);
     expect(options).toEqual(getState().categories.map((c) => c.name));
@@ -287,7 +401,7 @@ describe("规则", () => {
     expect($$("#layer .typegrid button[aria-pressed=true]").map((b) => b.textContent)).toEqual(["项目代号"]);
     press("保存", "#layer .modal");
     const row = $$(".row").find((r) => r.querySelector(".rule-name")?.textContent === "代号")!;
-    expect(row.querySelector(".entity-name")!.textContent).toBe("项目代号");
+    expect(row.closest(".rule-group")!.querySelector(".cat-name")!.textContent).toBe("项目代号");
     expect(getState().rulesets.find((r) => r.name === "企业词条")!.rules.at(-1)!.cat).toBe(made.id);
     // 简历脱敏 uses the enterprise terms: the new category is one of its categories, with the rules as source
     press("方案", "[role=tablist]");
@@ -303,10 +417,11 @@ describe("规则", () => {
     expect(win()).toContain("默认映射");
     const row = (category: string) => $(`.mapping-row[data-category="${category}"]`)!;
     expect(row("person").querySelector(".mapping-labels")!.textContent).toBe("private_person");
-    // Move a label into another entity; closing the menu commits once.
-    click(row("organization").querySelector("button")!);
-    pick("private_person");
-    await act(async () => { press("完成", "#layer .pop"); });
+    // 公司名 is review-only: listed only once a label counts as it, as on the scheme page
+    expect($('.mapping-row[data-category="organization"]')).toBeNull();
+    // Move a label into another entity from the label's own menu.
+    press("标签 private_person", '.mapping-row[data-category="person"]');
+    await act(async () => { pick("公司名"); });
     expect($(".loss-modal")!.textContent).toContain("办公外发");
     await act(async () => { press("仍要保存映射", ".loss-modal"); });
     const astr = () => getState().models.find((m) => m.id === "astr")!;
@@ -316,7 +431,7 @@ describe("规则", () => {
     expect($(".toast")!.textContent).toBe("已将 private_person 从 人名 移到 公司名");
     expect(win()).toContain("已自定义");
     // Uncheck a label and verify the unassociated section offers it for reassignment.
-    click(row("address").querySelector("button")!);
+    press("地址 关联的标签", '.mapping-row[data-category="address"]');
     pick("private_address");
     await act(async () => { press("完成", "#layer .pop"); });
     await act(async () => { press("仍要保存映射", ".loss-modal"); });
@@ -365,15 +480,24 @@ describe("规则", () => {
     expect($("#layer .modal")).toBeTruthy();
   });
 
-  it("新建规则集；被方案使用时不能删除", () => {
+  it("新建规则集；被方案使用时删除置灰并写明原因，点了也不删", () => {
     go("presets");
     press("规则", "[role=tablist]");
     press("新建");
     expect(win()).toContain("新规则组");
     press("企业词条", ".plist");
     press("更多");
-    pick("删除");
-    expect($(".toast")!.textContent).toContain("正在被");
+    const del = $$("#layer .mi").find((e) => e.textContent!.includes("删除"))!;
+    expect(del).toBeDisabled();
+    expect(del.textContent).toContain("被「简历脱敏」使用");
+    click(del);
+    expect($(".toast")).toBeNull();
+    expect(getState().rulesets.some((r) => r.name === "企业词条")).toBe(true);
+    key("Escape");
+    // one no scheme uses is deleted
+    press("新规则组", ".plist");
+    press("更多");
+    expect($$("#layer .mi").find((e) => e.textContent!.includes("删除"))).toBeEnabled();
   });
 
   it("插件规则包只在插件启用时可用", () => {

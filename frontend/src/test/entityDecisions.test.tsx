@@ -1,23 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { loadConfig, stopConfigSync } from "../actions/liveConfig";
 import { setCategoryLabels } from "../actions/modelMapping";
 import * as overlays from "../overlay/store";
 import { RulesEditor } from "../features/presets/RulesEditor";
+import { SchemeEditor } from "../features/presets/SchemeEditor";
 import { ModelMappingEditor } from "../features/presets/ModelMappingEditor";
 import { getState, store } from "../store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
 import type { EngineCategory } from "../services/types";
 import { FakeEngine } from "./liveFake";
+import { button } from "./helpers";
 
 afterEach(() => { cleanup(); stopConfigSync(); setService(null); });
 
 describe("产品澄清 · 类别目录加载状态", () => {
-  it.each(["规则页", "模型页"] as const)("%s：加载中显示原始 id，不标未登记；成功后按目录显示名称并判定", async (page) => {
+  it.each(["规则页", "模型页"] as const)("%s：加载中已知类别显示名称、未知类别显示占位条而非原始 id，不标未登记；成功后按目录显示名称并判定", async (page) => {
     await checkCatalog(page, "ready");
   });
-  it.each(["规则页", "模型页"] as const)("%s：加载中不标未登记；失败后保留原目录并恢复登记判定", async (page) => {
+  it.each(["规则页", "模型页"] as const)("%s：加载中不标未登记；失败后保留原目录、恢复登记判定并提示，重试后恢复", async (page) => {
     await checkCatalog(page, "failed");
   });
 });
@@ -58,12 +60,17 @@ async function checkCatalog(page: "规则页" | "模型页", outcome: "ready" | 
   const row = (id: string) => document.querySelector(`[data-category="${id}"]`)!;
   let request!: Promise<void>;
   act(() => { request = loadConfig(); });
+  const name = (id: string) => row(id).querySelector(".cat-name")!;
   try {
     expect(getState().categoryStatus).toBe("loading");
-    for (const id of ["phone", "customer_id", "ghost"]) {
-      expect(row(id).querySelector(".entity-name")).toHaveTextContent(id);
-      expect(row(id)).not.toHaveTextContent("未登记类别");
+    // a category the catalog read before knows keeps its name; one it does not know waits, without its raw id
+    expect(name("phone")).toHaveTextContent("电话");
+    for (const id of ["customer_id", "ghost"]) {
+      expect(name(id).querySelector(".skel")).toBeTruthy();
+      expect(name(id)).not.toHaveTextContent(id);
     }
+    for (const id of ["phone", "customer_id", "ghost"]) expect(row(id)).not.toHaveTextContent("未登记类别");
+    expect(document.querySelector(".config-note.warn")).toBeNull();
   } finally {
     await act(async () => {
       complete(outcome === "ready" ? [...fake.categoryList, { id: "customer_id", name: "客户编号", placeholder: "[客户编号]", origin: "custom", manual: true }] : null);
@@ -71,13 +78,33 @@ async function checkCatalog(page: "规则页" | "模型页", outcome: "ready" | 
     });
   }
   expect(getState().categoryStatus).toBe(outcome);
-  expect(row("phone").querySelector(".entity-name")).toHaveTextContent("电话");
+  expect(name("phone")).toHaveTextContent("电话");
   expect(row("ghost")).toHaveTextContent("ghost未登记类别");
   if (outcome === "ready") {
-    expect(row("customer_id").querySelector(".entity-name")).toHaveTextContent("客户编号");
+    expect(name("customer_id")).toHaveTextContent("客户编号");
     expect(row("customer_id")).not.toHaveTextContent("未登记类别");
+    expect(document.querySelector(".config-note.warn")).toBeNull();
   } else {
     expect(getState().categories).toBe(fallback);
     expect(row("customer_id")).toHaveTextContent("customer_id未登记类别");
+    // the page says the catalog could not be read, and reading it again brings the names
+    const notice = document.querySelector<HTMLElement>(".config-note.warn")!;
+    expect(notice).toHaveTextContent("类别目录读取失败");
+    fake.categories = async () => [...fake.categoryList, { id: "customer_id", name: "客户编号", placeholder: "[客户编号]", origin: "custom", manual: true }];
+    await act(async () => { button("重试", notice).click(); await Promise.resolve(); });
+    await waitFor(() => expect(getState().categoryStatus).toBe("ready"));
+    expect(name("customer_id")).toHaveTextContent("客户编号");
+    expect(document.querySelector(".config-note.warn")).toBeNull();
   }
 }
+
+describe("类别目录读取失败 · 方案页", () => {
+  it("方案页同样提示读取失败；目录读好前不提示", () => {
+    render(<SchemeEditor />);
+    expect(document.querySelector(".config-note.warn")).toBeNull();
+    act(() => store.update((d) => { d.categoryStatus = "failed"; }));
+    expect(document.querySelector(".config-note.warn")).toHaveTextContent("类别目录读取失败");
+    expect(button("重试", document.querySelector<HTMLElement>(".config-note.warn")!)).toBeTruthy();
+    act(() => store.update((d) => { d.categoryStatus = "ready"; }));
+  });
+});

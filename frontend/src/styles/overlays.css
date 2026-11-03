@@ -39,6 +39,7 @@
 .mi .ck{margin-left:auto;color:var(--primary);padding-left:12px}
 .mi small{color:var(--muted);font-size:12px;margin-left:auto;padding-left:16px}
 .mi.d{color:var(--bad)}
+.mi:disabled{color:var(--faint);cursor:not-allowed}.mi:disabled:hover{background:none}.mi:disabled small{color:var(--muted)}
 .msep{height:1px;background:var(--line-2);margin:5px 4px}
 .mh{font-size:11px;color:var(--muted);padding:6px 10px 4px;font-weight:600}
 .hp{padding:10px;width:250px}

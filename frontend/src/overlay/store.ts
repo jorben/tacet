@@ -19,6 +19,8 @@ export interface MenuItem {
   d?: boolean;
   /** Currently selected. */
   on?: boolean;
+  /** Shown but cannot be picked now; `s` says why. */
+  off?: boolean;
 }
 export type MenuEntry = MenuItem | { h: string } | "-";
 

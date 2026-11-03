@@ -8,6 +8,7 @@ import type { CategoryId, Preset, PresetTab, PresetTreatment, Rule, RuleDraft, R
 import { getState, store, type AppState } from "../store";
 import { closeModal, openMenu, openModal, toast, type ModalSpec, type PopAnchor } from "../overlay/store";
 import { openSubpage } from "./navigation";
+import { requestScroll } from "./scrollRequests";
 import { nextId } from "./timers";
 import { isLive } from "./live";
 import { exportLive, finishImportLive, importLive, openVersions, rollbackLive } from "./liveConfig";
@@ -29,6 +30,24 @@ const rulesetOf = (d: Draft<AppState>): Draft<Ruleset> => {
 
 export function setPresetTab(tab: PresetTab): void {
   store.update((d) => { d.presetTab = tab; });
+}
+
+/** What a link on the configuration page leads to: a scheme, a rule set or a model, and one of its categories. */
+export type ConfigTarget = { tab: "scheme"; id: string } | { tab: "rules" | "models"; id: string; category?: CategoryId };
+
+/** Shows the object a link names on its own tab, scrolled to the category when one is given. */
+export function showInConfig(t: ConfigTarget): void {
+  store.update((d) => {
+    d.presetTab = t.tab;
+    if (t.tab === "scheme") d.presetSel = t.id;
+    else if (t.tab === "rules") d.rulesetSel = t.id;
+    else d.modelSel = t.id;
+  });
+  if (t.tab !== "scheme" && t.category) requestScroll({ kind: "category", tab: t.tab, category: t.category });
+}
+
+export function selectModel(id: string): void {
+  store.update((d) => { d.modelSel = id; });
 }
 
 /* ── Schemes ──────────────────────────────────────────────────────────────── */
@@ -165,8 +184,9 @@ export function openPresetMoreMenu(anchor: PopAnchor): void {
     else if (it.k === "del") {
       store.update((d) => {
         d.presets = d.presets.filter((x) => x.id !== p.id);
-        d.presetSel = "office";
-        if (d.homePreset === p.name) d.homePreset = d.presets[0]!.name;
+        if (d.homePreset === p.name) d.homePreset = d.presets[0]?.name ?? "";
+        // the home page's scheme, which is there in the demo and live alike (ids differ between them)
+        d.presetSel = (d.presets.find((x) => x.name === d.homePreset) ?? d.presets[0])?.id ?? "";
       });
       toast("已删除");
     } else if (isLive()) void exportLive("preset", p.id);
@@ -246,19 +266,26 @@ export function setCategoryRulesOn(category: CategoryId, on: boolean): void {
   editRuleset(on ? "启用" : "停用", (r) => { r.rules.forEach((x) => { if (x.cat === category) x.on = on; }); });
 }
 
+/** Why the selected rule set cannot be deleted now (a scheme uses it), or null. */
+export function rulesetDeleteBlocker(s: AppState, id: string): string | null {
+  const used = s.presets.filter((p) => p.rules.includes(id));
+  return used.length ? "被「" + used[0]!.name + "」" + (used.length > 1 ? "等 " + used.length + " 个方案" : "") + "使用" : null;
+}
+
 export function openRulesetMoreMenu(anchor: PopAnchor): void {
   const s = getState();
   const r = selectedRuleset(s);
   const lock = !!(r.builtin || r.plugin);
+  const blocked = rulesetDeleteBlocker(s, r.id);
   openMenu(anchor, [
     ...(lock ? [] : [{ l: "历史版本", ic: "clock", k: "hist" }]),
     { l: "导出", ic: "download", k: "exp" },
-    ...(lock ? [] : (["-", { l: "删除", ic: "trash", k: "del", d: true }] as const)),
+    // a rule set a scheme uses stays: the item says why instead of failing once picked
+    ...(lock ? [] : (["-", { l: "删除", ic: "trash", k: "del", d: !blocked, off: !!blocked, ...(blocked ? { s: blocked } : {}) }] as const)),
   ], (it) => {
     if (it.k === "hist") { if (isLive()) void openVersions("ruleset"); else openModal({ type: "versions", kind: "ruleset" }); return; }
     if (it.k === "exp") { if (isLive()) void exportLive("ruleset", r.id); else toast("已导出 " + r.name); return; }
-    const used = getState().presets.filter((p) => p.rules.includes(r.id));
-    if (used.length) { toast("正在被「" + used[0]!.name + "」使用"); return; }
+    if (rulesetDeleteBlocker(getState(), r.id)) return;
     store.update((d) => { d.rulesets = d.rulesets.filter((x) => x.id !== r.id); d.rulesetSel = null; });
     toast("已删除");
   }, { alignRight: true });

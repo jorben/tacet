@@ -488,6 +488,7 @@ export interface NavEntry {
   presetTab: PresetTab;
   presetSel: string;
   rulesetSel: string | null;
+  modelSel: string | null;
 }
 
 /* ── Settings and updates ─────────────────────────────────────────────────── */

@@ -16,7 +16,7 @@ import { setService } from "../services";
 import { mockService } from "../services/mock";
 import type { ConfigItem } from "../services/types";
 import { FakeEngine } from "./liveFake";
-import { $, $$, button, click, key, pick, press, type as typeInto } from "./helpers";
+import { $, $$, button, buttons, click, key, menuTexts, pick, press, type as typeInto } from "./helpers";
 import office from "../../../resources/rules/cn-office-v1.json";
 import privacy from "../../../resources/models/privacy-filter-fp16.json";
 
@@ -36,11 +36,14 @@ const confirm = async () => { await act(async () => { click($(".loss-modal .btn-
 afterEach(() => { cleanup(); stopConfigSync(); setService(null); });
 
 describe("实体清单 · 规则页", () => {
-  it("目录顺序分组，无空组；目录外原始 id 排最后并标未登记类别；单行和组内保留边界 Tag 与摘要", () => {
+  it("目录顺序分组，无空组；目录外原始 id 排最后并标未登记类别；一条规则也有组头；组内保留边界 Tag 与摘要", () => {
     demo([rule("外部", "outside"), rule("B", "email"), rule("A"), rule("C")]); mount();
     expect($$(".rule-group").map((e) => e.dataset.category)).toEqual(["phone", "email", "outside"]);
     expect(group("outside")).toHaveTextContent("outside未登记类别");
-    expect(group("email").querySelector(".rule-group-head")).toBeNull();
+    // one structure whatever the count: a head, then the rules under it
+    for (const c of ["phone", "email", "outside"]) expect(group(c).querySelector(".rule-group-head")).toBeTruthy();
+    expect(group("email").querySelector(".rule-group-head")).toHaveTextContent("1 条规则 · 1 条启用");
+    expect(group("email").querySelectorAll(".rule-row.rule-child")).toHaveLength(1);
     for (const n of ["A", "B", "C"]) { expect(ruleRow(n)).toHaveTextContent("边界 · 数字"); expect(ruleRow(n).querySelector(".rs")).toHaveTextContent(n); }
   });
   it("词表摘要保留词条数", () => {
@@ -71,12 +74,12 @@ describe("实体清单 · 规则页", () => {
   it("5 条规则 2 条启用为 mixed，点击部分和关闭态全部启用；演示 ver 只 +1、hist 只 +1 条", () => {
     demo(Array.from({ length: 5 }, (_, i) => rule("R" + i, "phone", i < 2))); mount();
     const box = () => within(group("phone")).getByRole("checkbox");
-    expect(box()).toHaveAttribute("aria-checked", "mixed"); expect(group("phone")).toHaveTextContent("2/5 已启用");
+    expect(box()).toHaveAttribute("aria-checked", "mixed"); expect(group("phone")).toHaveTextContent("5 条规则 · 2 条启用");
     expect(box().parentElement).toHaveAttribute("data-tip", "只影响本规则组内的规则；类别要不要处理，请在方案页设置");
     click(box()); expect(selected().ver).toBe("v2"); expect(selected().hist).toHaveLength(1);
     expect(selected().rules.every((r) => r.on)).toBe(true); expect(box()).toHaveAttribute("aria-checked", "true");
     click(box()); expect(selected().rules).toHaveLength(5); expect(selected().rules.every((r) => !r.on)).toBe(true);
-    expect(box()).toHaveAttribute("aria-checked", "false"); expect($(".loss-modal")).toBeNull(); expect($$(".source-warning")).toHaveLength(0);
+    expect(box()).toHaveAttribute("aria-checked", "false"); expect($(".loss-modal")).toBeNull();
     click(box()); expect(selected().rules.every((r) => r.on)).toBe(true);
   });
   it.each(["编辑", "删除", "启停"])("交错 [phone A,email B,phone C] 组内第 2 条使用原下标 2：%s 命中 C", (operation) => {
@@ -94,26 +97,36 @@ describe("实体清单 · 规则页", () => {
       else { press("删除", ".modal"); expect(selected().rules.map((r) => r.name)).toEqual(["A", "B"]); }
     }
   });
-  it("每组（含单行）添加规则默认本实体，全局默认 other；编辑原实体；改实体后立即重算单行和空组", () => {
+  it("添加入口只有分区标题和组头的 ＋：组头默认本实体，分区标题默认 other；编辑原实体；改实体后立即重算分组和空组", () => {
     demo(); mount();
+    const addIn = (cat: string) => button("在 " + categoryNameFor(cat) + " 下添加规则", group(cat));
+    // one “添加规则” for the rule set, one ＋ per group head, nothing else that adds
+    expect(buttons("添加规则").filter((b) => b.textContent === "添加规则")).toHaveLength(1);
+    expect($$(".preset-detail button").filter((b) => /添加规则/.test(b.getAttribute("aria-label") ?? b.textContent ?? ""))).toHaveLength(1 + $$(".rule-group").length);
+    for (const g of $$(".rule-group")) expect(addIn(g.dataset.category!).closest(".rule-group-head")).toBeTruthy();
     for (const cat of ["phone", "email"]) {
-      click(button("在此类别下添加规则", group(cat)));
+      click(addIn(cat));
       expect($('[aria-pressed=true]', $(".typegrid")!)!.textContent).toBe(categoryNameFor(cat));
       press("取消", ".modal");
     }
     press("添加规则"); expect($('[aria-pressed=true]', $(".typegrid")!)!.textContent).toBe("其他"); press("取消", ".modal");
     click(button("编辑", ruleRow("C"))); expect($('[aria-pressed=true]', $(".typegrid")!)!.textContent).toBe("电话");
     press("邮箱", ".typegrid"); press("保存", ".modal");
-    expect(group("phone").querySelector(".rule-group-head")).toBeNull(); expect(group("email").querySelectorAll(".rule-row")).toHaveLength(2);
+    expect(group("phone").querySelectorAll(".rule-row")).toHaveLength(1); expect(group("email").querySelectorAll(".rule-row")).toHaveLength(2);
     click(button("编辑", ruleRow("A"))); press("邮箱", ".typegrid"); press("保存", ".modal");
     expect(group("phone")).toBeNull(); expect(group("email").querySelectorAll(".rule-row")).toHaveLength(3);
-    click(button("在此类别下添加规则", group("email"))); typeInto("#rdName", "D"); typeInto("#rdBody", "D"); press("保存", ".modal");
+    click(addIn("email")); typeInto("#rdName", "D"); typeInto("#rdBody", "D"); press("保存", ".modal");
     expect(group("email").querySelectorAll(".rule-row")).toHaveLength(4);
   });
-  it.each(["builtin", "plugin"])("%s 只读：总开关与单条置灰，没有编辑和添加入口", (kind) => {
+  it.each(["builtin", "plugin"])("%s 只读：总开关、单条开关、编辑和添加入口都在但置灰，头部下方说明只读并可复制", (kind) => {
     demo(); store.update((d) => { if (kind === "builtin") d.rulesets.at(-1)!.builtin = true; else d.rulesets.at(-1)!.plugin = "fin"; }); mount();
     for (const e of $$('.preset-detail [role=checkbox],.preset-detail [role=switch]')) expect(e).toBeDisabled();
-    expect($$('.preset-detail button[aria-label=编辑]')).toHaveLength(0); expect(screen.queryByText("在此类别下添加规则")).toBeNull(); expect(screen.queryByText("添加规则")).toBeNull();
+    expect($$('.preset-detail button[aria-label=编辑]')).toHaveLength(3);
+    for (const e of $$('.preset-detail button[aria-label=编辑]')) expect(e).toBeDisabled();
+    expect(button("添加规则")).toBeDisabled();
+    for (const g of $$(".rule-group")) expect(button("在 " + categoryNameFor(g.dataset.category!) + " 下添加规则", g)).toBeDisabled();
+    expect($(".config-note")).toHaveTextContent(kind === "builtin" ? "内建规则组，只读。" : "来自插件");
+    expect(button("复制后编辑", $(".config-note")!)).toBeEnabled();
   });
   it.each(["总开关", "单规则"])("仅规则方案 X 失去来源：%s 先确认列出 X，取消不改，确认后停用且无持续提醒", async (kind) => {
     demo(kind === "总开关" ? [rule("A"), rule("C")] : [rule("C")]);
@@ -180,11 +193,11 @@ async function live() {
 }
 
 describe("实体清单 · live 资源夹具 + FakeEngine", () => {
-  it("办公文档规则：secret 5，phone/payment_card/date 各 2；其余单行，目录顺序", async () => {
+  it("办公文档规则：secret 5，phone/payment_card/date 各 2；其余各 1 条也有组头，目录顺序", async () => {
     await live(); mount();
     expect(group("secret")).toHaveTextContent("5 条规则 · 5 条启用");
     for (const c of ["phone", "payment_card", "date"]) expect(group(c)).toHaveTextContent("2 条规则 · 2 条启用");
-    for (const c of ["email", "id_number", "ip_address", "url", "account"]) expect(group(c).querySelector(".rule-group-head")).toBeNull();
+    for (const c of ["email", "id_number", "ip_address", "url", "account"]) expect(group(c).querySelector(".rule-group-head")).toHaveTextContent("1 条规则 · 1 条启用");
     expect($$(".rule-group").map((r) => r.dataset.category)).toEqual(["phone", "email", "id_number", "payment_card", "date", "account", "ip_address", "url", "secret"]);
   });
   it("live 批量停用只 configSave 一次，expected version 正确，disabled 全 true 且规则未删", async () => {
@@ -205,17 +218,20 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     expect(getState().rulesetSel).toBe("custom"); expect(selected().rules.every((r) => !r.on)).toBe(true);
     expect(within(group("phone")).getByRole("checkbox")).toHaveAttribute("aria-checked", "false");
   });
-  it("没有声明标签也列出目录全部实体且禁用标签选择", () => {
-    store.update((d) => { d.models[0]!.labels = {}; d.models[0]!.categories = []; }); mount("model");
-    expect($$(".mapping-row")).toHaveLength(getState().categories.length);
-    expect($$(".mapping-row .mapping-labels .muted")).toHaveLength(getState().categories.length);
+  it("没有声明标签也列出目录中的类别（仅复核的除外）且禁用标签选择，样式置灰；只说一次没有声明标签", () => {
+    store.update((d) => { d.models[0]!.labels = {}; d.models[0]!.categories = []; d.models[0]!.mapping = undefined; }); mount("model");
+    const listed = getState().categories.filter((c) => !c.reviewOnly);
+    expect($$(".mapping-row")).toHaveLength(listed.length);
+    expect($$(".mapping-row .mapping-labels .muted")).toHaveLength(listed.length);
     expect($$(".mapping-row button").every((e) => e.hasAttribute("disabled"))).toBe(true);
+    expect($$(".mapping-row button.sel").every((e) => e.classList.contains("sel-off"))).toBe(true);
     expect(screen.getByText("这个模型没有声明标签")).toBeTruthy();
+    expect(screen.queryByText("没有未关联的标签")).toBeNull();
   });
-  it("privacy-filter 目录全集含用户类别；未设置为灰色，person 标签块，目录外兜底标签不消失", async () => {
+  it("privacy-filter 列出与方案页相同的类别（含用户类别，仅复核的除外）；未设置为灰色，person 标签块，目录外兜底标签不消失", async () => {
     const fake = await live(); fake.categoryList.push({ id: "user", name: "用户实体", placeholder: "[用户]", origin: "custom", manual: true }); await loadConfig(); mount("model");
-    expect($$(".mapping-row").map((r) => r.dataset.category)).toEqual(getState().categories.map((c) => c.id));
-    for (const c of ["payment_card", "ip_address", "id_number", "organization", "other", "user"]) expect(mapping(c).querySelector(".mapping-labels .muted")).toHaveTextContent("未设置");
+    expect($$(".mapping-row").map((r) => r.dataset.category)).toEqual(getState().categories.filter((c) => !c.reviewOnly).map((c) => c.id));
+    for (const c of ["payment_card", "ip_address", "id_number", "user"]) expect(mapping(c).querySelector(".mapping-labels .muted")).toHaveTextContent("未设置");
     expect(mapping("person").querySelector(".tag.mono")).toHaveTextContent("private_person");
     act(() => store.update((d) => { d.models[0]!.mapping = { map: { ...privacy.label_map, private_person: "unknown" } }; }));
     expect($$(".mapping-row").at(-1)).toBe(mapping("unknown")); expect(mapping("unknown")).toHaveTextContent("unknown未登记类别"); expect(mapping("unknown")).toHaveTextContent("private_person");
@@ -232,29 +248,35 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     await act(async () => { press("恢复默认"); });
     expect(fake.items.filter((i) => i.kind === "model_mapping")).toHaveLength(0); expect($$(".mapping-row [data-tip]")).toHaveLength(0);
   });
-  it("把模型最后标签从 A 移到 B 也先确认；确认后提示已将标签从 A 移到 B", async () => {
-    await live(); mount("model"); choose("organization"); pick("private_person"); await finish(); expect($(".loss-modal")).toHaveTextContent("X"); await confirm();
+  it("把模型最后标签从 A 移到 B 也先确认；确认后提示已将标签从 A 移到 B；仅复核类别此后才列出", async () => {
+    await live(); mount("model"); expect(mapping("organization")).toBeNull();
+    // the label's own menu: the category it counts as now is ticked, every category of the catalog is offered
+    click(button("标签 private_person", mapping("person")));
+    expect($("#layer .mi[role=menuitem] .ck")!.closest(".mi")).toHaveTextContent("人名");
+    expect(menuTexts()).toContain("不使用");
+    await act(async () => { pick("公司名"); }); expect($(".loss-modal")).toHaveTextContent("X"); await confirm();
+    expect(mapping("organization")).toHaveTextContent("private_person");
     expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization"); expect(overlayStore.get().toast?.msg).toBe("已将 private_person 从 人名 移到 公司名");
   });
   it.each([false, true])("快速连续勾选 3 个标签（已有自定义 %s）：菜单关闭一次写入，无冲突", async (custom) => {
     const fake = await live(); if (custom) await setCategoryLabels("privacy-filter-fp16", "organization", ["private_date"]);
-    const create = vi.spyOn(fake, "configCreate"), save = vi.spyOn(fake, "configSave"); mount("model"); choose("organization");
+    const create = vi.spyOn(fake, "configCreate"), save = vi.spyOn(fake, "configSave"); mount("model"); choose("ip_address");
     for (const l of ["private_phone", "private_email", "account_number"]) pick(l);
     expect(create).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled(); await finish();
-    await waitFor(() => expect(effectiveLabels(getState().models[0]!).account_number).toBe("organization"));
+    await waitFor(() => expect(effectiveLabels(getState().models[0]!).account_number).toBe("ip_address"));
     expect(create.mock.calls.length + save.mock.calls.length).toBe(1);
     const storedMap = JSON.parse(fake.items.find((i) => i.kind === "model_mapping")!.content).label_map;
     for (const l of ["private_phone", "private_email", "account_number"]) {
-      expect(effectiveLabels(getState().models[0]!)[l]).toBe("organization");
-      expect(storedMap[l]).toBe("organization");
+      expect(effectiveLabels(getState().models[0]!)[l]).toBe("ip_address");
+      expect(storedMap[l]).toBe("ip_address");
     }
     expect(overlayStore.get().toast?.msg).not.toMatch(/VERSION_CONFLICT|名称已被使用/);
   });
   it.each(["Escape", "outside"])("多选菜单通过 %s 关闭时只提交一次；勾选期间不写入", async (how) => {
-    const fake = await live(); const spy = vi.spyOn(fake, "configCreate"); mount("model"); choose("organization"); pick("private_phone");
+    const fake = await live(); const spy = vi.spyOn(fake, "configCreate"); mount("model"); choose("ip_address"); pick("private_phone");
     expect(spy).not.toHaveBeenCalled();
     await act(async () => { if (how === "Escape") key("Escape"); else click(mapping("email")); });
-    expect(spy).toHaveBeenCalledTimes(1); expect(effectiveLabels(getState().models[0]!).private_phone).toBe("organization");
+    expect(spy).toHaveBeenCalledTimes(1); expect(effectiveLabels(getState().models[0]!).private_phone).toBe("ip_address");
     await act(async () => { key("Escape"); click(mapping("email")); }); expect(spy).toHaveBeenCalledTimes(1);
   });
   it("同模型前一次操作抛错后，已排队的下一次操作仍执行并写入，调用方分别收到各自结果", async () => {

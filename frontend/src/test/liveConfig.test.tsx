@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, waitFor } from "@testing-library/react";
-import { copyPreset, newPreset, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { OverlayHost } from "../features/shell/OverlayHost";
+import { copyPreset, newPreset, openPresetMoreMenu, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
 import { presetCategories, presetTreatment } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
@@ -199,6 +200,24 @@ describe("方案与规则集的存储同步", () => {
       expect(storedRule().disabled === true).toBe(!on);
       expect(rs().rules[0]!.on).toBe(on);
     }
+  });
+
+  it("从「更多」删除方案后选中首页方案（存储编号），而不是演示数据的编号", async () => {
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    await waitFor(() => expect(getState().presets.find((p) => !p.builtin)?.stored).toBeTruthy());
+    const copy = getState().presets.find((p) => !p.builtin)!;
+    render(<OverlayHost />);
+    const anchor = document.createElement("button");
+    document.body.append(anchor);
+    act(() => openPresetMoreMenu(anchor));
+    act(() => { [...document.querySelectorAll<HTMLElement>("#layer .mi")].find((e) => e.textContent!.includes("删除"))!.click(); });
+    expect(getState().presets.map((p) => p.id)).toEqual(["builtin-preset-model"]);
+    expect(getState().presetSel).toBe("builtin-preset-model");
+    // the deletion is written in the background: let it finish before the next test
+    await waitFor(() => expect(fake.calls).toContain("configDelete:" + copy.stored!.schemeId));
+    anchor.remove();
+    cleanup();
   });
 
   it("在屏幕上删除方案：先删预设再删方案对象；删除规则集在方案之后", async () => {
