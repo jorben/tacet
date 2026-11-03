@@ -52,7 +52,7 @@ export function PluginsPage() {
   useScrollRequests((r) => {
     const card = r.kind === "model" ? document.querySelector(`.model-card[data-model="${r.id}"]`) : null;
     (card || document.getElementById("modelPlugins"))?.scrollIntoView({ block: "center" });
-  });
+  }, (r) => r.kind === "model" || r.kind === "models");
   const builtin = plugins.filter((p) => p.builtin);
   const third = plugins.filter((p) => !p.builtin);
   return (

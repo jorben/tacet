@@ -12,6 +12,7 @@
 .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .ib{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted);transition:background .15s,color .15s;flex:none}
 .ib:hover{background:var(--hover);color:var(--ink)}
+.ib:disabled{opacity:.4;cursor:not-allowed}.ib:disabled:hover{background:none;color:var(--muted)}
 .sel{height:30px;padding:0 6px 0 10px;border-radius:7px;display:inline-flex;align-items:center;gap:4px;color:var(--ink-2);white-space:nowrap;transition:background .15s}
 .sel:hover{background:var(--hover);color:var(--ink)}
 .sel.sm{height:26px;font-size:12px;padding:0 4px 0 8px}

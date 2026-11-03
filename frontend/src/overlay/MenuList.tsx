@@ -18,6 +18,8 @@ export function MenuList({ items, onPick }: { items: MenuEntry[]; onPick: (item:
             type="button"
             className={it.d ? "mi d" : "mi"}
             role="menuitem"
+            disabled={it.off}
+            aria-disabled={it.off || undefined}
             onClick={() => {
               closePop();
               onPick(it);

@@ -5,9 +5,9 @@ import type { View } from "../domain/types";
 import { leaveBatchFile, reportLeftBatchFile } from "./batch";
 
 /** Opens `view` on top of the current one so “返回” leads back. */
-export function openSubpage(view: View, patch: Partial<Pick<AppState, "presetTab" | "presetSel" | "rulesetSel">> = {}): void {
+export function openSubpage(view: View, patch: Partial<Pick<AppState, "presetTab" | "presetSel" | "rulesetSel" | "modelSel">> = {}): void {
   store.update((d) => {
-    d.navStack.push({ view: d.view, presetTab: d.presetTab, presetSel: d.presetSel, rulesetSel: d.rulesetSel });
+    d.navStack.push({ view: d.view, presetTab: d.presetTab, presetSel: d.presetSel, rulesetSel: d.rulesetSel, modelSel: d.modelSel });
     d.view = view;
     Object.assign(d, patch);
   });

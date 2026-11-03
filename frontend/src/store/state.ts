@@ -29,6 +29,8 @@ export interface AppState {
   presetSel: string;
   presetTab: PresetTab;
   rulesetSel: string | null;
+  /** The model the models tab shows (null: the first); kept across tabs so a link can point at one. */
+  modelSel: string | null;
   /** A fresh configuration load resets transient editor state, even if the selected id stays the same. */
   configLoad: number;
 
@@ -68,6 +70,7 @@ export function createInitialState(): AppState {
     presetSel: "office",
     presetTab: "scheme",
     rulesetSel: null,
+    modelSel: null,
     configLoad: 0,
     single: null,
     batch: null,

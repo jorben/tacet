@@ -73,6 +73,16 @@ export function byCatalogOrder(list: readonly CategoryInfo[], ids: Iterable<Cate
   return [...new Set(ids)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
+/**
+ * The categories a configuration page lists, in catalog order: the whole catalog except review-only categories,
+ * which are listed only once `reported` holds them, plus anything `reported` holds that the catalog does not know.
+ * The scheme page passes what its model and rules detect, the models tab what the model's labels count as, so the
+ * two list the same categories.
+ */
+export function listedCategories(list: readonly CategoryInfo[], reported: Iterable<CategoryId>): CategoryId[] {
+  return byCatalogOrder(list, [...list.filter((c) => !c.reviewOnly).map((c) => c.id), ...reported]);
+}
+
 /** Categories a selection can be marked as by hand: those flagged so, and every user category. */
 export const manualCategories = (list: readonly CategoryInfo[]): CategoryInfo[] => list.filter((c) => c.manual || c.origin === "custom");
 

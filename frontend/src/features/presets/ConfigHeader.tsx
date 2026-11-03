@@ -1,55 +1,60 @@
-import type { ReactNode } from "react";
-import { Button, Icon, IconButton, Tag, tip } from "../../ui";
+import { Fragment, type ReactNode } from "react";
+import { Icon, LinkButton, Tag } from "../../ui";
 
 interface ConfigHeaderProps {
   name: string;
-  version: string;
-  /** Built-in or plugin-provided: cannot be edited, only copied. */
-  locked: boolean;
-  lockedHint: string;
-  /** Line under the name. */
-  subtitle?: ReactNode;
-  /** “测试”: shown left of “复制” when the object can be tried on a text. */
-  onTest?: () => void;
-  onCopy: () => void;
-  onMore: (anchor: HTMLElement) => void;
+  /** The tag after the name: a version, or a model's mapping state. */
+  badge: string;
+  badgePrimary?: boolean;
+  /** The second line: what the object uses or is used by. Always there, so the head keeps one height on every tab. */
+  subtitle: ReactNode;
+  /** Actions on the right. */
+  children: ReactNode;
+  /** Why the object cannot be edited, under the head. */
+  notice?: ReactNode;
 }
 
-/** Name, version and actions of the scheme or rule set being shown. */
-export function ConfigHeader({ name, version, locked, lockedHint, subtitle, onTest, onCopy, onMore }: ConfigHeaderProps) {
+/** Name, tag, one line of references and the actions of the scheme, rule set or model being shown. */
+export function ConfigHeader({ name, badge, badgePrimary, subtitle, children, notice }: ConfigHeaderProps) {
   return (
-    <div className="phead">
-      {subtitle != null ? (
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className="h1">{name}</div>
-            <Tag primary={!locked}>{version}</Tag>
+    <>
+      <div className="phead">
+        <div className="phead-text">
+          <div className="phead-title">
+            <div className="h1" title={name}>{name}</div>
+            <Tag primary={badgePrimary}>{badge}</Tag>
           </div>
-          <div className="muted sm" style={{ marginTop: 4 }}>
-            {subtitle}
-          </div>
+          <div className="muted sm phead-sub">{subtitle}</div>
         </div>
-      ) : (
-        <>
-          <div className="h1">{name}</div>
-          <Tag primary={!locked}>{version}</Tag>
-        </>
-      )}
-      <span className="sp" />
-      {locked && (
-        <span className="ib" tabIndex={0} {...tip(lockedHint, { align: "end" })}>
-          <Icon name="lock" size={16} />
-        </span>
-      )}
-      {onTest && (
-        <Button icon="scan" onClick={onTest}>
-          测试
-        </Button>
-      )}
-      <Button icon="copy" onClick={onCopy}>
-        复制
-      </Button>
-      <IconButton icon="more" label="更多" onClick={(e) => onMore(e.currentTarget)} />
+        <span className="sp" />
+        {children}
+      </div>
+      {notice}
+    </>
+  );
+}
+
+/** “内建方案，只读” with the way to an editable copy. */
+export function ReadonlyNotice({ children, onCopy }: { children: ReactNode; onCopy: () => void }) {
+  return (
+    <div className="config-note" role="note">
+      <Icon name="lock" size={14} />
+      <span>{children}</span>
+      <LinkButton onClick={onCopy}>复制后编辑</LinkButton>
     </div>
+  );
+}
+
+/** Names of other objects, each a link to it; “、” between them. */
+export function RefLinks({ items, onOpen }: { items: { id: string; name: string }[]; onOpen: (id: string) => void }) {
+  return (
+    <>
+      {items.map((x, i) => (
+        <Fragment key={x.id}>
+          {i > 0 && "、"}
+          <button type="button" className="ref-link" onClick={() => onOpen(x.id)}>{x.name}</button>
+        </Fragment>
+      ))}
+    </>
   );
 }

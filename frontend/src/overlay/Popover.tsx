@@ -5,19 +5,39 @@ function resolve(anchor: PopAnchor): HTMLElement | DOMRect | null {
   return typeof anchor === "function" ? anchor() : anchor;
 }
 
-/** Places the popover below its anchor (above when there is no room), inside the layer. */
-function place(el: HTMLElement, spec: Pick<PopSpec, "anchor" | "alignRight">): void {
+const EDGE = 8;
+const GAP = 6;
+
+/**
+ * Places the popover below its anchor, above when it fits only there, and otherwise on the side with more room with
+ * its height capped so it scrolls inside the layer instead of running off it (an anchor near or past the bottom).
+ */
+export function place(el: HTMLElement, spec: Pick<PopSpec, "anchor" | "alignRight">): void {
   const layer = el.parentElement;
   const anchor = resolve(spec.anchor);
   if (!layer || !anchor) return;
   const w = layer.getBoundingClientRect();
   const r = anchor instanceof Element ? anchor.getBoundingClientRect() : anchor;
+  // the natural height, not one an earlier placement capped
+  el.style.maxHeight = "";
+  el.style.overflowY = "";
   const pw = el.offsetWidth;
   const ph = el.offsetHeight;
   let x = spec.alignRight ? r.right - w.left - pw : r.left - w.left;
-  let y = r.bottom - w.top + 6;
-  if (y + ph > w.height - 8) y = r.top - w.top - ph - 6;
-  x = Math.max(8, Math.min(x, w.width - pw - 8));
+  x = Math.max(EDGE, Math.min(x, w.width - pw - EDGE));
+  const top = Math.min(Math.max(r.top - w.top, EDGE), w.height - EDGE);
+  const bottom = Math.min(Math.max(r.bottom - w.top, EDGE), w.height - EDGE);
+  const below = w.height - EDGE - (bottom + GAP);
+  const above = top - GAP - EDGE;
+  let y: number;
+  if (ph <= below) y = bottom + GAP;
+  else if (ph <= above) y = top - GAP - ph;
+  else {
+    const room = Math.max(below, above);
+    y = below >= above ? bottom + GAP : top - GAP - room;
+    el.style.maxHeight = Math.max(room, 0) + "px";
+    el.style.overflowY = "auto";
+  }
   el.style.left = x + "px";
   el.style.top = y + "px";
 }

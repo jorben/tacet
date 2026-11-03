@@ -1,6 +1,6 @@
 // Schemes (presets), rule sets and their version history.
 import type { ModelPlugin, PluginInfo, Preset, PresetContent, PresetTreatment, Rule, Ruleset } from "./types";
-import { byCatalogOrder, STANDARD_CATEGORIES, type CategoryId, type CategoryInfo } from "./categories";
+import { byCatalogOrder, listedCategories, STANDARD_CATEGORIES, type CategoryId, type CategoryInfo } from "./categories";
 
 /**
  * The setting the scheme holds for a category. Without one, a scheme not stored yet masks it (the screens'
@@ -41,7 +41,12 @@ export function presetCategories(p: Pick<Preset, "det" | "model" | "rules">, mod
  * catalog does not know. A listed category nothing detects is shown switched off and cannot be switched on.
  */
 export function schemeCategories(p: Pick<Preset, "det" | "model" | "rules">, models: Pick<ModelPlugin, "id" | "categories">[], rulesets: Ruleset[], catalog: readonly CategoryInfo[] = STANDARD_CATEGORIES): string[] {
-  return byCatalogOrder(catalog, [...catalog.filter((c) => !c.reviewOnly).map((c) => c.id), ...presetCategorySources(p, models, rulesets).keys()]);
+  return listedCategories(catalog, presetCategorySources(p, models, rulesets).keys());
+}
+
+/** The first of the scheme's rule sets with a rule switched on that reports `category`: where its “规则” source leads. */
+export function rulesetDetecting(p: Pick<Preset, "rules">, rulesets: Ruleset[], category: CategoryId): Ruleset | undefined {
+  return p.rules.map((id) => rulesets.find((r) => r.id === id)).find((r) => r?.rules.some((x) => x.on && x.cat === category));
 }
 
 /**
