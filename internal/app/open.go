@@ -55,13 +55,14 @@ func DefaultRoot() (string, error) {
 	}
 }
 
-// DefaultWorkspace is the per-user workspace of an entry point ("cli", "desktop").
+// DefaultWorkspace is the per-user workspace of an entry point ("cli", "desktop"), in the build's own
+// folder (workspaceFolder): a development build never shares one with a release.
 func DefaultWorkspace(entry string) (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "Tacet", entry+"-workspace"), nil
+	return filepath.Join(base, workspaceFolder, entry+"-workspace"), nil
 }
 
 func platformID() (string, error) {
@@ -164,7 +165,7 @@ func locateModels(root, preinstalled string, o *Options) {
 }
 
 // DefaultModelsRoot is the per-user folder downloaded models are kept in, shared by the desktop app and the
-// command line so a model is downloaded once.
+// command line, development and release builds alike, so a model is downloaded once.
 func DefaultModelsRoot() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {

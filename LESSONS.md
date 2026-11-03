@@ -47,10 +47,11 @@
 - PR #5 第二轮修复（8787011）给“Reap 之后不再启动探测 worker”写的第一个测试，钩子放在重读设置之前。撤回整个修复后测试照样通过，因为重读设置用的也是已取消的 ctx，在启动前就返回了。钩子挪到启动段前，再在段内加一个之后，分别撤回段内的停止检查和 Reap 前的等待，各有一个测试失败（`workers started`、`it started after the reap`）。
 - 同一个提交里另有两处 ctx 检查（`probe` 开头、`modelArgs` 出错时）没有逐处撤回，第三轮审查指出它们冗余。实测时在 `modelArgs` 前加了模拟“正在校验文件”的钩子，分别撤回、一起撤回，所有探测测试都通过：循环在调用 `probe` 前刚检查过 ctx；探测从 `modelArgs` 只会拿到 `ErrModelNotInstalled`。两处都删掉了，代码里写明了原因。
 - 同一轮审查还指出，`TestAProbeStartingItsWorkerWhenStoppedHasItReaped` 在 worker 根本没启动时也会通过。现在它断言 Reap 至少回收了 1 个进程；把 spawn 换成失败后，测试报 `the exit reclaimed 0 workers`。
+- PR #12 第一版（cc0ef8c）的 `datadir_dev_test.go` 里有一条断言比较两个不同路径的 `credentialAccount`，在旧代码上也通过：它只重复了 `credential_test.go` 已经检查过的哈希性质，却让人以为测试证明了“钥匙串条目已分开”。把旧代码放回去时只看了整个测试失败没有，没有逐条看各个断言能不能失败。审查指出后删掉了这条断言。
 - 规则：
   - 逐处撤回，每撤回一处就跑一遍相关测试，记下哪个测试失败、打印了什么；
   - 钩子要放在被保护的那一小段旁边，放早了，前面别的检查会替修复挡住；
-  - 撤回后没有测试失败的那一处，能写出会失败的测试就补上，写不出就删掉，并在代码里说明为什么不需要；
+  - 撤回后没有测试失败的那一处，能写出会失败的测试就补上，写不出就删掉，并在代码里说明为什么不需要；同一个测试里，在旧代码上不会失败的断言也照此处理；
   - 断言“X 没发生”的测试，要另有断言证明前提成立（这里是 worker 真的启动过），否则前提不成立时它也会通过。
 - 出现：1 次（2026-11-03）
 
@@ -79,6 +80,25 @@
 - 规则：
   - 测试 setup 要在被测代码导入之前改掉全局对象时，放进单独的 setup 文件，排在最前，并确认它的 import 连不到被拦的模块（ES 模块的 import 会先于正文执行）；
   - 为防偶发问题加的拦截，要有一个测试证明它拦到了目标，不能只凭“之后没再出现”就认定有效。
+- 出现：1 次（2026-11-03）
+
+**行为随构建标签变化时，列出每一个构建入口，逐个核对它实际带不带这个标签。**
+- PR #12 第一版（cc0ef8c）让工作区目录随 `production` 标签变化：开发构建用 `Tacet-dev`，正式构建仍用 `Tacet`。PR 描述和 README 都这么写，但审查（2026-11-03）指出有两处不成立：
+  - `build:cli` 是不带标签的 `go build`，CLI 没有任何正式构建入口，所有 CLI 都会用 `Tacet-dev/cli-workspace`。改动前 CLI 的路径与标签无关，所以 README 表格里的 `Tacet/cli-workspace` 变成了一个没有任何构建会用到的路径。
+  - README 把 `wails3 task run` 算作开发构建。实际上两个平台的 `run` 都不编译，只运行 `bin/` 里现有的可执行文件；如果上一次跑的是 `wails3 task build`（默认 production），它跑的就是正式构建。
+- 第一版的测试在 `go test` 和 `go test -tags production` 下分别检查 `DefaultWorkspace`，只能证明“标签决定目录”，证明不了“每个入口带对了标签”。
+- 修复：在同一个 PR 里修。`build:cli` 改成和桌面端一致，默认 `-tags production -trimpath`，`DEV=true` 时不带。用 `go version -m bin/cli/tacet` 核对：旧任务的产物没有 `-tags`；新任务默认显示 `-tags=production`，`DEV=true` 时没有。README 分别列出正式构建和开发构建的入口，并注明 `run` 不编译。
+- 规则：
+  - 行为随构建标签变化时，把 `Taskfile.yml`、`build/*/Taskfile.yml`、`build/config.yml` 里每个编译或运行二进制的入口都列出来，逐个写明带不带标签；只运行现成二进制的入口（`run`）要单独说明；
+  - 用 `go version -m <二进制>` 核对产物实际的 `-tags`，不要从任务名推断。
+- 出现：1 次（2026-11-03）
+
+**把原因写进 PR 或提交之前，先用实验验证：按这个原因改变一个条件，结果要像预测的那样变化。**
+- PR #12 第一版的描述说，`TestAProbeStartingItsWorkerWhenStoppedHasItReaped` 在 master 上也失败，所以不算这次改动的问题；这违反了 AGENTS.md 第 4 条，审查（2026-11-03）指出了这一点。描述里还写了原因：“`handshake` 抢先 `Terminate` 了 worker”。这个原因只是从日志推出来的，没有做过实验验证。
+- 开 issue 之前补做了实验：在 spawn 之后、`handshake` 之前加 300ms 延迟，测试照样失败，推翻了这个解释。再往下查，真正的原因是：在 macOS 26.6.2 上，Apple 平台二进制（`/bin/sh`、`/bin/sleep`）的 `kern.procargs2` 不返回环境变量，假 worker 在等待期间是 `/bin/sh`，所以回收时按标记找不到它（#15）。
+- 规则：
+  - 写下的原因要附上验证它的实验：按这个原因改变一个条件（延迟、换进程、换平台），结果的变化和预测一致；没有做过实验，就写“推测”；
+  - 本机失败、CI 通过时，先找两边环境的差别（系统版本、二进制类型），不要先找时序问题。
 - 出现：1 次（2026-11-03）
 
 ## CI 耗时

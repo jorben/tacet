@@ -24,9 +24,15 @@ tasks:
       - task: "{{.GOOS}}:build"
 
   build:cli:
-    summary: Builds the CLI into bin/cli (a separate directory, so it never clashes with the desktop binary)
+    summary: Builds the CLI into bin/cli (a separate directory, so it never clashes with the desktop binary); DEV=true for a development build
+    desc: |
+      Like the desktop build, the default is a release build (-tags production), whose workspace is
+      <config>/Tacet/cli-workspace; DEV=true builds without the tag and keeps the workspace in
+      <config>/Tacet-dev/cli-workspace.
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
     cmds:
-      - go build -o "{{.BIN_DIR}}/cli/tacet{{exeExt}}" ./cmd/tacet
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/cli/tacet{{exeExt}}" ./cmd/tacet
 
   package:
     summary: Builds and packages the desktop application (macOS .app or Windows installer)
