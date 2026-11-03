@@ -172,7 +172,9 @@ bin/cli/tacet unlock --batch <id>
 | --- | --- |
 | `<用户配置目录>/Tacet/desktop-workspace` | 桌面应用工作区 |
 | `<用户配置目录>/Tacet/cli-workspace` | CLI 默认工作区 |
-| `<用户配置目录>/Tacet/models` | 已下载的检测模型（桌面与 CLI 共用） |
+| `<用户配置目录>/Tacet/models` | 已下载的检测模型（桌面与 CLI、开发版与正式版共用） |
+
+开发构建（不带 `-tags production`，如 `wails3 dev`、`wails3 task run`、`build:cli`）的工作区放在 `<用户配置目录>/Tacet-dev/` 下，与正式版互不干扰：两边不会打开对方的工作区，也不会向钥匙串索取对方的密钥。模型目录仍然共用。
 
 开发与测试用环境变量：`TACET_ROOT`（运行时组件根目录）、`TACET_DESKTOP_WORKSPACE`（桌面应用使用的独立工作区，需为绝对路径）、`TACET_PREINSTALLED_MODELS`（指向含 `<id>-<variant>` 子目录的文件夹，视为模型已安装）。
 
