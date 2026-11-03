@@ -9,7 +9,8 @@ import (
 )
 
 // A development build keeps its workspaces apart from an installed release, so the two never share a
-// workspace or the credential entry that unlocks it (the entry's account names the workspace path).
+// workspace or the credential entry that unlocks it: the entry's account names the workspace path, and
+// TestTheCredentialNameOfAWorkspaceIsAcceptedByTheStore checks that different paths name different entries.
 // Downloaded models stay shared: a model is checked against its manifest before use either way.
 func TestADevelopmentBuildKeepsItsWorkspacesApartFromTheRelease(t *testing.T) {
 	base, err := os.UserConfigDir()
@@ -26,8 +27,5 @@ func TestADevelopmentBuildKeepsItsWorkspacesApartFromTheRelease(t *testing.T) {
 	}
 	if got, err := DefaultModelsRoot(); err != nil || got != filepath.Join(base, "Tacet", "models") {
 		t.Fatalf("models: %q %v, want the release's folder, shared", got, err)
-	}
-	if credentialAccount("workspace", filepath.Join(base, "Tacet-dev", "desktop-workspace")) == credentialAccount("workspace", filepath.Join(base, "Tacet", "desktop-workspace")) {
-		t.Fatal("the development and release workspaces share a credential entry")
 	}
 }

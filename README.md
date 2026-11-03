@@ -92,8 +92,8 @@ cd tacet
 # 2. 开发模式运行桌面应用
 wails3 task dev
 
-# 或者：构建 CLI 到 bin/cli/
-wails3 task build:cli
+# 或者：构建开发版 CLI 到 bin/cli/（工作区在 Tacet-dev 下，见“数据位置”）
+wails3 task build:cli DEV=true
 ```
 
 内核在运行时需要找到仓库中的 `resources/rules`、`resources/models`、`python/plugins` 与 `python/.venv`：默认从可执行文件所在目录向上查找包含 `resources/rules` 的目录，也可用环境变量 `TACET_ROOT` 指定。
@@ -174,7 +174,12 @@ bin/cli/tacet unlock --batch <id>
 | `<用户配置目录>/Tacet/cli-workspace` | CLI 默认工作区 |
 | `<用户配置目录>/Tacet/models` | 已下载的检测模型（桌面与 CLI、开发版与正式版共用） |
 
-开发构建（不带 `-tags production`，如 `wails3 dev`、`wails3 task run`、`build:cli`）的工作区放在 `<用户配置目录>/Tacet-dev/` 下，与正式版互不干扰：两边不会打开对方的工作区，也不会向钥匙串索取对方的密钥。模型目录仍然共用。
+上表是正式构建（`-tags production`）的位置。开发构建（不带这个标签）的工作区放在 `<用户配置目录>/Tacet-dev/` 下，两边不会打开对方的工作区，也不会向钥匙串索取对方的密钥；模型目录仍然共用。
+
+- 正式构建：`wails3 task build`、`wails3 task package`、`wails3 task build:cli`。
+- 开发构建：`wails3 task dev`（先以 `DEV=true` 编译）、`wails3 task build:cli DEV=true`，以及直接 `go build`/`go run` 的 `./cmd/tacet`、`./cmd/tacet-desktop`。
+- `wails3 task run` 不编译，只运行 `bin/` 里现有的桌面可执行文件：它是哪种构建，取决于上一次是 `wails3 task dev` 还是 `wails3 task build`。
+- Windows 上，开发版和正式版工作区的密钥文件都放在 `%LOCALAPPDATA%\Tacet\secrets` 下。文件名按工作区路径区分，互不冲突，但手动删除这个目录会同时删掉两边的密钥。
 
 开发与测试用环境变量：`TACET_ROOT`（运行时组件根目录）、`TACET_DESKTOP_WORKSPACE`（桌面应用使用的独立工作区，需为绝对路径）、`TACET_PREINSTALLED_MODELS`（指向含 `<id>-<variant>` 子目录的文件夹，视为模型已安装）。
 
@@ -187,7 +192,7 @@ bin/cli/tacet unlock --batch <id>
 | `wails3 task dev` | 开发模式运行桌面应用 |
 | `wails3 task build` | 编译桌面可执行文件：macOS 为 `bin/tacet`，Windows 为 `bin/tacet.exe` |
 | `wails3 task package` | 构建并打包桌面应用：macOS 生成 `bin/tacet.app`，Windows 生成安装程序 |
-| `wails3 task build:cli` | 构建 CLI 到 `bin/cli/` |
+| `wails3 task build:cli` | 构建 CLI 到 `bin/cli/`（正式构建；`DEV=true` 为开发构建） |
 | `wails3 task bindings` | 生成桌面服务的 TypeScript 绑定 |
 | `wails3 task test` | Go 测试，含模块依赖规则检查（`internal/archtest`） |
 | `wails3 task lint` | `go vet` 与前端类型检查 |
