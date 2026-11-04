@@ -8,20 +8,24 @@ import type { AppState } from "./state";
 export const LIVE_BATCH_ID = "live-batch";
 export const LIVE_SINGLE_ID = "live-single";
 
-/** The single-file task that holds the slot: while a file of a batch is open, the parked task is the one. */
-export function slotSingle(s: Pick<AppState, "single" | "behind">): Single | null {
+/** The single-file task on screen: while a file of a batch is open, the one waiting behind it. */
+export function screenSingle(s: Pick<AppState, "single" | "behind">): Single | null {
   return s.single && s.single.from === "batch" ? s.behind?.single ?? null : s.single;
 }
 
 /** A saved task that can be continued, so its recovery data is what cleaning the workspace removes. */
 export const isRecoverable = (h: HistoryEntry): boolean => !!h.park || h.st === "keep";
 
-/** The running task of a kind, or null if the slot can be taken without losing work. */
-export function slotBusy(s: AppState, kind: "single"): Single | null;
-export function slotBusy(s: AppState, kind: "batch"): Batch | null;
-export function slotBusy(s: AppState, kind: "single" | "batch"): Single | Batch | null {
+/** A single task the kernel is working on, as far as this window knows; a password stops it. */
+export const isWorking = (s: Pick<Single, "phase" | "live">): boolean =>
+  s.phase === "exporting" || (s.phase === "processing" && !s.live?.locked);
+
+/** The unfinished task of a kind on screen, or null if there is nothing it would be lost to close. */
+export function unfinishedOnScreen(s: AppState, kind: "single"): Single | null;
+export function unfinishedOnScreen(s: AppState, kind: "batch"): Batch | null;
+export function unfinishedOnScreen(s: AppState, kind: "single" | "batch"): Single | Batch | null {
   if (kind === "single") {
-    const single = slotSingle(s);
+    const single = screenSingle(s);
     return single && single.phase !== "done" ? single : null;
   }
   const b = s.batch;
@@ -30,14 +34,14 @@ export function slotBusy(s: AppState, kind: "single" | "batch"): Single | Batch 
 
 /** The batch on screen while something of it is open, even when nothing runs: it is not left without a word. */
 export function unfinishedBatch(s: AppState): Batch | null {
-  return slotBusy(s, "batch") ?? (s.batch && batchStatus(s.batch)[0] === "warn" ? s.batch : null);
+  return unfinishedOnScreen(s, "batch") ?? (s.batch && batchStatus(s.batch)[0] === "warn" ? s.batch : null);
 }
 
-/** The tasks that are still alive in their slot, followed by the saved ones. */
+/** The tasks on screen, followed by the ones under “最近”. */
 export function liveHistory(s: Pick<AppState, "batch" | "single" | "behind" | "history">): HistoryEntry[] {
   const out: HistoryEntry[] = [];
   const b = s.batch;
-  const single = slotSingle(s);
+  const single = screenSingle(s);
   if (b) {
     const [st, stl] = batchStatus(b);
     out.push({ id: LIVE_BATCH_ID, k: "batch", name: b.title, meta: fmt(b.n) + " 份", st, stl, when: "刚刚", live: "batch" });
@@ -62,11 +66,13 @@ export function contextModelId(s: AppState): string | null | undefined {
   return presetModelId(s.presets, s.homePreset);
 }
 
-/** A document is being processed, so the model cannot be changed underneath it. */
+/** A document is being processed, on screen or not, so the model cannot be changed underneath it. */
 export function documentBusy(s: AppState): boolean {
   return (
     !!(s.single && ["processing", "exporting"].includes(s.single.phase)) ||
-    !!(s.batch && s.batch.phase !== "precheck" && s.batch.files.some((f) => ["proc", "queue", "ready"].includes(f.st)))
+    !!(s.behind && isWorking(s.behind.single)) ||
+    !!(s.batch && s.batch.phase !== "precheck" && s.batch.files.some((f) => ["proc", "queue", "ready"].includes(f.st))) ||
+    s.history.some((h) => h.park && h.st === "run")
   );
 }
 

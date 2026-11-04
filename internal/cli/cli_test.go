@@ -16,7 +16,6 @@ import (
 // fake is a Core whose answers the test dictates.
 type fake struct {
 	imported      app.ImportRequest
-	displaced     string
 	importErr     error
 	unfinished    []app.BatchStatus
 	unfinishedErr error
@@ -44,7 +43,7 @@ func (f *fake) Import(_ context.Context, r app.ImportRequest) (app.BatchStatus, 
 	if f.importErr != nil {
 		return app.BatchStatus{}, f.importErr
 	}
-	return app.BatchStatus{ID: "b0001", Total: len(r.Files), Displaced: f.displaced}, nil
+	return app.BatchStatus{ID: "b0001", Total: len(r.Files)}, nil
 }
 func (f *fake) Preflight(context.Context, string) (app.BatchStatus, error) {
 	f.rec("preflight")
@@ -198,7 +197,7 @@ func TestExitStatusMirrorsTheCoreVerdict(t *testing.T) {
 		list := t.TempDir() + "/list.txt"
 		writeFile(t, list, "# comment\n"+t.TempDir()+"/a.txt\n\n")
 		got, out, _ = call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), "--list", list)
-		if got != code || strings.Join(f.calls, ",") != "import,start,wait,close" || !f.started.Authorize {
+		if got != code || strings.Join(f.calls, ",") != "unfinished,import,start,wait,close" || !f.started.Authorize {
 			t.Errorf("run = %d %q calls %v started %+v", got, out, f.calls, f.started)
 		}
 	}
@@ -215,7 +214,7 @@ func TestInterruptPausesAndReturnsThree(t *testing.T) {
 }
 
 // This run was the only owner of its draft: a start the core refused must not leave it holding the batch
-// slot. The order matters: Resume carries out the kept start request, and only files already cancelled
+// run. The order matters: Resume carries out the kept start request, and only files already cancelled
 // guarantee that this cannot begin processing after the refusal has been reported.
 func TestARefusedStartIsReportedAndReleasesItsDraft(t *testing.T) {
 	refused := fmt.Errorf("%w: %w", app.ErrNotReady, app.ErrModelNotInstalled)
@@ -231,7 +230,7 @@ func TestARefusedStartIsReportedAndReleasesItsDraft(t *testing.T) {
 			if code != ExitUsage || !strings.Contains(errOut, tc.kind) {
 				t.Fatalf("code %d err %q", code, errOut)
 			}
-			if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,wait,clean,close" {
+			if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,wait,clean,close" {
 				t.Fatalf("calls %s", got)
 			}
 		})
@@ -245,7 +244,7 @@ func TestARefusedStartWhoseDraftCannotBeCancelledIsNotResumed(t *testing.T) {
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "import,start,cancel,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,close" {
 		t.Fatalf("calls %s", got)
 	}
 }
@@ -258,7 +257,7 @@ func TestARefusedStartWhoseResumeFailsIsNotWaitedFor(t *testing.T) {
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,clean,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,clean,close" {
 		t.Fatalf("calls %s", got)
 	}
 }
@@ -298,7 +297,7 @@ func TestAnInterruptEndsTheWaitOfARefusedStart(t *testing.T) {
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,wait,clean,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,wait,clean,close" {
 		t.Fatalf("calls %s", got)
 	}
 }
@@ -310,7 +309,7 @@ func TestAnInterruptDuringStartPausesAndKeepsTheDraft(t *testing.T) {
 	if code != ExitInterrupted || !strings.Contains(errOut, "tacet resume --batch b0001") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "import,start,pause,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,pause,close" {
 		t.Fatalf("calls %s", got)
 	}
 }
@@ -325,7 +324,7 @@ func TestAnInterruptInsideStartIsNotTakenForARefusal(t *testing.T) {
 	if code != ExitInterrupted || !strings.Contains(errOut, "tacet resume --batch b0001") || strings.Contains(errOut, "NOT_FOUND") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "import,start,pause,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,pause,close" {
 		t.Fatalf("calls %s", got)
 	}
 }

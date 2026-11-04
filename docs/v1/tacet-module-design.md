@@ -259,7 +259,7 @@ flowchart TB
 
 | 用例 | 编排 | 关键校验 / 结果 |
 | --- | --- | --- |
-| 导入 `Import` | 按文件数与用户选择决定走快捷路径或批次草稿（阈值 M0 冻结，FR-28）→ （请求要求时先 `jobs.ParkHolder` 停放只等人的同类任务，同一事务）`jobs.CreateDraft` → 提交预检阶段；有进行中的网络活动时只登记选择（需求文档 3.4.1 节） | 同类未停放的任务有文件还在处理或是未开始的草稿时返回 `QUICK_TASK_ACTIVE` / `BATCH_ACTIVE`，不静默替换；这个事务失败时停放一并回滚。事务提交后的失败（创建密钥、加入成员）不撤销停放，任务仍可继续；留下的零成员草稿由下一次带停放请求的导入结束 |
+| 导入 `Import` | 按文件数与用户选择决定走快捷路径或批次草稿（阈值 M0 冻结，FR-28）→ `jobs.CreateDraft` → 提交预检阶段；有进行中的网络活动时只登记选择（需求文档 3.4.1 节） | 不影响已有的任务，不论它们是否同类。事务提交后的失败（创建密钥、加入成员）留下零成员草稿，它没有文件，不被列出也不被派发 |
 | 开始 `Start` | 快捷路径在预检通过后自动调用，批次由用户在预检页确认（处理模式、保留期限、发布授权方式）→ `snapshot.Freeze` → `models.CheckBinding` → 就绪则 `jobs.Confirm`，否则记为等待操作 | `CompatReport.Blocking` 非空时拒绝；`NeedsNarrowing` 不拒绝开始，也不询问（只有编辑规则组内的规则会在保存前询问，修改映射直接保存，FR-18、5.2 节）；等待操作不创建检测任务，模型就绪后须用户明确继续 |
 | 提交决定 `CommitDecisions` | `review.Commit` → `jobs.OnDecisionsChanged(受影响任务)` | 物化后的成员数与界面展示的范围摘要不一致时返回 `SCOPE_CHANGED` |
 | 确认并导出 `ConfirmAndExport` | 同一提交区内 `review.Commit` + `publish.Grant`（绑定处置键，MD-16）→ `jobs.OnDecisionsChanged` | 快捷路径专用（FR-28、架构文档 6.1 节） |
@@ -273,7 +273,7 @@ flowchart TB
 | 清理任务、清理工作区、删除历史条目 | `retention` | |
 | 配置、插件、模型、更新 | `config`、`pluginmgr`、`models`、`update` | 需联网的操作先取得 `netgate` 活动租约（MD-19） |
 
-公共错误码：`WORKSPACE_BUSY`、`VERSION_CONFLICT`（配置或任务版本已变）、`ACTIVITY_BUSY`（联网与文档处理互斥）、`QUICK_TASK_ACTIVE`、`BATCH_ACTIVE`、`SCOPE_CHANGED`、`KEYSTORE_UNAVAILABLE`。错误说明只含去敏参数（INV-07）。
+公共错误码：`WORKSPACE_BUSY`、`VERSION_CONFLICT`（配置或任务版本已变）、`ACTIVITY_BUSY`（联网与文档处理互斥）、`BATCH_HAS_OPEN_FILES`（清理还有未结束文件的批次）、`SCOPE_CHANGED`、`KEYSTORE_UNAVAILABLE`。错误说明只含去敏参数（INV-07）。
 
 等待模型的操作（PendingStart）由 `app` 在内存中持有，同一时刻至多一个，只含文件句柄令牌与运行预设引用；批次的等待状态即批次草稿，由 `jobs` 持久化。取消等待操作不取消独立的模型下载（需求文档 3.4.1 节）。
 
@@ -454,7 +454,7 @@ func (m *Jobs) OnStageOutcome(a kernel.AttemptRef, out StageOutcome) error {
 | 插件崩溃、超时、协议错误、回写失败、输出损坏 | 整个文件处理失败 | 用户可重新处理 1 次，再次失败为 `unprocessable` |
 | 密码错误 | 保持 `blocked`，可重输 | 不计次数 |
 
-**并存与优先级。** 同一工作区至多一个未停放的未完成快捷任务与一个未停放的未完成批次（FR-28），由 `jobs_batch` 的部分唯一索引（`finished=0 AND parked=0`）保证。已确认且没有文件在排队或处理（文件都处于 `awaiting_review`、未授权的 `ready_to_publish`、`blocked`、`failed`、`paused`、`locked` 或终止状态）的批次，可在同类新草稿的同一事务内停放；草稿不停放，其中没有成员的草稿（导入中途失败的遗留）在这一步被结束，让出名额。停放只改批次标记，不动文件状态、不派发阶段，直到批次结束都不再占名额，继续处理也不取回名额，并发由调度器限制。快捷任务的全部阶段为交互级；复核中修改后需重新导出的文件，其导出、验证与发布阶段也提升为交互级，直到发布或回到复核（AR-16）。
+**并存与优先级。** 同一工作区的未完成批次数量不按种类限制（FR-28）。迁移 v6 删除 `jobs_batch` 的部分唯一索引 `jobs_one_active_kind` 和 v5 增加的 `parked` 列：停放不再是存储的标记，而是由文件状态推出的事实，已确认且文件都处于 `awaiting_review`、未授权的 `ready_to_publish`、`blocked`、`failed`、`paused`、`locked` 或终止状态的批次即为停放（`State.WaitsForPerson`）。迁移在同一事务内完成，失败时索引和列一并恢复、备份还原；旧版本打开 v6 的数据库被拒绝（AR-18）。快捷任务的全部阶段为交互级；文件收到复核决定后（`Snapshot.Reviewed`），它的阶段也提升为交互级，直到发布或回到复核（AR-16）；其余批次工作，含预检，为后台级。
 
 **暂停、取消与恢复。**
 
@@ -492,7 +492,7 @@ func FacetsChanged(a, b SnapshotDigests) FacetSet
 
 ### 5.5 `sched` 资源调度
 
-职责：阶段的资源准入、两级优先级、背压、整机压力与磁盘高水位处理、截止时间。`sched` 的状态只在内存中，启动时按 `jobs` 的待派发记录重建。
+职责：阶段的资源准入、两级优先级、同级批次间轮流（`JobView.Group`，见架构文档第 5.1 节的交互优先）、背压、整机压力与磁盘高水位处理、截止时间。`sched` 的状态只在内存中，启动时按 `jobs` 的待派发记录重建。
 
 阶段契约由 `sched` 定义、各阶段模块实现，并在 `app` 组装时注册；`sched` 不依赖任何阶段模块：
 

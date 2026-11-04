@@ -11,6 +11,9 @@ type JobView struct {
 	Attempt  kernel.AttemptRef
 	Stage    kernel.StageKind
 	Priority kernel.Priority
+	// Group names the batch the stage belongs to: the queue takes turns between groups of one priority, so a
+	// batch with many files cannot keep another one waiting.
+	Group string
 }
 
 // StageContext carries the attempt, deadline, cancellation and budget

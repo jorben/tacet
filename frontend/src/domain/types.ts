@@ -471,7 +471,7 @@ export interface HistoryEntry {
   st: HistoryStatus;
   stl: string;
   when: string;
-  /** Entry of a task that is still running in its slot. */
+  /** Entry of a task that is on screen. */
   live?: "batch" | "single";
   saved?: Single | Batch | BatchSummary;
   undo?: DecisionSnapshot[];

@@ -55,6 +55,9 @@ type Snapshot struct {
 	Resume      State            // state to return to after Paused
 	Block       BlockReason
 	Counters    Counters
+	// Reviewed: a person changed what the file is decided to be and waits for the outcome, so its stages run
+	// ahead of background work until it is back under review or ends (AR-16).
+	Reviewed bool
 }
 
 // EventKind is the closed set of inputs to the state machine.
@@ -184,6 +187,7 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 		return invalid()
 
 	case EvDecisionsChange:
+		s.Reviewed = true
 		switch s.State {
 		case AwaitingReview:
 			return to(s, Resolving, kernel.StageResolve), nil
@@ -366,6 +370,7 @@ func stageOutcome(s Snapshot, e Event, l Limits) (Result, error) {
 		if expected != kernel.StageResolve {
 			return Result{}, ErrInvalidTransition
 		}
+		s.Reviewed = false
 		return to(s, AwaitingReview, kernel.StageNone), nil
 	case sched.Completed:
 	default:

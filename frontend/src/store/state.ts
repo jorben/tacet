@@ -34,7 +34,7 @@ export interface AppState {
   /** A fresh configuration load resets transient editor state, even if the selected id stays the same. */
   configLoad: number;
 
-  /** The single-file task and the batch on screen; others wait under “最近” (see `needSlot`). */
+  /** The single-file task and the batch on screen; others are under “最近”, and go on there if they have work (see `makeRoom`). */
   single: Single | null;
   batch: Batch | null;
   /** The single task set aside while a file of a batch is open for review. */

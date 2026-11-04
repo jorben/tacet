@@ -1,8 +1,8 @@
-// A task waiting for the person gives way to the next one and stays under “最近”; nothing asks first (FR-28).
+// The task on screen gives way to the next one and stays under “最近”, where the kernel goes on with it; nothing asks first (FR-28).
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { cancelBatch, openBatchFile, publishValidated, resumeBatch, startBatch, togglePause } from "../actions/batch";
-import { discardSavedTask, needSlot, openHistoryEntry, openHistoryResult, resumeSavedBatch } from "../actions/home";
+import { discardSavedTask, makeRoom, openHistoryEntry, openHistoryResult, resumeSavedBatch } from "../actions/home";
 import { startReview } from "../actions/review";
 import { confirmLiveBatchFile, restoreUnfinished, retryLive, startLive, stopLiveBatch, takePaths, withdrawLiveManual } from "../actions/live";
 import { cleanWorkspace } from "../actions/settings";
@@ -39,6 +39,8 @@ const history = () => getState().history;
 const toastText = () => overlayStore.get().toast?.msg ?? "";
 const imports = () => fake.calls.filter((c) => c.startsWith("import"));
 const entryOf = (id: string) => history().find((h) => (h.saved as { live?: { id?: string; batch?: string } } | undefined)?.live?.[(h.k === "batch" ? "id" : "batch")] === id);
+/** Only the newest quick task goes back to the window after a restart: this one keeps the one before it listed. */
+const newerQuick = () => ({ id: "b0009", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: true, files: [fake.row(0, "paused", { format: "txt" })] });
 const rowsOf = (...states: [string, object?][]) => states.map(([state, extra], i) => fake.row(i, state, extra));
 
 /** A single task, in review. */
@@ -63,7 +65,7 @@ async function runningBatch(...states: [string, object?][]) {
   await fake.emitBatch();
 }
 
-describe("单文件：等人的任务给新任务让路", () => {
+describe("单文件：新任务来了就让路，有活的继续做", () => {
   it("待确认时拖入另一份：不弹窗，直接开始新任务；旧任务和它的选择进入“最近”", async () => {
     await reviewing();
     act(() => store.update((d) => { d.single!.hits[0]!.state = "keep"; d.undo = [{} as never]; }));
@@ -72,7 +74,6 @@ describe("单文件：等人的任务给新任务让路", () => {
     await waitFor(() => expect(single().name).toBe("b.txt"));
     expect(overlayStore.get().modal).toBeNull();
     expect(imports()).toEqual(["import:quick:1"]);
-    expect(fake.parkAsked).toEqual([true, true]);
     expect(single().live!.batch).toBe("b0002");
     expect(toastText()).toContain("已保存到“最近”");
     const h = entryOf("b0001")!;
@@ -82,33 +83,47 @@ describe("单文件：等人的任务给新任务让路", () => {
     await waitFor(() => expect(fake.decisions).toEqual([{ id: 11, keep: true }])); // kept by the kernel: “最近” survives a restart
   });
 
-  it("还在处理时拖入另一份：只提示等待，不调用引擎", async () => {
+  it("还在处理时拖入另一份：直接开始，它在“最近”继续处理", async () => {
     takePaths(["/d/a.txt"]);
     await waitFor(() => expect(fake.calls).toContain("start"));
+    await fake.emit("extracting_detecting");
     fake.calls = [];
     takePaths(["/d/b.txt"]);
-    expect(toastText()).toContain("正在处理");
-    expect(imports()).toEqual([]);
-    expect(single().name).toBe("a.txt");
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    expect(imports()).toEqual(["import:quick:1"]);
+    expect(toastText()).toContain("继续在后台处理");
+    expect(entryOf("b0001")).toMatchObject({ name: "a.txt", st: "run", stl: "处理中", park: true });
+    expect(fake.cancelled).toEqual([]);
+    expect(overlayStore.get().modal).toBeNull();
   });
 
-  it("导出途中拖入另一份：同样只提示等待", async () => {
+  it("导出途中拖入另一份：它继续导出，完成后变成结果", async () => {
     await reviewing();
     exportSingle();
     await waitFor(() => expect(single().phase).toBe("exporting"));
+    await waitFor(() => expect(fake.published).toBeTruthy());
     fake.calls = [];
     takePaths(["/d/b.txt"]);
-    expect(imports()).toEqual([]);
-    expect(toastText()).toContain("正在处理");
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    expect(imports()).toEqual(["import:quick:1"]);
+    expect(entryOf("b0001")).toMatchObject({ st: "run", stl: "处理中", park: true });
+    await fake.emitFor("b0001", [fake.row(0, "completed", { output: "f0001.txt" })]);
+    const h = entryOf("b0001")!;
+    expect(h).toMatchObject({ st: "done", stl: "已导出" });
+    expect(h.park).toBeUndefined();
+    expect((h.saved as Single).phase).toBe("done");
+    expect((h.saved as Single).live!.output).toBe("f0001.txt");
+    expect(toastText()).toContain("已在后台完成");
+    expect(single().name).toBe("b.txt");
   });
 
   it("引擎拒绝导入：屏幕上的任务不被覆盖，选择都在", async () => {
     await reviewing();
     const runId = single().runId;
     act(() => store.update((d) => { d.single!.hits[0]!.state = "keep"; }));
-    fake.importFails = new Error("QUICK_TASK_ACTIVE");
+    fake.importFails = new Error("INVALID_REQUEST");
     takePaths(["/d/b.txt"]);
-    await waitFor(() => expect(toastText()).toContain("未完成的单文件任务"));
+    await waitFor(() => expect(toastText()).toContain("所选文件或输出位置不可用"));
     expect(single().runId).toBe(runId);
     expect(single().hits[0]!.state).toBe("keep");
     expect(getState().view).toBe("single");
@@ -156,17 +171,17 @@ describe("单文件：等人的任务给新任务让路", () => {
     await waitFor(() => expect(fake.calls).toContain("preview:1"));
   });
 
-  it("屏幕上的单文件还在处理时继续另一份：只提示等待，屏幕和列表都不变", async () => {
+  it("屏幕上的单文件还在处理时继续另一份：两边互换，屏幕上那份在“最近”继续处理", async () => {
     await reviewing();
     takePaths(["/d/b.txt"]);
     await waitFor(() => expect(single().name).toBe("b.txt"));
     await waitFor(() => expect(fake.begunCount()).toBe(2));
     expect(single().phase).toBe("processing");
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
-    expect(toastText()).toContain("正在处理");
-    expect(single().name).toBe("b.txt");
-    expect(fake.resumed).toEqual([]);
-    expect(entryOf("b0001")).toBeTruthy();
+    await waitFor(() => expect(fake.resumed).toEqual(["b0001"]));
+    expect(single().name).toBe("a.txt");
+    expect(entryOf("b0001")).toBeUndefined();
+    expect(entryOf("b0002")).toMatchObject({ name: "b.txt", st: "run", stl: "处理中", park: true });
   });
 
   it("已导出的单文件被新任务取代：它已经在“最近”里，不再列一次", async () => {
@@ -227,7 +242,7 @@ async function runningBatchBeside() {
   await waitFor(() => expect(batch().groups[0]?.id).toBe("live-review"));
 }
 
-describe("批次：只剩等人的文件时给新批次让路", () => {
+describe("批次：新批次来了就让路，有活的继续做", () => {
   it("只剩待处理文件时拖入新批次：原批次进入“最近”，新批次开始（缺陷 1）", async () => {
     await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
     await waitFor(() => expect(batch().phase).toBe("result"));
@@ -250,18 +265,13 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     takePaths(["/d/c.txt", "/d/d.txt"]);
     await waitFor(() => expect(batch()?.live?.id).toBe("b0002"));
     expect(toastText()).not.toContain("未完成");
-    // the new one has not started: the old one cannot take the screen from it
-    act(() => resumeSavedBatch(entryOf("b0001")!.id));
-    expect(fake.resumed).toEqual([]);
-    expect(toastText()).toContain("还未开始");
-    await waitFor(() => expect(batch().files[0]?.st).not.toBe("proc"));
-    fake.calls = [];
-    act(() => cancelBatch());
-    await waitFor(() => expect(fake.cancelled).toContain("b0002"));
+    // the new one has not started: it waits under “最近” while the old one comes back
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
     await waitFor(() => expect(fake.resumed).toEqual(["b0001"]));
     expect(batch().live!.id).toBe("b0001");
     expect(batch().paused).toBe(false);
+    expect(entryOf("b0002")).toMatchObject({ st: "keep", stl: "待开始", park: true });
+    expect(fake.cancelled).toEqual([]);
   });
 
   it("已暂停的批次（未离开页面）拖入新批次：也让路", async () => {
@@ -274,25 +284,32 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     expect(entryOf("b0001")).toMatchObject({ st: "keep", park: true });
   });
 
-  it("还有文件在处理时拖入新批次：提示等待，屏幕不变，也不调用引擎", async () => {
+  it("还有文件在处理时拖入新批次：直接开始，原批次在“最近”继续处理", async () => {
     await runningBatch(["awaiting_review", { pending: 1 }], ["extracting_detecting"]);
     fake.calls = [];
     takePaths(["/d/c.txt", "/d/d.txt"]);
-    expect(toastText()).toContain("正在处理");
-    expect(imports()).toEqual([]);
-    expect(batch().live!.id).toBe("b0001");
+    await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    expect(imports()).toEqual(["import:batch:2"]);
+    expect(entryOf("b0001")).toMatchObject({ park: true });
+    expect(fake.cancelled).toEqual([]);
   });
 
-  it("文件待导出且已授权（会自己发布）：算处理中；未授权才算等人", async () => {
+  it("文件待导出且已授权（会自己发布）：它算处理中；未授权才算等人", async () => {
     await runningBatch(["ready_to_publish"], ["completed"]);
     expect(batch().autoPub).toBe(true);
-    fake.calls = [];
     takePaths(["/d/c.txt", "/d/d.txt"]);
-    expect(imports()).toEqual([]);
-    expect(toastText()).toContain("正在处理");
+    await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    expect(entryOf("b0001")).toMatchObject({ st: "run", park: true });
+    act(() => resetStore());
+    fake = new FakeEngine();
+    setService({ ...mockService, engine: fake });
+    stop();
+    stop = startLive();
+    await runningBatch(["ready_to_publish"], ["completed"]);
     act(() => store.update((d) => { d.batch!.autoPub = false; }));
     takePaths(["/d/c.txt", "/d/d.txt"]);
-    await waitFor(() => expect(imports()).toEqual(["import:batch:2"]));
+    await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    expect(entryOf("b0001")).toMatchObject({ st: "keep", stl: "待导出 1 份", park: true });
   });
 
   it("从“最近”继续另一个批次：屏幕上只等人的批次让路，它也进入“最近”", async () => {
@@ -327,7 +344,7 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     await waitFor(() => expect(fake.decisions).toEqual([{ id: 31, keep: true }]));
   });
 
-  it("屏幕上的批次还在处理时继续另一个：只提示等待，屏幕和列表都不变", async () => {
+  it("屏幕上的批次还在处理时继续另一个：两边互换，屏幕上那个在“最近”继续处理", async () => {
     await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
     await waitFor(() => expect(batch().phase).toBe("result"));
     takePaths(["/d/c.txt", "/d/d.txt"]);
@@ -338,21 +355,22 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     await waitFor(() => expect(batch().phase).toBe("run"));
     await fake.emitFor("b0002", rowsOf(["extracting_detecting"], ["queued"]));
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
-    expect(toastText()).toContain("正在处理");
-    expect(batch().live!.id).toBe("b0002");
-    expect(fake.resumed).toEqual([]);
-    expect(entryOf("b0001")).toBeTruthy();
+    await waitFor(() => expect(fake.resumed).toEqual(["b0001"]));
+    expect(batch().live!.id).toBe("b0001");
+    expect(entryOf("b0001")).toBeUndefined();
+    expect(entryOf("b0002")).toMatchObject({ st: "run", park: true });
   });
 
-  it("未开始的草稿：引擎拒绝，提示原因，屏幕不变", async () => {
+  it("未开始的草稿：拖入新批次时它进入“最近”等着开始，不会被动过", async () => {
     fake.rows = rowsOf(["preflighted"], ["preflighted"]);
     takePaths(["/d/a.txt", "/d/b.txt"]);
     await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
     takePaths(["/d/c.txt", "/d/d.txt"]);
-    await waitFor(() => expect(toastText()).toContain("尚未开始"));
-    expect(batch().live!.id).toBe("b0001");
-    expect(batch().phase).toBe("precheck");
-    expect(history()).toHaveLength(0);
+    await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    expect(entryOf("b0001")).toMatchObject({ st: "keep", stl: "待开始", park: true });
+    expect((entryOf("b0001")!.saved as Batch).phase).toBe("precheck");
+    expect(fake.cleaned).toEqual([]);
+    expect(fake.begunCount()).toBe(0);
   });
 
   it("文件全被拒绝的草稿：引擎放行时不留在“最近”，它的数据被清理", async () => {
@@ -375,7 +393,7 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     expect(entryOf("b0001")!.park).toBeUndefined();
   });
 
-  it("继续过的停放批次还在跑：内核不再为它占名额，界面也不让新批次把它挤走", async () => {
+  it("继续过的批次还在跑时拖入新批次：它再进“最近”，继续跑", async () => {
     await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
     await waitFor(() => expect(batch().phase).toBe("result"));
     takePaths(["/d/c.txt", "/d/d.txt"]);
@@ -389,8 +407,9 @@ describe("批次：只剩等人的文件时给新批次让路", () => {
     await waitFor(() => expect(batch().phase).toBe("run"));
     fake.calls = [];
     takePaths(["/d/e.txt", "/d/f.txt"]);
-    expect(imports()).toEqual([]);
-    expect(toastText()).toContain("正在处理");
+    await waitFor(() => expect(batch().live!.id).toBe("b0003"));
+    expect(imports()).toEqual(["import:batch:2"]);
+    expect(entryOf("b0001")).toMatchObject({ st: "run", park: true });
   });
 });
 
@@ -403,7 +422,7 @@ describe("演示流程（没有内核）", () => {
       d.behind = { single: createSingle("背后的.txt", "txt", undefined, base, { phase: "review" }), undo: [] };
     }));
     let went = 0;
-    act(() => needSlot("single", () => { went++; }));
+    act(() => makeRoom("single", () => { went++; }));
     expect(went).toBe(1);
     expect(overlayStore.get().modal).toBeNull();
     expect(history().map((h) => h.name)).toEqual(["背后的.txt"]);
@@ -416,13 +435,14 @@ describe("重启之后", () => {
   const q = (id: string, parked: boolean) => ({ id, kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked, files: [fake.row(0, "paused", { format: "pdf" })] });
   const b = (id: string, parked: boolean) => ({ id, kind: "batch", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked, files: [fake.row(0, "paused")] });
 
-  it("多个停放的单文件全部列出，都不恢复运行；占名额的那份回到窗口", async () => {
+  it("多个单文件全部列出，都不恢复运行；最新的那份回到窗口，其他的说清楚停在哪", async () => {
     fake.rows = [fake.row(0, "awaiting_review", { format: "pdf" })];
-    fake.unfinishedList = [q("b0001", true), q("b0002", true), q("b0003", false), b("b0004", true), b("b0005", false)];
+    fake.unfinishedList = [q("b0001", true), q("b0002", false), b("b0004", true), q("b0003", true), b("b0005", false)];
     await restoreUnfinished();
     expect(single().live!.batch).toBe("b0003");
     expect(fake.resumed).toEqual(["b0003"]);
-    for (const id of ["b0001", "b0002"]) expect(entryOf(id)).toMatchObject({ k: "file", park: true, stl: "待确认", meta: id });
+    expect(entryOf("b0001")).toMatchObject({ k: "file", park: true, stl: "待确认", meta: "b0001" });
+    expect(entryOf("b0002")).toMatchObject({ k: "file", park: true, stl: "已暂停 · 可继续", meta: "b0002" });
     for (const id of ["b0004", "b0005"]) expect(entryOf(id)).toMatchObject({ k: "batch", park: true, st: "keep" });
     expect(history()).toHaveLength(4);
     // another pass finds them all tracked
@@ -432,7 +452,7 @@ describe("重启之后", () => {
     expect(fake.calls).not.toContain("resume");
   });
 
-  it("屏幕上已有单文件时，占名额的那份也列在“最近”，不抢屏幕", async () => {
+  it("屏幕上已有单文件时，最新的那份也列在“最近”，不抢屏幕", async () => {
     await reviewing();
     const runId = single().runId;
     fake.unfinishedList = [q("b0007", false)];
@@ -474,17 +494,17 @@ describe("重启之后", () => {
 
   it("重启后列出的单文件选择继续时才恢复，并读出文档", async () => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
-    fake.unfinishedList = [q("b0001", true)];
+    fake.unfinishedList = [q("b0001", true), q("b0009", true)];
     fake.rows = [fake.row(0, "awaiting_review", { format: "txt" })];
     await restoreUnfinished();
-    expect(getState().single).toBeNull();
-    expect(fake.resumed).toEqual([]);
+    expect(fake.resumed).toEqual(["b0009"]);
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
-    await waitFor(() => expect(fake.resumed).toEqual(["b0001"]));
+    await waitFor(() => expect(fake.resumed).toEqual(["b0009", "b0001"]));
     await waitFor(() => expect(single().phase).toBe("review"));
     expect(single().hits).toHaveLength(1);
     expect(single().out).toBe("/Users/x/Desktop/Tacet 已脱敏");
     expect(entryOf("b0001")).toBeUndefined();
+    expect(entryOf("b0009")).toMatchObject({ park: true });
   });
 });
 
@@ -684,7 +704,7 @@ describe("单文件停在受阻或失败上", () => {
   const listed = (state: string, detail: string) => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
     fake.rows = [fake.row(0, state, { detail, format: "txt" })];
-    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: true, files: fake.rows }];
+    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: true, files: fake.rows }, newerQuick()];
   };
 
   for (const [state, detail] of [["blocked", "PUBLISH_NAME_CONFLICT"], ["failed", "EXPORT_FAILED"]] as const) {
@@ -705,9 +725,9 @@ describe("单文件停在受阻或失败上", () => {
     });
   }
 
-  it("占名额的那份重启后受阻：同样不清理", async () => {
+  it("回到窗口的那份重启后受阻：同样不清理", async () => {
     listed("blocked", "PUBLISH_NAME_CONFLICT");
-    fake.unfinishedList[0]!.parked = false;
+    fake.unfinishedList.pop();
     await restoreUnfinished();
     await waitFor(() => expect(single()?.phase).toBe("review"));
     expect(fake.cancelled).toEqual([]);
@@ -736,7 +756,7 @@ describe("单文件停在受阻或失败上", () => {
     expect(toastText()).toContain("可重试导出");
   });
 
-  it("读出文档之前就失败：没有可保留的内容，名额还给下一个（对照）", async () => {
+  it("读出文档之前就失败：没有可保留的内容，不留下它（对照）", async () => {
     takePaths(["/d/a.txt"]);
     await waitFor(() => expect(fake.calls).toContain("start"));
     fake.units = [];
@@ -756,7 +776,7 @@ describe("单文件停在受阻或失败上", () => {
 describe("单文件的选择要撑过重启", () => {
   const restart = async () => {
     act(() => resetStore());
-    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: true, files: [fake.row(0, "paused", { format: "txt" })] }];
+    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: true, files: [fake.row(0, "paused", { format: "txt" })] }, newerQuick()];
     await restoreUnfinished();
     fake.rows = [fake.row(0, "awaiting_review", { format: "txt" })];
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
@@ -917,15 +937,16 @@ describe("单文件等密码", () => {
     expect(overlayStore.get().modal).toBeNull();
   });
 
-  it("输入密码后继续处理：又算在处理中，不让路（对照）", async () => {
+  it("输入密码后继续处理：拖入新文件时它在“最近”显示处理中，不再要密码（对照）", async () => {
     takePaths(["/d/a.pdf"]);
     await waitFor(() => expect(fake.calls).toContain("start"));
     await fake.emit("locked");
     await fake.emit("extracting_detecting");
     fake.calls = [];
     takePaths(["/d/b.txt"]);
-    expect(imports()).toEqual([]);
-    expect(toastText()).toContain("正在处理");
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    expect(imports()).toEqual(["import:quick:1"]);
+    expect(entryOf("b0001")).toMatchObject({ st: "run", stl: "处理中" });
   });
 });
 
@@ -1193,10 +1214,10 @@ describe("决定写给内核的时序", () => {
 });
 
 describe("读文档失败：内核没说任务结束，就不销毁", () => {
-  const stopped = (parked: boolean) => {
+  const stopped = (listed: boolean) => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
     fake.rows = [fake.row(0, "blocked", { detail: "PUBLISH_NAME_CONFLICT", format: "txt" })];
-    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked, files: fake.rows }];
+    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked: listed, files: fake.rows }, ...(listed ? [newerQuick()] : [])];
   };
   const keptUnderRecent = async (word: string) => {
     await waitFor(() => expect(toastText()).toContain(word));
@@ -1234,7 +1255,7 @@ describe("读文档失败：内核没说任务结束，就不销毁", () => {
     await continuesToReview();
   });
 
-  it("重启后恢复占名额的任务，恢复报错：同样不销毁", async () => {
+  it("重启后回到窗口的任务，恢复报错：同样不销毁", async () => {
     stopped(false);
     fake.resumeFails = new Error("STORE_FAILED");
     await restoreUnfinished();

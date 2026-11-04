@@ -69,7 +69,7 @@ describe("真实引擎：单文件", () => {
     expect(getState().history[0]).toMatchObject({ st: "done", name: "客户名单.txt" });
   });
 
-  it("文件无法处理：给出原因、回到首页，并释放快捷任务名额", async () => {
+  it("文件无法处理：给出原因、回到首页，并清理它在内核里的任务", async () => {
     fake.startFails = new Error("NOT_READY: no processable file");
     takePaths(["/docs/a.bin"]);
     await waitFor(() => expect(getState().single).toBeNull());
@@ -87,19 +87,20 @@ describe("真实引擎：单文件", () => {
     expect(fake.calls).toContain("clean");
   });
 
-  it("上一份快捷任务还没结束时拒绝新的一份，不改动界面", async () => {
+  it("上一份还在处理时拖入新的一份：直接开始，上一份在“最近”继续", async () => {
     takePaths(["/docs/a.txt"]);
     await waitFor(() => expect(single()).toBeTruthy());
     takePaths(["/docs/b.txt"]);
-    expect(toastText()).toContain("a.txt");
-    expect(fake.calls.filter((c) => c.startsWith("import"))).toHaveLength(1);
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    expect(fake.calls.filter((c) => c.startsWith("import"))).toHaveLength(2);
+    expect(getState().history[0]).toMatchObject({ name: "a.txt", st: "run", stl: "处理中", park: true });
   });
 
-  it("引擎拒绝导入（已有未完成任务）：提示原因，不留下半成品", async () => {
-    fake.importFails = new Error("QUICK_TASK_ACTIVE");
+  it("引擎拒绝导入：提示原因，不留下半成品", async () => {
+    fake.importFails = new Error("INVALID_REQUEST");
     takePaths(["/docs/a.txt"]);
-    await waitFor(() => expect(getState().single).toBeNull());
-    expect(toastText()).toContain("未完成的单文件任务");
+    await waitFor(() => expect(toastText()).toContain("所选文件或输出位置不可用"));
+    expect(getState().single).toBeNull();
   });
 
   it("导出时引擎仍要求确认：回到复核并提示，不当作已导出", async () => {

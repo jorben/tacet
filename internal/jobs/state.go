@@ -40,10 +40,11 @@ func (s State) Terminal() bool {
 	return false
 }
 
-// waitsForPerson reports whether nothing happens to the file until a person acts
+// WaitsForPerson reports whether nothing happens to the file until a person acts
 // on it (or it has ended). A file ready to publish moves on by itself once its
-// batch publishes automatically.
-func (s State) waitsForPerson(autoPublish bool) bool {
+// batch publishes automatically. A started batch of such files is what the
+// requirements call parked (FR-28).
+func (s State) WaitsForPerson(autoPublish bool) bool {
 	switch s {
 	case AwaitingReview, Blocked, Failed, Paused, Locked:
 		return true
@@ -53,8 +54,9 @@ func (s State) waitsForPerson(autoPublish bool) bool {
 	return s.Terminal()
 }
 
-// BatchKind separates the single-file quick path from regular batches. A
-// workspace holds at most one unparked unfinished batch of each kind (FR-28).
+// BatchKind separates the single-file quick path from regular batches. The
+// scheduler gives a quick task's stages priority; any number of unfinished
+// batches of either kind can exist side by side (FR-28).
 type BatchKind string
 
 const (

@@ -18,46 +18,41 @@ func runArgs(t *testing.T, extra ...string) []string {
 	return append(append([]string{"run", "--preset", "p", "--authorize", "--out", t.TempDir()}, extra...), t.TempDir()+"/a.txt")
 }
 
-func TestRunAndPreflightAskToParkAWaitingTask(t *testing.T) {
-	for name, args := range map[string][]string{
-		"run":       runArgs(t),
-		"preflight": {"preflight", "--out", t.TempDir(), t.TempDir() + "/a.txt"},
-	} {
-		f := &fake{status: app.BatchStatus{ID: "b0001"}}
-		call(context.Background(), opener(f, nil), args...)
-		if !f.imported.ParkWaiting {
-			t.Errorf("%s did not ask to park: %+v", name, f.imported)
-		}
-	}
+func parkedFake() *fake {
+	return &fake{status: app.BatchStatus{ID: "b0001", Files: []app.FileStatus{}}, unfinished: []app.BatchStatus{
+		{ID: "b0007", Parked: true, Started: true},
+		{ID: "b0008", Started: true}, // under way: nothing to remind anybody of
+		{ID: "b0009"},                // not started: neither
+	}}
 }
 
 func TestAParkedBatchIsNamedOnStandardError(t *testing.T) {
-	f := &fake{displaced: "b0007", status: app.BatchStatus{ID: "b0001"}}
-	code, out, errOut := call(context.Background(), opener(f, nil), runArgs(t)...)
+	code, out, errOut := call(context.Background(), opener(parkedFake(), nil), runArgs(t)...)
 	if code != ExitOK || !strings.Contains(errOut, "batch b0007") || !strings.Contains(errOut, "tacet list") {
 		t.Fatalf("code %d out %q err %q", code, out, errOut)
 	}
 	if strings.Contains(out, "b0007") {
 		t.Fatalf("the notice went to the report: %q", out)
 	}
-}
-
-// A preflight changes another task when it parks it, so it says so like a run does.
-func TestAPreflightNamesTheTaskItParked(t *testing.T) {
-	f := &fake{displaced: "b0007", status: app.BatchStatus{ID: "b0001"}}
-	_, _, errOut := call(context.Background(), opener(f, nil), "preflight", "--out", t.TempDir(), t.TempDir()+"/a.txt")
-	if !strings.Contains(errOut, "batch b0007") {
-		t.Fatalf("err %q", errOut)
+	if strings.Contains(errOut, "b0008") || strings.Contains(errOut, "b0009") {
+		t.Fatalf("named what does not wait for a person: %q", errOut)
 	}
 }
 
-func TestTheHelpSaysAPreflightMayPark(t *testing.T) {
-	var help strings.Builder
-	usage(&help)
-	for _, line := range strings.Split(help.String(), "\n") {
-		if strings.HasPrefix(line, "  preflight") && !strings.Contains(line, "parked") {
-			t.Fatalf("a preflight changes the task it parks, the help does not say so: %q", line)
-		}
+// A preflight touches no other task, so it has nothing to say about them.
+func TestAPreflightDoesNotConcernOtherTasks(t *testing.T) {
+	f := parkedFake()
+	_, _, errOut := call(context.Background(), opener(f, nil), "preflight", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if strings.Contains(errOut, "b0007") || strings.Contains(strings.Join(f.calls, ","), "unfinished") {
+		t.Fatalf("err %q calls %v", errOut, f.calls)
+	}
+}
+
+// The notice is a reminder: not being able to give it does not stop the run.
+func TestARunGoesOnWhenItCannotListWhatWaits(t *testing.T) {
+	f := &fake{status: app.BatchStatus{ID: "b0001"}, unfinishedErr: errors.New("STORE_FAILED")}
+	if code, out, errOut := call(context.Background(), opener(f, nil), runArgs(t)...); code != ExitOK || strings.Contains(errOut, "STORE_FAILED") {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
 	}
 }
 
@@ -77,7 +72,7 @@ func TestTheReadmeShowsTheCommandsAsTheHelpDoes(t *testing.T) {
 	}
 }
 
-// Nothing is said when nothing was parked.
+// Nothing is said when nothing is parked.
 func TestNoNoticeWithoutAParkedBatch(t *testing.T) {
 	f := &fake{status: app.BatchStatus{ID: "b0001"}}
 	if _, _, errOut := call(context.Background(), opener(f, nil), runArgs(t)...); strings.Contains(errOut, "parked") {
@@ -87,8 +82,7 @@ func TestNoNoticeWithoutAParkedBatch(t *testing.T) {
 
 // C3: the notice is an event of its own, on the same stream and in the same shape as the others.
 func TestAParkedBatchIsAJSONEvent(t *testing.T) {
-	f := &fake{displaced: "b0007", status: app.BatchStatus{ID: "b0001", Files: []app.FileStatus{}}}
-	_, out, errOut := call(context.Background(), opener(f, nil), runArgs(t, "--json")...)
+	_, out, errOut := call(context.Background(), opener(parkedFake(), nil), runArgs(t, "--json")...)
 	if errOut != "" {
 		t.Fatalf("err %q", errOut)
 	}
@@ -111,34 +105,23 @@ func TestAParkedBatchIsAJSONEvent(t *testing.T) {
 	}
 }
 
-func TestARefusedImportSaysWhereToLook(t *testing.T) {
-	for _, code := range []string{app.CodeBatchActive, app.CodeQuickTaskActive} {
-		f := &fake{importErr: errors.New(code)}
-		got, _, errOut := call(context.Background(), opener(f, nil), runArgs(t)...)
-		if got != ExitUsage || !strings.Contains(errOut, "tacet: "+code) || !strings.Contains(errOut, "tacet list") {
-			t.Fatalf("code %d err %q", got, errOut)
-		}
-		if strings.Contains(strings.Join(f.calls, ","), "start") {
-			t.Fatalf("calls %v", f.calls)
-		}
-	}
-}
-
 func TestListShowsEveryUnfinishedBatch(t *testing.T) {
 	f := &fake{unfinished: []app.BatchStatus{
 		{ID: "b0001", Kind: "batch", Phase: "awaiting_review", Total: 2, Delivered: 1, Parked: true, Counts: map[string]int{"awaiting_review": 1}},
-		{ID: "b0002", Kind: "quick", Phase: "processing", Total: 1},
+		{ID: "b0002", Kind: "quick", Phase: "processing", Total: 1, Started: true},
+		{ID: "b0003", Kind: "batch", Phase: "processing", Total: 1},
 	}}
 	code, out, errOut := call(context.Background(), opener(f, nil), "list")
 	if code != ExitOK {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 2 || !strings.Contains(lines[0], "b0001") || !strings.Contains(lines[0], "parked") ||
-		!strings.Contains(lines[1], "b0002") || !strings.Contains(lines[1], "holds the slot") {
+	if len(lines) != 3 || !strings.Contains(lines[0], "b0001") || !strings.Contains(lines[0], "parked") ||
+		!strings.Contains(lines[1], "b0002") || !strings.Contains(lines[1], "under way") ||
+		!strings.Contains(lines[2], "b0003") || !strings.Contains(lines[2], "not started") {
 		t.Fatalf("%q", out)
 	}
-	if _, jsonOut, _ := call(context.Background(), opener(f, nil), "list", "--json"); strings.Count(jsonOut, `"event":"unfinished"`) != 2 || !strings.Contains(jsonOut, `"parked":true`) {
+	if _, jsonOut, _ := call(context.Background(), opener(f, nil), "list", "--json"); strings.Count(jsonOut, `"event":"unfinished"`) != 3 || !strings.Contains(jsonOut, `"parked":true`) {
 		t.Fatalf("%q", jsonOut)
 	}
 }

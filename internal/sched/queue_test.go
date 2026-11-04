@@ -293,3 +293,109 @@ func TestQueueClaimCannotExceedBudgetOrUseUnknownWorker(t *testing.T) {
 		}
 	}
 }
+
+func inGroup(group, id string, stage kernel.StageKind, priority kernel.Priority) JobView {
+	j := job(id, stage, priority)
+	j.Group = group
+	return j
+}
+
+func takeOrder(t *testing.T, q *Queue, n int) []string {
+	t.Helper()
+	var got []string
+	for range n {
+		ticket := take(t, q)
+		got = append(got, ticket.Job().Attempt.JobID)
+		if err := ticket.Finish(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return got
+}
+
+func TestQueueTakesTurnsBetweenBatchesSoALargeOneDoesNotKeepASmallOneWaiting(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect})
+	for i := range 5 {
+		submit(t, q, inGroup("large", fmt.Sprintf("l%d", i), kernel.StageExtractDetect, kernel.Background))
+	}
+	submit(t, q, inGroup("small", "s0", kernel.StageExtractDetect, kernel.Background))
+	submit(t, q, inGroup("small", "s1", kernel.StageExtractDetect, kernel.Background))
+	got := fmt.Sprint(takeOrder(t, q, 7))
+	if want := "[l0 s0 l1 s1 l2 l3 l4]"; got != want {
+		t.Fatalf("order %s, want %s", got, want)
+	}
+}
+
+// Turns are between batches: inside one, the stage closest to delivery still goes first.
+func TestQueueKeepsDownstreamFirstWithinABatch(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect}, &fakeRunner{stage: kernel.StagePublish})
+	submit(t, q, inGroup("a", "a-extract", kernel.StageExtractDetect, kernel.Background))
+	submit(t, q, inGroup("a", "a-publish", kernel.StagePublish, kernel.Background))
+	submit(t, q, inGroup("b", "b-extract", kernel.StageExtractDetect, kernel.Background))
+	got := fmt.Sprint(takeOrder(t, q, 3))
+	if want := "[a-publish b-extract a-extract]"; got != want {
+		t.Fatalf("order %s, want %s", got, want)
+	}
+}
+
+// A new stage of a batch that just had its turn does not jump ahead of the batch waiting for one.
+func TestQueueAStageSubmittedLaterDoesNotTakeAnotherBatchsTurn(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect}, &fakeRunner{stage: kernel.StageResolve})
+	submit(t, q, inGroup("a", "a1", kernel.StageExtractDetect, kernel.Background))
+	submit(t, q, inGroup("b", "b1", kernel.StageExtractDetect, kernel.Background))
+	first := take(t, q)
+	if first.Job().Attempt.JobID != "a1" {
+		t.Fatalf("first %s", first.Job().Attempt.JobID)
+	}
+	first.Finish()
+	submit(t, q, inGroup("a", "a2", kernel.StageResolve, kernel.Background))
+	if got := fmt.Sprint(takeOrder(t, q, 2)); got != "[b1 a2]" {
+		t.Fatalf("order %s", got)
+	}
+}
+
+// Priority comes before turns: however many batches wait and however long, the interactive stage is next.
+func TestQueueInteractiveWorkGoesAheadOfEveryBatchsTurn(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect}, &fakeRunner{stage: kernel.StagePreflight})
+	submit(t, q, inGroup("a", "a1", kernel.StageExtractDetect, kernel.Background))
+	submit(t, q, inGroup("b", "b1", kernel.StageExtractDetect, kernel.Background))
+	submit(t, q, inGroup("quick", "q1", kernel.StagePreflight, kernel.Interactive))
+	if got := fmt.Sprint(takeOrder(t, q, 3)); got != "[q1 a1 b1]" {
+		t.Fatalf("order %s", got)
+	}
+}
+
+// A request that does not fit gives way to the next group that does, and keeps its place for when it fits.
+func TestQueueTurnsSkipWhatDoesNotFit(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExport, claim: kernel.ResourceClaim{MemoryBytes: 950}}, &fakeRunner{stage: kernel.StageValidate, claim: kernel.ResourceClaim{MemoryBytes: 100}})
+	submit(t, q, inGroup("x", "active", kernel.StageValidate, kernel.Background))
+	active := take(t, q)
+	submit(t, q, inGroup("a", "big", kernel.StageExport, kernel.Background))
+	submit(t, q, inGroup("b", "small", kernel.StageValidate, kernel.Background))
+	next := take(t, q)
+	if next.Job().Attempt.JobID != "small" {
+		t.Fatalf("next %s", next.Job().Attempt.JobID)
+	}
+	active.Finish()
+	next.Finish()
+	if got := take(t, q).Job().Attempt.JobID; got != "big" {
+		t.Fatalf("then %s", got)
+	}
+}
+
+// What was served is kept only while something is waiting or running: a long session does not grow it.
+func TestQueueForgetsTurnsOnceNothingIsInIt(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect})
+	submit(t, q, inGroup("a", "a1", kernel.StageExtractDetect, kernel.Background))
+	running := take(t, q)
+	submit(t, q, inGroup("b", "b1", kernel.StageExtractDetect, kernel.Background)) // with one running the record stays
+	if len(q.turns) != 2 {
+		t.Fatalf("%d groups recorded while one ran", len(q.turns))
+	}
+	running.Finish()
+	take(t, q).Finish()
+	submit(t, q, inGroup("c", "c1", kernel.StageExtractDetect, kernel.Background))
+	if _, kept := q.turns["a"]; kept || len(q.turns) != 1 {
+		t.Fatalf("kept after the queue emptied: %v", q.turns)
+	}
+}

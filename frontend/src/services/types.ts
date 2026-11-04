@@ -41,10 +41,10 @@ export interface EngineBatch {
   started?: boolean;
   /** Publishing was authorized. */
   authorized?: boolean;
-  /** Made room for a newer task of its kind; it stays until it is finished or cleaned. */
+  /** Files queued or being worked on, not counting paused ones and drafts. */
+  active?: number;
+  /** Started, and every open file waits for a person: nothing moves until they do something. */
   parked?: boolean;
-  /** Set by an import only: the batch it parked. */
-  displaced?: string;
 }
 
 export interface EngineFinding {
@@ -235,10 +235,9 @@ export interface EngineService {
   workspaceInfo(): Promise<EngineWorkspaceInfo>;
   /** Opens the active workspace in the system file manager. */
   openWorkspace(): Promise<void>;
-  /** `parkWaiting`: a task of this kind that only waits for the person is parked instead of refusing the import. */
-  importFiles(a: { files: string[]; quick: boolean; preset?: string; outputDir?: string; parkWaiting?: boolean }): Promise<EngineBatch>;
+  importFiles(a: { files: string[]; quick: boolean; preset?: string; outputDir?: string }): Promise<EngineBatch>;
   preflight(batch: string): Promise<EngineBatch>;
-  /** Every batch that is not finished, parked ones included; after a restart, paused where they stopped. */
+  /** Every batch that is not finished, in the order they were imported; after a restart, paused where they stopped. */
   unfinished(): Promise<EngineBatch[]>;
   start(a: { batch: string; preset?: string; outputDir?: string; authorize: boolean; allowPartial: boolean; mode?: "guided" | "strict" }): Promise<void>;
   status(batch: string, limit: number): Promise<EngineBatch>;

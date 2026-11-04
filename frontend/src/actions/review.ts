@@ -3,7 +3,7 @@ import { currentItem, decide, enterReview, resumeReview, selectItem, stepItem, u
 import type { ViewMode } from "../domain/types";
 import { getState, store } from "../store";
 import { closePop, toast } from "../overlay/store";
-import { needSlot } from "./home";
+import { makeRoom } from "./home";
 import { openBatchFile, resumeBatch } from "./batch";
 import { openLiveFile, openLiveGroup } from "./live";
 
@@ -21,7 +21,7 @@ export function enterBatchReview(gid?: string | null, fi?: number | null): void 
   store.update((d) => { enterReview(d.batch!, gid, fi); });
 }
 
-/** “开始复核” / “去处理”. From a history result the batch may first have to take back its slot. */
+/** “开始复核” / “去处理”. From a history result the batch first comes back on screen. */
 export function startReview(gid?: string | null): void {
   const s = getState();
   if (s.view === "history") {
@@ -30,7 +30,7 @@ export function startReview(gid?: string | null): void {
       enterBatchReview(gid);
     };
     if (s.historyResult!.data === null) go();
-    else needSlot("batch", () => { resumeBatch(s.historyResult!.entry.id); go(); });
+    else makeRoom("batch", () => { resumeBatch(s.historyResult!.entry.id); go(); });
     return;
   }
   enterBatchReview(gid);

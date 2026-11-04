@@ -158,7 +158,7 @@ func TestCLIPreflightLeavesNothingAndFlagsUnsupported(t *testing.T) {
 }
 
 // A run the core refuses (here: the preset's model is not installed) is over. It says so, and the next run,
-// of the same kind, starts: the draft does not keep the slot, and no start request is left to wait for.
+// of the same kind, starts: the draft stands in nobody's way, and no start request is left to wait for.
 func TestCLIARefusedRunLeavesNothingBehind(t *testing.T) {
 	t.Setenv("TACET_PREINSTALLED_MODELS", "")
 	for _, tc := range []struct {
@@ -185,7 +185,7 @@ func TestCLIARefusedRunLeavesNothingBehind(t *testing.T) {
 }
 
 // expectNothingLeft checks the state a refused run must not leave, through a later process's view of the
-// workspace: no batch holding a slot, no data of its files, no start request kept for it.
+// workspace: no batch listed, no data of its files, no start request kept for it.
 func (r *rig) expectNothingLeft(batch string) {
 	r.t.Helper()
 	core, err := r.opener(context.Background(), r.ws)
@@ -198,7 +198,7 @@ func (r *rig) expectNothingLeft(batch string) {
 		r.t.Fatal(err)
 	}
 	if len(left) != 0 {
-		r.t.Errorf("a batch still holds its slot: %+v", left)
+		r.t.Errorf("a batch is still listed: %+v", left)
 	}
 	if kept, _ := os.ReadDir(filepath.Join(r.ws, "resources")); len(kept) != 0 {
 		r.t.Errorf("the inspection left %d resource(s) of the files", len(kept))
