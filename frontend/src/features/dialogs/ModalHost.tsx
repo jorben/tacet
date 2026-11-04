@@ -13,7 +13,7 @@ export function ModalContent({ spec }: { spec: ModalSpec }) {
     case "recent": return <RecentTasksDialog />;
     case "historyItem": return <HistoryItemDialog entryId={spec.entryId} />;
     case "resumeBatch": return <ResumeBatchDialog entryId={spec.entryId} />;
-    case "slotConflict": return <SlotConflictDialog kind={spec.kind} go={spec.go} />;
+    case "slotConflict": return <SlotConflictDialog go={spec.go} />;
     case "switchPreset": return <SwitchPresetDialog preset={spec.preset} go={spec.go} />;
     case "bulkConfirm": return <BulkConfirmDialog gid={spec.gid} k={spec.k} />;
     case "password": return <PasswordDialog gid={spec.gid} members={spec.members} />;

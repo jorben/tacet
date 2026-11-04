@@ -70,6 +70,18 @@ func TestTheTrayLabelSaysWhatRunsAndWhatWaits(t *testing.T) {
 	}
 }
 
+// Parked tasks wait for the person as much as the one on screen does: the tray counts them all.
+func TestTheTrayCountsEveryParkedTask(t *testing.T) {
+	got := activityOf([]app.BatchStatus{
+		{ID: "b0001", Parked: true, Counts: map[string]int{"awaiting_review": 1}},
+		{ID: "b0002", Parked: true, Counts: map[string]int{"awaiting_publish": 1}},
+		{ID: "b0003", Active: 1, Counts: map[string]int{"processing": 1}},
+	})
+	if got != (Activity{Running: 1, Waiting: 2}) {
+		t.Fatalf("%+v", got)
+	}
+}
+
 // The tray follows the same statuses the window gets: at once when the engine opens, and after each change.
 func TestTheTrayFollowsTheUnfinishedBatches(t *testing.T) {
 	c := &trayCore{list: []app.BatchStatus{{ID: "b0001", Active: 2, Counts: map[string]int{"processing": 2, "awaiting_review": 1}}}}

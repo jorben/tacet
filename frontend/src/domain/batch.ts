@@ -2,6 +2,7 @@
 // batch they are given (usually an immer draft) and never touch the store, the DOM or timers.
 import { GROUP_DEFINITIONS, STRICT_GROUP_ID, SUPPORTED_EXTENSIONS } from "./catalog";
 import { extOf, fmt } from "./format";
+import { GROUP_BLOCKED } from "./live";
 import { pick, randInt, reseed } from "./random";
 import type {
   Batch, BatchFile, BatchSummary, ExceptionGroup, FileFilter, FileStatus, KeepDays, ManifestFile, ReviewRecord,
@@ -20,6 +21,13 @@ export function countFiles(files: { st: FileStatus }[]): FileCounts {
 }
 
 export const exportedCount = (c: FileCounts): number => c.done + c.partial;
+
+/**
+ * Files that still need the person: those held, and those of the kernel that failed. A failed file is listed with
+ * the files that cannot be processed, but the kernel has not ended it (it can be retried), so neither has its batch.
+ */
+export const openFileCount = (files: readonly { st: FileStatus; g?: string[] }[]): number =>
+  files.filter((f) => f.st === "held" || (f.st === "bad" && f.g?.includes(GROUP_BLOCKED))).length;
 
 /* ── Creation ─────────────────────────────────────────────────────────────── */
 
@@ -168,7 +176,8 @@ export function batchStatus(b: Batch): [StatusKind, string] {
     if (p) return ["warn", "待你处理 " + fmt(p) + " 处"];
     return ["run", "处理中 · " + fmt(dn) + " / " + N];
   }
-  if (c.held) return ["warn", "已导出 " + fmt(dn) + " / " + N + " · 待你处理 " + fmt(c.held) + " 份"];
+  const open = openFileCount(b.files);
+  if (open) return ["warn", "已导出 " + fmt(dn) + " / " + N + " · 待你处理 " + fmt(open) + " 份"];
   return dn === b.n ? ["done", "已导出 " + N] : ["part", "已导出 " + fmt(dn) + " / " + N];
 }
 

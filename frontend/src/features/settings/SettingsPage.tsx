@@ -3,6 +3,7 @@ import { openModal } from "../../overlay/store";
 import { openSettingsKeepMenu, openWorkspaceDirectory, setSetting, setThemePref } from "../../actions/settings";
 import { liveEngine } from "../../actions/live";
 import { useAppState } from "../../store";
+import { isRecoverable } from "../../store/selectors";
 import { Button, Icon, List, Page, PillButton, Row, SectionTitle, SelectButton, Segmented, Switch } from "../../ui";
 import { RedactStyleGallery } from "./RedactStyleGallery";
 import { UpdateRows } from "./UpdateRows";
@@ -73,7 +74,7 @@ export function SettingsPage() {
 }
 
 function WorkspaceRow() {
-  const recoverable = useAppState((s) => s.history.filter((h) => h.st === "keep").length);
+  const recoverable = useAppState((s) => s.history.filter(isRecoverable).length);
   const engine = liveEngine();
   const [size, setSize] = useState(engine ? "计算中…" : "1.4 GiB");
   const [opening, setOpening] = useState(false);

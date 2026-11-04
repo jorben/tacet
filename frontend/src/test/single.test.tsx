@@ -187,12 +187,11 @@ describe("单份文档", () => {
     expect(win()).toContain("劳动合同.pdf");
   });
 
-  it("同一类型任务占位：未导出的文件需选择保存/返回", () => {
+  it("同一类型任务占位：待确认的文件直接保存到“最近”，不弹窗", () => {
     go("s2");
     press("返回");
     chooseFiles("新文件.pdf");
-    expect($("#layer .modal")!.textContent).toContain("还未导出");
-    press("保存并继续");
+    expect($("#layer .modal")).toBeNull();
     expect($(".toast")!.textContent).toContain("已保存到“最近”");
     tick(5000);
     press("返回");

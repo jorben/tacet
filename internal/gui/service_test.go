@@ -159,6 +159,15 @@ func TestCommandsReachTheCoreAndHideDetails(t *testing.T) {
 	if c.imported.Kind != "quick" || c.imported.OutputDir != "/out" || c.imported.Preset != "p" || len(c.imported.Files) != 1 {
 		t.Fatalf("%+v", c.imported)
 	}
+	if c.imported.ParkWaiting {
+		t.Fatal("parked without being asked to")
+	}
+	if _, err := s.ImportFiles(ImportArgs{Files: []string{"/a.txt"}, OutputDir: "/out", ParkWaiting: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !c.imported.ParkWaiting {
+		t.Fatal("the request to park did not reach the core")
+	}
 	if err := s.Start(StartArgs{Batch: "b0001", Authorize: true, AllowPartial: true}); err != nil || !c.started.Authorize || !c.started.AllowPartial {
 		t.Fatalf("%+v %v", c.started, err)
 	}

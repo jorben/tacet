@@ -104,20 +104,21 @@ wails3 task build:cli DEV=true
 Usage: tacet <command> [options]
 
 Commands:
-  preflight  Check files without processing them
+  preflight  Check files without processing them (a task that only waits for a person is parked to make room)
   run        Process a file list with an explicit policy and publish authorization
   status     Show batch status and the per-file report
+  list       List the batches that are not finished, parked ones included
   resume     Resume a batch with its original snapshot
   retry      Retry selected members
   unlock     Enter the passwords of a batch's files on this terminal
-  clean      Clean up task data
+  clean      Clean up task data (--discard also stops a batch that is not finished)
   version    Print the version
 ```
 
 示例（仅规则预设，无需下载模型）：
 
 ```bash
-# 只预检，不处理、不留下任务数据
+# 只预检，不处理、不留下自己的任务数据（只等人的任务同样会被停放，见下）
 bin/cli/tacet preflight contract.docx report.pdf
 
 # 处理并发布到已存在的输出目录
@@ -128,10 +129,13 @@ bin/cli/tacet run --preset builtin-preset-office --authorize --out out contract.
 bin/cli/tacet run --preset builtin-preset-office --authorize --out out --list files.txt --json
 
 # 查看、恢复、重试、清理批次
+# 只剩等人文件的批次（如有文件待复核）在下一次 run 或 preflight 时停放，不占名额，用 list 找回
+bin/cli/tacet list
 bin/cli/tacet status --batch <id>
 bin/cli/tacet resume --batch <id>
 bin/cli/tacet retry  --batch <id> --file <member>
-bin/cli/tacet clean  --batch <id>
+bin/cli/tacet clean  --batch <id>             # 只清理已结束的批次
+bin/cli/tacet clean  --discard --batch <id>   # 先停止未结束的批次，再清理
 
 # 为需要密码的文件输入密码（仅交互式终端，不回显）
 bin/cli/tacet unlock --batch <id>

@@ -15,9 +15,15 @@ import (
 
 // fake is a Core whose answers the test dictates.
 type fake struct {
-	mu      sync.Mutex
-	status  app.BatchStatus
-	waitErr error
+	imported      app.ImportRequest
+	displaced     string
+	importErr     error
+	unfinished    []app.BatchStatus
+	unfinishedErr error
+	cleanErr      error
+	mu            sync.Mutex
+	status        app.BatchStatus
+	waitErr       error
 	// startErr, cancelErr and resumeErr are what Start, Cancel and Resume answer.
 	startErr, cancelErr, resumeErr error
 	// onStart and onWait run as that call comes in: to look at what the person sees by then, or to interrupt there.
@@ -34,7 +40,11 @@ type fake struct {
 func (f *fake) rec(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
 func (f *fake) Import(_ context.Context, r app.ImportRequest) (app.BatchStatus, error) {
 	f.rec("import")
-	return app.BatchStatus{ID: "b0001", Total: len(r.Files)}, nil
+	f.imported = r
+	if f.importErr != nil {
+		return app.BatchStatus{}, f.importErr
+	}
+	return app.BatchStatus{ID: "b0001", Total: len(r.Files), Displaced: f.displaced}, nil
 }
 func (f *fake) Preflight(context.Context, string) (app.BatchStatus, error) {
 	f.rec("preflight")
@@ -78,7 +88,10 @@ func (f *fake) Files(context.Context, string, int, int) ([]app.FileStatus, error
 func (f *fake) PagePreview(context.Context, string, int, int) (app.PagePreview, error) {
 	return app.PagePreview{}, nil
 }
-func (f *fake) Unfinished(context.Context) ([]app.BatchStatus, error)        { return nil, nil }
+func (f *fake) Unfinished(context.Context) ([]app.BatchStatus, error) {
+	f.rec("unfinished")
+	return f.unfinished, f.unfinishedErr
+}
 func (f *fake) ConfigList(context.Context, string) ([]app.ConfigItem, error) { return nil, nil }
 func (f *fake) ConfigCreate(context.Context, string, string, string, string) (app.ConfigItem, error) {
 	return app.ConfigItem{}, nil
@@ -124,7 +137,7 @@ func (f *fake) Retry(_ context.Context, _ string, j []string) error {
 	f.rec("retry:" + strings.Join(j, ","))
 	return nil
 }
-func (f *fake) Clean(context.Context, string) error { f.rec("clean"); return nil }
+func (f *fake) Clean(context.Context, string) error { f.rec("clean"); return f.cleanErr }
 func (f *fake) Close() error                        { f.rec("close"); return nil }
 
 func opener(f *fake, err error) Opener {

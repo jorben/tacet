@@ -15,6 +15,15 @@ export class FakeEngine implements EngineService {
   units: EngineUnit[] = [];
   afterManual: EngineUnit[] | null = null;
   decisions: { id: number; keep: boolean }[] | null = null;
+  /** Every decision call, and what the kernel keeps of them across a restart: documents read back with them. */
+  decisionLog: { job: string; ds: { id: number; keep: boolean }[] }[] = [];
+  private kernelDecisions = new Map<number, boolean>();
+  decideFails: Error | null = null;
+  decideGate: Promise<void> | null = null;
+  /** The next read of a document fails, once, as a store that is briefly unavailable. */
+  documentFails: Error | null = null;
+  /** The answer to a status call is late, as the real call is while the kernel is busy. */
+  statusGate: Promise<void> | null = null;
   published: { partial: boolean; dir?: string } | null = null;
   started: Parameters<EngineService["start"]>[0] | null = null;
   manual: { job: string; seq: number; start: number; end: number; category: string } | null = null;
@@ -28,13 +37,43 @@ export class FakeEngine implements EngineService {
   resumeFails: Error | null = null;
   private handler: ((b: EngineBatch) => void) | null = null;
   private quick = false;
+  /** The batch the rows belong to. Others keep theirs in `kept` while they are parked or set aside. */
+  current = "b0001";
+  private count = 0;
+  kept = new Map<string, EngineFile[]>();
+  /** Who holds each kind's slot, and what the kernel knows about them: as the real rule, confirmed and all waiting. */
+  private holder: Partial<Record<"quick" | "batch", string>> = {};
+  private begun = new Map<string, boolean>(); // started -> authorized
+  private beforePause = new Map<string, EngineFile[]>();
+  parkAsked: boolean[] = [];
+  /** How many batches were started. */
+  begunCount() { return this.begun.size; }
+  resumed: string[] = [];
+  cancelled: string[] = [];
+  cleaned: string[] = [];
+  private rowsOf(id: string): EngineFile[] { return id === this.current ? this.rows : this.kept.get(id) ?? []; }
+  private setRows(id: string, rows: EngineFile[]) { if (id === this.current) this.rows = rows; else this.kept.set(id, rows); }
+  private waiting(id: string): boolean {
+    if (!this.begun.has(id)) return false; // a draft is never parked
+    const granted = this.begun.get(id)!;
+    return this.rowsOf(id).every((r) => ["awaiting_review", "blocked", "failed", "paused", "locked", "completed", "partial", "skipped", "unprocessable", "cancelled"].includes(r.state) || (r.state === "ready_to_publish" && !granted));
+  }
+  private ended(id: string): boolean { return this.rowsOf(id).length > 0 && this.rowsOf(id).every((r) => ["completed", "partial", "skipped", "unprocessable", "cancelled"].includes(r.state)); }
+  private statusOf(id: string): EngineBatch {
+    const rows = this.rowsOf(id);
+    return { id, kind: id === this.current && this.quick ? "quick" : "batch", phase: "running", total: rows.length, counts: {}, delivered: 0, exit_code: 2, files: rows.slice(0, 200) };
+  }
+  /** An event about any batch, as the kernel sends for one that is parked too. */
+  async emitFor(id: string, rows: EngineFile[]) {
+    this.setRows(id, rows);
+    this.handler?.(this.statusOf(id));
+    await new Promise((r) => setTimeout(r, 10));
+  }
 
   row(i: number, state: string, extra: Partial<EngineFile> = {}): EngineFile {
     return { id: "j" + (i + 1), name: "f" + String(i + 1).padStart(4, "0"), state, status: state, format: "txt", pending: 0, findings: 0, ...extra };
   }
-  private batch(): EngineBatch {
-    return { id: "b0001", kind: this.quick ? "quick" : "batch", phase: "running", total: this.rows.length, counts: {}, delivered: 0, exit_code: 2, files: this.rows.slice(0, 200) };
-  }
+  private batch(): EngineBatch { return this.statusOf(this.current); }
   /** Moves the single file to a state and tells the listener, as the kernel's event does. */
   async emit(state: string, extra: Partial<EngineFile> = {}) {
     this.rows = [this.row(0, state, extra)];
@@ -54,14 +93,31 @@ export class FakeEngine implements EngineService {
   async workspaceInfo() { this.calls.push("workspaceInfo"); if (this.workspaceFails) throw this.workspaceFails; return this.workspace; }
   async openWorkspace() { this.calls.push("openWorkspace"); if (this.workspaceFails) throw this.workspaceFails; }
   importedPreset: string | undefined;
-  async importFiles(a: { files: string[]; quick: boolean; preset?: string }) {
+  async importFiles(a: { files: string[]; quick: boolean; preset?: string; parkWaiting?: boolean }) {
     this.importedPreset = a.preset;
     this.calls.push("import:" + (a.quick ? "quick" : "batch") + ":" + a.files.length);
+    this.parkAsked.push(!!a.parkWaiting);
     if (this.importFails) throw this.importFails;
+    const kind = a.quick ? "quick" : "batch";
+    const held = this.holder[kind];
+    let displaced: string | undefined;
+    if (held && !this.ended(held)) {
+      if (!a.parkWaiting || !this.waiting(held)) throw new Error(a.quick ? "QUICK_TASK_ACTIVE" : "BATCH_ACTIVE");
+      displaced = held;
+    }
+    this.count++;
+    if (this.count > 1) { // the rows of the first task are what a test scripted; later ones start afresh unless it scripted those too
+      this.kept.set(this.current, this.rows);
+      this.current = "b" + String(this.count).padStart(4, "0");
+      this.rows = this.nextRows ?? a.files.map((_, i) => this.row(i, "preflighting"));
+      this.nextRows = null;
+    }
+    this.holder[kind] = this.current;
     this.quick = a.quick;
     if (!this.rows.length) this.rows = a.files.map((_, i) => this.row(i, "preflighting"));
-    return this.batch();
+    return { ...this.batch(), displaced };
   }
+  nextRows: EngineFile[] | null = null;
   unfinishedList: EngineBatch[] = [];
   async unfinished() { this.calls.push("unfinished"); return this.unfinishedList; }
   async preflight() { this.calls.push("preflight"); return this.batch(); }
@@ -69,28 +125,60 @@ export class FakeEngine implements EngineService {
     this.calls.push("start");
     this.started = a;
     if (this.startFails) throw this.startFails;
+    this.begun.set(a.batch, a.authorize);
   }
-  async status() { return this.batch(); }
-  async files(_b: string, offset: number, limit: number) {
+  async status(b?: string) {
+    if (this.statusGate) await this.statusGate;
+    return b ? this.statusOf(b) : this.batch();
+  }
+  async files(b: string, offset: number, limit: number) {
     this.calls.push("files:" + offset);
-    return this.rows.slice(offset, offset + limit);
+    return this.rowsOf(b).slice(offset, offset + limit);
   }
-  async publish(_b: string, partial: boolean, dir?: string) {
+  publishedBatch = "";
+  async publish(b: string, partial: boolean, dir?: string) {
     this.calls.push("publish");
     if (this.publishFails) throw this.publishFails;
     this.published = { partial, dir };
+    this.publishedBatch = b;
   }
-  async pause() { this.calls.push("pause"); }
-  async resume() { this.calls.push("resume"); if (this.resumeFails) throw this.resumeFails; }
-  async cancel() { this.calls.push("cancel"); }
-  async clean() { this.calls.push("clean"); }
-  async retry() { this.calls.push("retry"); }
+  async pause(b?: string) {
+    this.calls.push("pause");
+    if (!b) return;
+    this.beforePause.set(b, this.rowsOf(b));
+    this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: "paused" })));
+  }
+  async resume(b?: string) {
+    this.calls.push("resume");
+    if (this.resumeFails) throw this.resumeFails;
+    if (!b) return;
+    this.resumed.push(b);
+    const was = this.beforePause.get(b);
+    if (was) { this.setRows(b, was); this.beforePause.delete(b); }
+  }
+  async cancel(b?: string) {
+    this.calls.push("cancel");
+    if (!b) return;
+    this.cancelled.push(b);
+    this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: "cancelled" })));
+  }
+  async clean(b?: string) { this.calls.push("clean"); if (b) this.cleaned.push(b); }
+  retried: [string, string[]][] = [];
+  /** As the kernel: a failed file runs again, a blocked one too unless it waits for a password or the original changed. */
+  async retry(b: string, only: string[] = []) {
+    this.calls.push("retry");
+    this.retried.push([b, only]);
+    this.setRows(b, this.rowsOf(b).map((r) => (r.state === "failed" || (r.state === "blocked" && !["password_required", "PASSWORD_INCORRECT", "INPUT_CHANGED"].includes(r.detail ?? ""))) ? { ...r, state: "queued" } : r));
+  }
   async unlock(job: string, password: string) {
     this.calls.push("unlock");
     this.unlocked.push([job, password]);
     if (this.unlockFails) throw this.unlockFails;
   }
-  async documentUnits(_job: string, after: number) { return this.units.filter((u) => u.seq > after); }
+  async documentUnits(_job: string, after: number) {
+    if (this.documentFails) { const err = this.documentFails; this.documentFails = null; throw err; }
+    return this.units.filter((u) => u.seq > after).map((u) => ({ ...u, findings: (u.findings ?? []).map((f) => (this.kernelDecisions.has(f.id) ? { ...f, decision: this.kernelDecisions.get(f.id) ? "keep" : "redact" } : f)) }));
+  }
   async pagePreview(job: string, page: number, _dpi: number) {
     this.calls.push("preview:" + page);
     if (this.previewFails) throw this.previewFails;
@@ -185,9 +273,13 @@ export class FakeEngine implements EngineService {
     if (this.testFails) throw this.testFails;
     return this.testResult;
   }
-  async decide(_job: string, ds: { id: number; keep: boolean }[]) {
+  async decide(job: string, ds: { id: number; keep: boolean }[]) {
     this.calls.push("decide");
+    if (this.decideGate) await this.decideGate;
+    if (this.decideFails) throw this.decideFails;
     this.decisions = ds;
+    this.decisionLog.push({ job, ds });
+    ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));
     // the kernel redoes the file from resolution as soon as a decision is stored
     this.rows = this.rows.map((r) => (r.state === "awaiting_review" || r.state === "ready_to_publish" ? { ...r, state: "resolving", pending: 0 } : r));
   }
