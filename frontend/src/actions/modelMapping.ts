@@ -3,8 +3,6 @@
 // kernel stores the change as the model's "model_mapping" object; resetting deletes it.
 import { effectiveLabels, mappedCategories, sameMapping, withCategoryLabels } from "../domain/liveConfig";
 import { categoryName } from "../domain/categories";
-import { availableRulesets, losesNothing, mappingChangeLoss } from "../domain/presets";
-import { confirmLoss } from "./presets";
 import type { ModelPlugin } from "../domain/types";
 import { toast } from "../overlay/store";
 import { getState, store } from "../store";
@@ -64,20 +62,14 @@ function enqueue(modelId: string, operation: () => Promise<void>): Promise<void>
 }
 
 type MappingEdit = (m: ModelPlugin) => { map: Record<string, string>; message?: string };
-function change(modelId: string, edit: MappingEdit, approved = false): Promise<void> {
+function change(modelId: string, edit: MappingEdit): Promise<void> {
   return enqueue(modelId, async () => {
-    const s = getState();
-    const m = s.models.find((x) => x.id === modelId);
+    const m = getState().models.find((x) => x.id === modelId);
     if (!m) return;
     const { map, message } = edit(m);
     if (sameMapping(map, effectiveLabels(m))) return;
     // a model none of whose labels count detects nothing: a scheme that wants that detects with rules only
     if (!Object.keys(map).length) { toast("至少保留一个标签关联到类别"); return; }
-    const loss = mappingChangeLoss(s.presets, { rulesets: availableRulesets(s.rulesets, s.plugins), models: s.models }, modelId, map);
-    if (!approved && !losesNothing(loss)) {
-      confirmLoss("保存映射", loss, () => { void change(modelId, edit, true); });
-      return;
-    }
     if (await write(m, map) && message) toast(message);
   });
 }

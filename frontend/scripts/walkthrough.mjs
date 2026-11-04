@@ -101,8 +101,7 @@ await page.getByRole('button', { name: '公司名 关联的标签', exact: true 
 await page.getByRole('menuitemcheckbox').filter({ hasText: 'private_person' }).click();
 await shot("模型 · 多选标签草稿", ["公司名 · 可多选标签", "完成"]);
 await page.getByRole('button', { name: '完成', exact: true }).click();
-await shot("模型 · 失去检测来源二次确认", ["仍要保存映射？", "办公外发", "没有检测来源"]);
-await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+await shot("模型 · 映射已保存", ["已自定义", "private_person"]);
 
 await page.goto(BASE + "#scene=plugins"); await page.reload(); await page.waitForTimeout(300);
 await page.getByRole('button', { name: '安装', exact: true }).click();

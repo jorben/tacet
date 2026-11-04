@@ -23,7 +23,6 @@ const PRESET = item("preset", "builtin-preset-model", "办公外发", { ruleset_
 let fake: FakeEngine;
 const toastText = () => overlayStore.get().toast?.msg ?? "";
 const model = () => getState().models[0]!;
-const approve = () => { const m = overlayStore.get().modal; if (m?.type === "detectionLoss") act(() => m.go()); };
 
 beforeEach(async () => {
   fake = new FakeEngine();
@@ -36,9 +35,9 @@ afterEach(() => { cleanup(); stopConfigSync(); setService(null); act(() => overl
 describe("模型映射至少关联一个标签", () => {
   it("取消最后一个关联的标签被拒绝，不写入", async () => {
     await act(async () => { await setLabelCategory(model().id, "private_address", null); });
-    approve(); await act(async () => { await flushConfig(); });
+    await act(async () => { await flushConfig(); });
     await act(async () => { await setLabelCategory(model().id, "phone", null); });
-    approve(); await waitFor(() => expect(Object.keys(effectiveLabels(model()))).toEqual(["private_person"]));
+    await waitFor(() => expect(Object.keys(effectiveLabels(model()))).toEqual(["private_person"]));
     const before = fake.calls.length;
     await act(async () => { await setLabelCategory(model().id, "private_person", null); });
     expect(overlayStore.get().modal).toBeNull();
@@ -71,7 +70,7 @@ describe("删除类别", () => {
     expect(id).toMatch(/^cfg_/);
     // the model counts addresses as the new category; a copy of the scheme masks it
     await act(async () => { await setLabelCategory(model().id, "private_address", id); });
-    approve(); await waitFor(() => expect(effectiveLabels(model()).private_address).toBe(id));
+    await waitFor(() => expect(effectiveLabels(model()).private_address).toBe(id));
     selectPreset("builtin-preset-model");
     act(() => copyPreset());
     act(() => setCategoryTreatment(id, "ph"));

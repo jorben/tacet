@@ -29,7 +29,6 @@ describe("产品澄清 · 移动标签提示", () => {
     { labels: ["private_date"], text: "已将 private_date 从 日期 移到 公司名" },
     { labels: ["private_date", "phone", "email", "private_address", "account"], text: "已将 account 从 账号 移到 公司名；已将 email 从 邮箱 移到 公司名；已将 phone 从 电话 移到 公司名；等 2 个标签" },
   ])("移动 $labels：只弹一条 toast，带原始标签名和实体显示名，最多列三处", async ({ labels, text }) => {
-    store.update((d) => { d.presets = []; });
     const toast = vi.spyOn(overlays, "toast");
     try {
       await setCategoryLabels("astr", "organization", labels);

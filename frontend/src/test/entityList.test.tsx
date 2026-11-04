@@ -10,7 +10,7 @@ import { flushConfig, loadConfig, stopConfigSync } from "../actions/liveConfig";
 import { overlayStore } from "../overlay/store";
 import { effectiveLabels } from "../domain/liveConfig";
 import * as liveConfigDomain from "../domain/liveConfig";
-import { rulesetChangeLoss } from "../domain/presets";
+import { presetHandles, rulesetChangeLoss } from "../domain/presets";
 import type { Rule } from "../domain/types";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -236,27 +236,39 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     act(() => store.update((d) => { d.models[0]!.mapping = { map: { ...privacy.label_map, private_person: "unknown" } }; }));
     expect($$(".mapping-row").at(-1)).toBe(mapping("unknown")); expect(mapping("unknown")).toHaveTextContent("unknown未登记类别"); expect(mapping("unknown")).toHaveTextContent("private_person");
   });
-  it("取消模型最后标签先确认 X，取消不改，确认后未关联可再分配；恢复默认删除映射和已修改；mapping-warn 保留", async () => {
+  it("取消标签直接写入，未关联可再分配；恢复默认删除映射和已修改", async () => {
     const fake = await live(); mount("model"); choose("person"); pick("private_person"); await finish();
-    expect(overlayStore.get().modal?.type).toBe("detectionLoss");
-    expect($(".loss-modal")).toHaveTextContent("方案『X』"); press("取消", ".loss-modal"); expect(getState().models[0]!.mapping).toBeUndefined();
-    choose("person"); pick("private_person"); await finish(); await confirm();
     expect(effectiveLabels(getState().models[0]!)).not.toHaveProperty("private_person"); expect($(".unmapped-labels")).toHaveTextContent("private_person");
     click(button("private_person", $(".unmapped-labels")!)); await act(async () => { pick("公司名"); });
-    expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization"); expect($(".mapping-warn")).toHaveTextContent("公司名");
+    expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization");
     expect(mapping("person").querySelector("[data-tip]")).toHaveAttribute("data-tip", "默认值：private_person");
     await act(async () => { press("恢复默认"); });
     expect(fake.items.filter((i) => i.kind === "model_mapping")).toHaveLength(0); expect($$(".mapping-row [data-tip]")).toHaveLength(0);
   });
-  it("把模型最后标签从 A 移到 B 也先确认；确认后提示已将标签从 A 移到 B；仅复核类别此后才列出", async () => {
+  it("把模型最后标签从 A 移到 B 提示已将标签从 A 移到 B；仅复核类别此后才列出", async () => {
     await live(); mount("model"); expect(mapping("organization")).toBeNull();
     // the label's own menu: the category it counts as now is ticked, every category of the catalog is offered
     click(button("标签 private_person", mapping("person")));
     expect($("#layer .mi[role=menuitem] .ck")!.closest(".mi")).toHaveTextContent("人名");
     expect(menuTexts()).toContain("不使用");
-    await act(async () => { pick("公司名"); }); expect($(".loss-modal")).toHaveTextContent("X"); await confirm();
+    await act(async () => { pick("公司名"); });
     expect(mapping("organization")).toHaveTextContent("private_person");
     expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization"); expect(overlayStore.get().toast?.msg).toBe("已将 private_person 从 人名 移到 公司名");
+  });
+  it("模型页不检查方案：方案失去来源、没有处理方式都不确认、不警告；只列出引用方案，点击跳转", async () => {
+    await live(); mount("model");
+    const x = () => getState().presets.find((p) => p.name === "X")!;
+    // the premise: X masks 人名 and detects it with this model only, so the move below takes its source away...
+    expect(presetHandles(x(), "person")).toBe(true);
+    click(button("标签 private_person", mapping("person"))); await act(async () => { pick("公司名"); });
+    // ...and leaves 公司名, which X does not handle, among what the model reports
+    expect(getState().models[0]!.categories).toContain("organization"); expect(presetHandles(x(), "organization")).toBe(false);
+    expect(effectiveLabels(getState().models[0]!).private_person).toBe("organization");
+    expect(overlayStore.get().modal).toBeNull();
+    expect($(".preset-detail")).not.toHaveTextContent("不会被处理"); expect($(".preset-detail")).not.toHaveTextContent("去方案设置");
+    expect($(".preset-detail .phead-sub")).toHaveTextContent("用于 X");
+    press("X", ".preset-detail .phead-sub");
+    expect(getState().presetTab).toBe("scheme"); expect(getState().presetSel).toBe(x().id);
   });
   it.each([false, true])("快速连续勾选 3 个标签（已有自定义 %s）：菜单关闭一次写入，无冲突", async (custom) => {
     const fake = await live(); if (custom) await setCategoryLabels("privacy-filter-fp16", "organization", ["private_date"]);
