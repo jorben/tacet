@@ -276,7 +276,7 @@ async function abandonSingle(runId: number, why: string): Promise<void> {
   if (!found) return;
   toast(why);
   const e = liveEngine();
-  if (e && batch) { try { await e.cancel(batch); await e.clean(batch); } catch { /* it stays in the kernel, which lists it at the next start */ } }
+  if (e && batch) { try { await e.cancel(batch); await cleanWhenStopped(batch); } catch { /* it stays in the kernel, which lists it at the next start */ } }
 }
 
 /** The runs reading their document right now: another run has a document of its own to read. */
@@ -517,7 +517,7 @@ export function cancelLiveSingle(): void {
   store.update((d) => { d.single = null; d.view = "home"; });
   toast("已停止");
   const e = liveEngine();
-  if (e && batch) void e.cancel(batch).then(() => e.clean(batch)).catch(() => {});
+  if (e && batch) void e.cancel(batch).then(() => cleanWhenStopped(batch)).catch(() => {});
 }
 
 /** A selection of the document becomes a redacted candidate in the kernel; the document is then read again. */

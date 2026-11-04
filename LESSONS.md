@@ -198,6 +198,27 @@
   - 修复一条路径时，把写同一份数据的其他路径都列出来逐个试。
 - 出现：1 次（2026-11-04）
 
+**状态机单测通过，不代表真实路径走得到；“等对方回报”的流程，要列出回报到不了的每一种情况，并从真实入口测到结束。**
+- #33：处理中 `Cancel` 之后文件停在 `cancelling`，`Clean` 被拒，`Wait` 不结束，要再 Cancel 一次或重启。`Cancel` 等尝试回报，而 `Apply` 处理 `EvCancel` 时已清空 attempt 并把版本加 1，回报在 `AdmitTx`、`CompleteStage` 都被当成迟到结果丢弃，`transition.go` 里“由阶段确认取消”在真实路径上走不到。
+- 没抓到的原因，每一层都只测了自己那一段：
+  - `transition_test.go` 直接把 `Cancelling` 和结果喂给状态机，这条分支一直是绿的；`repository_test.go` 断言迟到结果被拒，也是对的，没有人把这两条放在一起走一遍；
+  - `Active` 不统计 `cancelling`，`running()` 统计，所以看 `Active` 的测试看不出文件没停；
+  - `FakeEngine` 的 `cancel` 立即变成 `cancelled`，`clean` 恒成功，前端测不出 `cancelLiveSingle` 吞掉的拒绝。fake 没实现被测的内核规则，和“状态与显示”里那一条同类；
+  - PR #22 的 `discard` 注释写明了“With one running ... Clean below is refused”，把缺口写成了说明，没有问拒绝之后用户怎么办。
+- 按“回报到不了”逐一列举，比 issue 多查出：
+  - 尝试还在队列里，`disp.Cancel` 移除后根本没有回报（旧代码：`the file is cancelling`）；
+  - 尝试已 `BeginStage` 但还没 `Submit`，调度器找不到它，文件取消后它才入队（旧代码：`a stage was left queued for the cancelled file`）；
+  - 第二次 Cancel 看到 attempt 为空，在阶段还在跑时就宣布 `cancelled`（旧代码：`while its stage has not stopped the file is cancelled`）；暂停后取消同样如此，`Clean` 会删掉阶段正在用的数据；
+  - `abandonSingle` 和 `cancelLiveSingle` 一样，`cancel` 后直接 `clean`，只有“停止并清理”会重试。
+- 修复：fix/issue-33-cancel-stuck。`Cancel` 在一个事务里取消所有未结束的文件并清掉 `Pending`；`settleCancelled` 是结束 `cancelling` 的唯一入口，只在调度器已放手时结束文件；迟到结果到达时回到这里。`Running` 在提交内读，调度器在调用 completion 之前放手，所以两边谁先都不会漏。
+- 验证：`internal/app` 的端到端测试带 `darwin` 标签，这次用不提交的 Linux 垫片跑；整体撤回后 14 个新测试失败，13 处逐处撤回各有测试失败。没有在 macOS、Windows 或真实界面上跑过。
+- 规则：
+  - 写“由 X 回报后结束”时，列出 X 回报不了的情况：还没开始、被移除、在交接途中、已被别的命令替换、被判为迟到；每种情况写明谁来收尾；
+  - 新加一个终止路径的测试，要从用户命令（`Cancel`）走到终态，并接着做下一步（`Clean`、`Wait`、重启），不能只测状态机一步；
+  - 把拒绝写进注释之前，先写明拒绝之后谁来解除；
+  - 判断“忙不忙”的几处（`running()`、`Active`、`Terminal()`）含义不同时，断言要看用户下一步能不能做，不要只看其中一个计数。
+- 出现：1 次（2026-11-05）
+
 ## 状态与显示
 
 **操作中途失败留下的半成品，要测它经过关闭和重启，不能只测下一次操作。**

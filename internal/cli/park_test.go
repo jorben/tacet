@@ -162,7 +162,7 @@ func TestCleanWithDiscardStopsTheBatchFirst(t *testing.T) {
 	if code != ExitOK || !strings.Contains(out, "cleaned") {
 		t.Fatalf("code %d out %q err %q", code, out, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "cancel,resume,wait,clean,close" {
+	if got := strings.Join(f.calls, ","); got != "cancel,wait,clean,close" {
 		t.Fatalf("calls %s", got)
 	}
 }

@@ -265,3 +265,43 @@ func TestALargeBatchDoesNotStarveAnInteractiveFile(t *testing.T) {
 		t.Fatalf("the file ran from %d to %d of %v, want %d to %d", first, last, order, before, before+5)
 	}
 }
+
+// A stage counts as running until the dispatcher lets go of it, which is just before its completion: a completion
+// looking at its own job sees nothing left of it.
+func TestRunningCoversAStageUntilItsCompletion(t *testing.T) {
+	entered, exit := make(chan struct{}), make(chan struct{})
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExport, claim: claim(), run: func(StageContext) StageOutcome {
+		close(entered)
+		<-exit
+		return StageOutcome{Kind: Completed}
+	}})
+	j := job("j", kernel.StageExport, kernel.Background)
+	submit(t, q, j)
+	d := NewDispatcher(q)
+	if d.Running(j.Attempt.JobID) {
+		t.Fatal("a queued stage counts as running")
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	inCompletion := make(chan bool, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- d.Run(ctx, func(v JobView, _ StageOutcome) error {
+			inCompletion <- d.Running(v.Attempt.JobID)
+			stop()
+			return nil
+		})
+	}()
+	receive(t, entered)
+	if !d.Running(j.Attempt.JobID) {
+		t.Fatal("a running stage does not count as running")
+	}
+	if d.Running("another") {
+		t.Fatal("another job counts as running")
+	}
+	close(exit)
+	if receive(t, inCompletion) {
+		t.Fatal("a completion sees its own stage as running")
+	}
+	receive(t, done)
+}

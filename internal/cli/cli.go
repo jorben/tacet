@@ -484,17 +484,11 @@ func (e *env) run(args []string) int {
 func (e *env) discard(core app.Core, batch string) error {
 	bg := context.Background()
 	if err := core.Cancel(bg, batch); err != nil {
-		return err // files still in the draft are what Resume below could begin
+		return err
 	}
-	// The refused start stays on record (run.Pending) and a later Wait would never end on it. Only Resume drops
-	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen. A
-	// Resume that fails has not dropped it, so nothing would end that wait, and the record stays. With no attempt
-	// running Cancel finished the batch and the files can still be cleaned. With one running, its file is still
-	// Cancelling: the FinishBatch in Cancel got ErrBatchOpen, which is ignored, so the batch is not finished and
-	// Clean below is refused.
-	if core.Resume(bg, batch) == nil {
-		core.Wait(e.ctx, batch)
-	}
+	// A stage still running in this process has been told to stop; Clean is refused until it has. An interrupt ends
+	// this wait, and then Clean below says so.
+	core.Wait(e.ctx, batch)
 	return core.Clean(bg, batch)
 }
 

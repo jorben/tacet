@@ -1,9 +1,9 @@
 // Tasks of a kind side by side (FR-28): the kernel goes on with what left the screen, and “最近” follows it.
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import { openBatchFile, startBatch, togglePause } from "../actions/batch";
-import { returnToBatch } from "../actions/single";
-import { openHistoryEntry, resumeSavedBatch } from "../actions/home";
+import { cancelBatch, openBatchFile, startBatch, togglePause } from "../actions/batch";
+import { cancelSingle, returnToBatch } from "../actions/single";
+import { discardSavedTask, openHistoryEntry, resumeSavedBatch } from "../actions/home";
 import { sendDecisions } from "../actions/decisions";
 import { errorText, startLive, stopLiveBatch, takePaths } from "../actions/live";
 import { requestQuit } from "../actions/window";
@@ -454,5 +454,66 @@ describe("离开屏幕的任务仍然算数", () => {
     act(() => requestQuit());
     expect(overlayStore.get().modal?.type).toBe("closeWindow");
     expect(document.body.textContent).toContain("a.txt · 处理中");
+  });
+});
+
+// The kernel refuses Clean until a running stage has stopped (issue #33). Each way of stopping a task keeps asking, so
+// that one stop leaves nothing behind in the kernel.
+describe("停止时阶段还没停下", () => {
+  /** Lets the stage stop only after Clean was refused at least once, and sees the batch cleaned after that. */
+  const cleanedOnceStopped = async (id: string) => {
+    await waitFor(() => expect(fake.calls).toContain("clean"));
+    expect(fake.cleaned).toEqual([]);
+    fake.stageStopped(id);
+    await waitFor(() => expect(fake.cleaned).toEqual([id]));
+  };
+
+  it("单文件“停止”：屏幕立即清空，内核的任务等阶段停下后清理", async () => {
+    takePaths(["/d/a.txt"]);
+    await waitFor(() => expect(single()?.live?.batch).toBe("b0001"));
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    fake.stageStopping = true;
+    act(() => cancelSingle());
+    expect(getState().single).toBeNull();
+    await cleanedOnceStopped("b0001");
+  });
+
+  it("单文件开始被拒绝后收起：内核的任务同样等阶段停下后清理", async () => {
+    fake.startFails = new Error("NOT_READY: no processable file");
+    fake.stageStopping = true;
+    takePaths(["/d/a.txt"]);
+    await waitFor(() => expect(fake.cancelled).toEqual(["b0001"]));
+    await cleanedOnceStopped("b0001");
+    await waitFor(() => expect(getState().single).toBeNull());
+  });
+
+  it("批次“停止并清理”：等阶段停下，一次成功，条目和屏幕都清掉", async () => {
+    await runningBatch(["extracting_detecting"], ["queued"]);
+    fake.stageStopping = true;
+    const stopping = stopLiveBatch(false);
+    await cleanedOnceStopped("b0001");
+    await stopping;
+    expect(getState().batch).toBeNull();
+    expect(toastText()).toContain("已停止并清理");
+  });
+
+  it("放弃未开始的批次：内核的任务等阶段停下后清理", async () => {
+    fake.rows = rowsOf(["preflighting"], ["preflighting"]);
+    takePaths(["/d/a.txt", "/d/b.txt"]);
+    await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
+    fake.stageStopping = true;
+    act(() => cancelBatch());
+    await cleanedOnceStopped("b0001");
+  });
+
+  it("“最近”里的任务“停止并清理”：等阶段停下，一次成功，条目清掉", async () => {
+    await runningBatch(["extracting_detecting"], ["queued"]);
+    await act(async () => { await stopLiveBatch(true); });
+    const id = entryOf("b0001")!.id;
+    fake.stageStopping = true;
+    const stopping = discardSavedTask(id);
+    await cleanedOnceStopped("b0001");
+    await stopping;
+    expect(entryOf("b0001")).toBeUndefined();
   });
 });
