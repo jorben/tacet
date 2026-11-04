@@ -706,7 +706,8 @@ func (r *Repository) Delete(tx store.Tx, id string, expectedVersion uint64) erro
 	}
 	if object.Kind == Category {
 		// A rule that reports the category keeps it. Model mappings and schemes are shared configuration that
-		// only refers to it: they let go of it (the screens say so before the person confirms).
+		// only refers to it: they let go of it. The screen's dialog lists only the affected models one by one;
+		// the schemes' settings for the category are cleared too, which its subtitle states only in general.
 		if used, err := reportedByRule(t, id); err != nil || used {
 			if err == nil {
 				err = ErrInUse

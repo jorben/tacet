@@ -108,6 +108,7 @@
   - 写“X 改动会询问”这类范围结论之前，列出能造成同一后果的每个入口，逐个核对它是否真的走到那段代码，文档按入口写，不按“某类改动”概括；
   - 删除或改变一个行为时，用它的旧说法（这里是“确认”“询问”“confirmation”“ask”）搜索 `docs/v1`（含 `backend/evidence.json`）和相关代码的注释，逐处改掉或说明为什么保留；
   - `tools/backend_trace.py --check` 通过只说明清单是最新的，不说明文档内容和实现一致。
+- 同一天 PR #22 的审查又查出代码注释里的旧说法：`detachCategory` 的调用处说界面会说明方案的变化（弹窗只逐项列模型），`CompatReport` 和 `Startable` 说 `NeedsNarrowing` 要用户确认（生产代码不读它）。修复在 fix/cli-resume-error-and-comments；`tacet-module-design.md:263` 的同类说法还没改。
 - 出现：1 次（2026-11-04）
 
 ## CI 耗时
@@ -161,6 +162,20 @@
   - 写“关闭时等 X”之前，对照 `lifecycle` 里每种关闭模式实际执行的步骤，而不是只看正常关闭；关闭只等真正需要等的那一段（这里是启动进程），不等可能卡住、又不可取消的工作；
   - 后台工作占用的共享资源（这里是 `modelSem`），要说明用户的真实操作来时谁让路。
 - 出现：1 次（2026-11-03）
+
+**依赖上一步成功的等待，先确认上一步成功了；已有的结论先输出，再做可能等待的收尾；判断“是不是被中断”要看 ctx，不能只看错误类型。**
+- PR #22（18f6cee）让被拒绝的 `run` 在 `discard` 里依次 Cancel、Resume、Wait、Clean，审查（2026-11-04）指出：
+  - `Resume` 的错误被忽略。它出错时 `run.Pending` 还在，`Wait` 只能靠 Ctrl-C 结束；拒绝信息又要等 `discard` 返回才输出，命令会无输出地挂起。测试的 fake 里 `Resume` 恒返回 nil，这条路径没有覆盖。
+  - `Start` 的事务里 `getRun` 出错一律返回 `ErrNotFound`。在真实加密存储上，事务内取消后 `getRun` 的原始错误是 `context canceled`（20/20），到了 CLI 就成了 `NOT_FOUND`：本该可以 resume 的中断，被当作拒绝，草稿被取消并清理。完整的 `Start` 在 Linux 上开不了工作区（`WORKSPACE_LOCK_UNAVAILABLE`），这里只验证了 `getRun` 这一段。
+  - `TestAnInterruptEndsTheWaitOfARefusedStart` 先取消 ctx，再让 fake 回答拒绝。读码看真实的 `Start` 不会这样回答（`pollIdle` 先返回 `Canceled`），测试把一个不会发生的组合固定成了预期。
+- 审查建议的条件不能只改判断：`finish` 也只认 `context.Canceled`，把原错误传过去，命令仍然输出 `NOT_FOUND`、退出 1，还不暂停，所以改为传 `context.Canceled`。
+- 修复：fix/cli-resume-error-and-comments。逐处撤回后的失败：`Resume` 出错仍等待报 `calls import,start,cancel,resume,wait,clean,close`；拒绝放回 `discard` 之后报 `while waiting ""`；去掉 ctx 判断、或把原错误传给 `finish`，都报 `code 1 err "tacet: NOT_FOUND\n"`；测试改回预先取消报 `code 3`。
+- 规则：
+  - 忽略一个调用的错误之前，看后面的步骤是否依赖它成功；依赖就按错误分支处理，并让 fake 能返回这个错误；
+  - 收尾可能等待时，先把结论告诉用户；
+  - 一个错误会被逐层改写时，要判断是否被中断就直接看 ctx，并核对接收方（这里是 `finish`）按什么判断；
+  - fake 回答的组合要是真实实现能给出的，中断时机用钩子放在被测的那一步上。
+- 出现：1 次（2026-11-04）
 
 ## 状态与显示
 

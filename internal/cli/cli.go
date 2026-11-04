@@ -433,11 +433,15 @@ func (e *env) run(args []string) int {
 		fmt.Fprintf(e.out, "batch %s created\n", st.ID)
 	}
 	if err = core.Start(e.ctx, app.StartRequest{Batch: st.ID, Preset: in.preset, OutputDir: in.out, Authorize: true, AllowPartial: in.partial}); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return e.finish(core, st.ID, app.BatchStatus{}, err)
+		// An interrupt does not always come back as context.Canceled: a read of Start's transaction that it cuts
+		// off is reported as what that read was for (NOT_FOUND). Whatever Start says, the run was interrupted.
+		if errors.Is(err, context.Canceled) || e.ctx.Err() != nil {
+			return e.finish(core, st.ID, app.BatchStatus{}, context.Canceled)
 		}
+		// The refusal is the outcome: it is reported before discarding, which waits and must not hide it.
+		code := e.fail(codeOf(err), "")
 		e.discard(core, st.ID)
-		return e.fail(codeOf(err), "")
+		return code
 	}
 	res, err := e.follow(core, st.ID)
 	return e.finish(core, st.ID, res, err)
@@ -452,9 +456,12 @@ func (e *env) discard(core app.Core, batch string) {
 		return // files still in the draft are what Resume below could begin
 	}
 	// The refused start stays on record (run.Pending) and a later Wait would never end on it. Only Resume drops
-	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen.
-	core.Resume(bg, batch)
-	core.Wait(e.ctx, batch)
+	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen. A
+	// Resume that fails has not dropped it, so nothing would end that wait; the record holds no slot (Cancel
+	// finished the batch), and the files can still be cleaned.
+	if core.Resume(bg, batch) == nil {
+		core.Wait(e.ctx, batch)
+	}
 	core.Clean(bg, batch)
 }
 

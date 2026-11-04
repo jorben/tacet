@@ -18,10 +18,12 @@ type fake struct {
 	mu      sync.Mutex
 	status  app.BatchStatus
 	waitErr error
-	// startErr is what Start answers; cancelErr is what Cancel answers.
-	startErr, cancelErr error
-	calls               []string
-	started             app.StartRequest
+	// startErr, cancelErr and resumeErr are what Start, Cancel and Resume answer.
+	startErr, cancelErr, resumeErr error
+	// onStart and onWait run as that call comes in: to look at what the person sees by then, or to interrupt there.
+	onStart, onWait func()
+	calls           []string
+	started         app.StartRequest
 	// statusDelay slows Status; waitDelay slows Wait: together they leave a status read in
 	// flight when the wait ends.
 	statusDelay, waitDelay time.Duration
@@ -41,6 +43,9 @@ func (f *fake) Preflight(context.Context, string) (app.BatchStatus, error) {
 func (f *fake) Start(_ context.Context, r app.StartRequest) error {
 	f.rec("start")
 	f.started = r
+	if f.onStart != nil {
+		f.onStart()
+	}
 	return f.startErr
 }
 func (f *fake) Status(context.Context, string, int) (app.BatchStatus, error) {
@@ -49,6 +54,9 @@ func (f *fake) Status(context.Context, string, int) (app.BatchStatus, error) {
 }
 func (f *fake) Wait(ctx context.Context, _ string) (app.BatchStatus, error) {
 	f.rec("wait")
+	if f.onWait != nil {
+		f.onWait()
+	}
 	if f.waitBlocks {
 		<-ctx.Done()
 		return app.BatchStatus{}, ctx.Err()
@@ -110,7 +118,7 @@ func (f *fake) Document(context.Context, string, int, int) ([]app.DocUnit, error
 func (f *fake) Findings(context.Context, string, int64, int) ([]app.Finding, error) { return nil, nil }
 func (f *fake) DecideFinding(context.Context, string, int64, bool) error            { return nil }
 func (f *fake) Pause(context.Context, string) error                                 { f.rec("pause"); return nil }
-func (f *fake) Resume(context.Context, string) error                                { f.rec("resume"); return nil }
+func (f *fake) Resume(context.Context, string) error                                { f.rec("resume"); return f.resumeErr }
 func (f *fake) Cancel(context.Context, string) error                                { f.rec("cancel"); return f.cancelErr }
 func (f *fake) Retry(_ context.Context, _ string, j []string) error {
 	f.rec("retry:" + strings.Join(j, ","))
@@ -229,25 +237,43 @@ func TestARefusedStartWhoseDraftCannotBeCancelledIsNotResumed(t *testing.T) {
 	}
 }
 
+// A Resume that fails has not dropped the kept start, so a wait for it would only end on an interrupt: the
+// run skips the wait, and still reports its refusal and cleans up.
+func TestARefusedStartWhoseResumeFailsIsNotWaitedFor(t *testing.T) {
+	f := &fake{startErr: app.ErrNotReady, resumeErr: errors.New("resume failed")}
+	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,clean,close" {
+		t.Fatalf("calls %s", got)
+	}
+}
+
+// Discarding the draft can wait: the person already has the refusal while it does, and gets it only once.
+func TestARefusalIsReportedBeforeItsDraftIsDiscarded(t *testing.T) {
+	var out, errOut bytes.Buffer
+	var whileWaiting string
+	f := &fake{startErr: app.ErrNotReady, onWait: func() { whileWaiting = errOut.String() }}
+	code := Run(context.Background(), []string{"run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir() + "/a.txt"}, &out, &errOut, opener(f, nil))
+	if code != ExitUsage || whileWaiting != "tacet: NOT_READY\n" || errOut.String() != "tacet: NOT_READY\n" {
+		t.Fatalf("code %d, while waiting %q, at the end %q", code, whileWaiting, errOut.String())
+	}
+}
+
 // Discarding the draft waits for the kept start to be dropped; an interrupt ends that wait, and the run
-// still reports its refusal and cleans up.
+// still reports its refusal and cleans up. The interrupt comes during the wait: one that came before the
+// answer of Start would be an interrupted start, not a refused one.
 func TestAnInterruptEndsTheWaitOfARefusedStart(t *testing.T) {
-	f := &fake{startErr: app.ErrNotReady, waitBlocks: true}
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	args := []string{"run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir() + "/a.txt"}
-	done := make(chan int, 1)
-	go func() {
-		code, _, _ := call(ctx, opener(f, nil), args...)
-		done <- code
-	}()
-	select {
-	case code := <-done:
-		if got := strings.Join(f.calls, ","); code != ExitUsage || got != "import,start,cancel,resume,wait,clean,close" {
-			t.Fatalf("code %d calls %s", code, got)
-		}
-	case <-time.After(20 * time.Second):
-		t.Fatal("the run did not end on the interrupt")
+	defer cancel()
+	f := &fake{startErr: app.ErrNotReady, waitBlocks: true, onWait: cancel}
+	code, _, errOut := call(ctx, opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,wait,clean,close" {
+		t.Fatalf("calls %s", got)
 	}
 }
 
@@ -256,6 +282,21 @@ func TestAnInterruptDuringStartPausesAndKeepsTheDraft(t *testing.T) {
 	f := &fake{startErr: context.Canceled}
 	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
 	if code != ExitInterrupted || !strings.Contains(errOut, "tacet resume --batch b0001") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got := strings.Join(f.calls, ","); got != "import,start,pause,close" {
+		t.Fatalf("calls %s", got)
+	}
+}
+
+// An interrupt that cuts off a read inside Start's transaction comes back as what that read was for, not as
+// context.Canceled. It is still an interrupt: the draft stays, paused, and the person is told how to resume.
+func TestAnInterruptInsideStartIsNotTakenForARefusal(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := &fake{startErr: app.ErrNotFound, onStart: cancel}
+	code, _, errOut := call(ctx, opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if code != ExitInterrupted || !strings.Contains(errOut, "tacet resume --batch b0001") || strings.Contains(errOut, "NOT_FOUND") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
 	if got := strings.Join(f.calls, ","); got != "import,start,pause,close" {
