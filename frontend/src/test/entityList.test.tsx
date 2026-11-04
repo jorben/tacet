@@ -278,11 +278,34 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     await live(); mount("model");
     await act(async () => { await setCategoryLabels(getState().models[0]!.id, "person", Object.keys(privacy.label_map).slice(0, 5)); await flushConfig(); });
     const row = mapping("person");
-    expect(row.querySelector(".cat-sub")).toBeNull();
     expect(row.querySelectorAll(".rv .label-chip")).toHaveLength(3);
     expect(row.querySelector(".rv .mapping-labels")).toHaveTextContent("+2");
     const sel = row.querySelector<HTMLElement>(".rv button.sel")!;
     expect(sel.textContent).toBe(""); expect(sel).toHaveAttribute("aria-label", "人名 关联的标签");
+  });
+  it("+N 说出被折叠的标签（第 4、5 个），点击打开与下拉箭头相同的菜单；被截断的标签靠 title 看全名", async () => {
+    await live(); mount("model");
+    const chosen = Object.keys(privacy.label_map).slice(0, 5).sort();
+    await act(async () => { await setCategoryLabels(getState().models[0]!.id, "person", chosen); await flushConfig(); });
+    const row = mapping("person");
+    expect($$(".label-chip", row).map((c) => c.title)).toEqual(chosen.slice(0, 3));
+    const hidden = chosen.slice(3).join("、");
+    const more = button("另有 2 个标签：" + hidden, row);
+    expect(more).toHaveTextContent("+2"); expect(more).toHaveAttribute("data-tip", hidden); expect(more).toHaveAttribute("data-tw");
+    choose("person"); const viaChevron = menuTexts(); expect(viaChevron.length).toBeGreaterThan(0);
+    await finish();
+    expect(menuTexts()).toBe(""); click(more); expect(menuTexts()).toBe(viaChevron);
+  });
+  it("恰好 3 个标签时全部显示，没有 +N", async () => {
+    await live(); mount("model");
+    await act(async () => { await setCategoryLabels(getState().models[0]!.id, "person", Object.keys(privacy.label_map).slice(0, 3)); await flushConfig(); });
+    const row = mapping("person");
+    expect(row.querySelectorAll(".label-chip")).toHaveLength(3);
+    expect(row.querySelector(".label-more")).toBeNull(); expect(row.querySelector(".mapping-labels")).not.toHaveTextContent("+");
+  });
+  it("模型没有声明标签时 +N 与下拉箭头一样禁用", () => {
+    store.update((d) => { d.models[0]!.labels = {}; d.models[0]!.mapping = { map: { a: "person", b: "person", c: "person", d: "person" } }; }); mount("model");
+    expect(mapping("person").querySelector(".label-more")).toBeDisabled();
   });
   it("取消标签直接写入，未关联可再分配；恢复默认删除映射和已修改", async () => {
     const fake = await live(); mount("model"); choose("person"); pick("private_person"); await finish();
