@@ -115,6 +115,7 @@ export function ModelMappingEditor() {
             const chosen = labelsOfCategory(current, category);
             const defaults = labelsOfCategory(labels, category);
             const modified = JSON.stringify(chosen) !== JSON.stringify(defaults);
+            const hidden = chosen.slice(MAX_CHIPS);
             return (
               <CategoryRow
                 key={category}
@@ -124,9 +125,9 @@ export function ModelMappingEditor() {
               >
                 <span className="mapping-labels">
                   {chosen.length
-                    ? chosen.slice(0, MAX_CHIPS).map((l) => <button key={l} type="button" className="tag mono label-chip" aria-label={"标签 " + l} onClick={(e) => openLabelMenu(e.currentTarget, m, l)}>{l}</button>)
+                    ? chosen.slice(0, MAX_CHIPS).map((l) => <button key={l} type="button" className="tag mono label-chip" title={l} aria-label={"标签 " + l} onClick={(e) => openLabelMenu(e.currentTarget, m, l)}>{l}</button>)
                     : <span className="muted sm">未设置</span>}
-                  {chosen.length > MAX_CHIPS && <span className="tag mono" aria-label={"另有 " + (chosen.length - MAX_CHIPS) + " 个标签"} {...tip(chosen.slice(MAX_CHIPS).join("、"), { align: "end" })}>+{chosen.length - MAX_CHIPS}</span>}
+                  {hidden.length > 0 && <button type="button" className="tag mono label-more" disabled={!declared} aria-label={"另有 " + hidden.length + " 个标签：" + hidden.join("、")} {...tip(hidden.join("、"), { align: "end", wrap: true })} onClick={(e) => pick(e.currentTarget, category)}>+{hidden.length}</button>}
                 </span>
                 <SelectButton className={declared ? undefined : "sel-off"} disabled={!declared} aria-label={name(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>{null}</SelectButton>
                 {catalog.find((c) => c.id === category)?.origin === "custom" && (

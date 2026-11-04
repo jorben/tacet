@@ -25,8 +25,6 @@ interface CategoryRowProps {
   category: CategoryId;
   /** Tags after the name: where the category comes from, what changed. */
   tags?: ReactNode;
-  /** A second line under the name (the labels it is mapped from, …). */
-  sub?: ReactNode;
   /** Controls on the right. */
   children?: ReactNode;
   className?: string;
@@ -34,9 +32,9 @@ interface CategoryRowProps {
 
 /**
  * One category, laid out the same on the three tabs: swatch, name (one width rule, truncated with a title), tags,
- * an optional second line, and the controls on the right. Swatch and name start at the same x everywhere.
+ * and the controls on the right. Swatch and name start at the same x everywhere.
  */
-export function CategoryRow({ category, tags, sub, children, className }: CategoryRowProps) {
+export function CategoryRow({ category, tags, children, className }: CategoryRowProps) {
   return (
     <div className={className ? "row cat-row " + className : "row cat-row"} data-category={category}>
       <Swatch category={category} />
@@ -45,7 +43,6 @@ export function CategoryRow({ category, tags, sub, children, className }: Catego
           <CategoryName category={category} />
           {tags}
         </div>
-        {sub != null && <div className="cat-sub">{sub}</div>}
       </div>
       {children != null && <span className="rv">{children}</span>}
     </div>
