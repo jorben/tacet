@@ -128,10 +128,13 @@ bin/cli/tacet run --preset builtin-preset-office --authorize --out out contract.
 bin/cli/tacet run --preset builtin-preset-office --authorize --out out --list files.txt --json
 
 # 查看、恢复、重试、清理批次
+# 只剩等人文件的批次（如有文件待复核）在下一次 run 时停放，不占名额，用 list 找回
+bin/cli/tacet list
 bin/cli/tacet status --batch <id>
 bin/cli/tacet resume --batch <id>
 bin/cli/tacet retry  --batch <id> --file <member>
-bin/cli/tacet clean  --batch <id>
+bin/cli/tacet clean  --batch <id>             # 只清理已结束的批次
+bin/cli/tacet clean  --discard --batch <id>   # 先停止未结束的批次，再清理
 
 # 为需要密码的文件输入密码（仅交互式终端，不回显）
 bin/cli/tacet unlock --batch <id>

@@ -6,27 +6,9 @@ import { useAppState } from "../../store";
 import { slotBusy } from "../../store/selectors";
 import { Button, pushLeft } from "../../ui";
 
-/** The slot is taken by an unfinished task: keep it for later, go back to it, or cancel. */
-export function SlotConflictDialog({ kind, go }: { kind: "single" | "batch"; go: () => void }) {
+/** The demonstration's batch is taken by an unfinished one: keep it for later, go back to it, or cancel. */
+export function SlotConflictDialog({ go }: { go: () => void }) {
   const state = useAppState((s) => s);
-  if (kind === "single") {
-    const cur = slotBusy(state, "single");
-    if (!cur) return null;
-    return (
-      <Modal>
-        <ModalHeader title={`「${cur.name}」还未导出`} subtitle="保存到“最近”，稍后可继续确认" />
-        <ModalFooter>
-          <Button variant="ghost" style={pushLeft} onClick={closeModal}>
-            取消
-          </Button>
-          <Button onClick={() => viewSlotTask("single")}>返回该文件</Button>
-          <Button variant="primary" onClick={() => parkAndContinue("single", go)}>
-            保存并继续
-          </Button>
-        </ModalFooter>
-      </Modal>
-    );
-  }
   const cur = slotBusy(state, "batch");
   if (!cur) return null;
   const precheck = cur.phase === "precheck";
@@ -38,8 +20,8 @@ export function SlotConflictDialog({ kind, go }: { kind: "single" | "batch"; go:
         <Button variant="ghost" style={pushLeft} onClick={closeModal}>
           取消
         </Button>
-        <Button onClick={() => viewSlotTask("batch")}>查看当前批次</Button>
-        <Button variant="primary" onClick={() => parkAndContinue("batch", go)}>
+        <Button onClick={() => viewSlotTask()}>查看当前批次</Button>
+        <Button variant="primary" onClick={() => parkAndContinue(go)}>
           {precheck ? "替换" : "保存并继续"}
         </Button>
       </ModalFooter>

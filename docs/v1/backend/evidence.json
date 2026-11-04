@@ -191,7 +191,7 @@
   },
   "FR-28": {
    "status": "partial",
-   "evidence": "jobs_batch 部分唯一索引允许一个 quick 与一个 regular 并存、拒绝静默替换；confirmed 标记冻结成员；只有全部成员终止才释放活动槽位。交互优先、模型共享与快捷 GUI/发布授权待完成；【task-10】引擎接线：快捷任务与常规批次并存，第二个快捷任务返回 QUICK_TASK_ACTIVE（端到端断言）；GUI 的单文件路径用 quick 批次导入、不授权启动，停在 awaiting_review/ready_to_publish，由“确认并导出”携带全部决定与输出位置授权发布。尚缺：交互阶段优先于批次的调度优先级未按任务种类区分（当前均为 Interactive）"
+   "evidence": "jobs_batch 部分唯一索引（finished=0 AND parked=0）允许一个未停放的 quick 与一个未停放的 regular 并存、拒绝静默替换；confirmed 标记冻结成员；只有全部成员终止或批次被停放才释放活动槽位。交互优先、模型共享与快捷 GUI/发布授权待完成；【task-10】引擎接线：快捷任务与常规批次并存，第二个快捷任务返回 QUICK_TASK_ACTIVE（端到端断言）；GUI 的单文件路径用 quick 批次导入、不授权启动，停在 awaiting_review/ready_to_publish，由“确认并导出”携带全部决定与输出位置授权发布。尚缺：交互阶段优先于批次的调度优先级未按任务种类区分（当前均为 Interactive）；【停放】迁移 v5 增加 parked 列并重建索引；Import 带 ParkWaiting 时，已确认且文件都在等人的同类批次在同一事务内停放，建草稿失败时回滚；GUI 新任务到来不弹窗直接停放，“最近”与 tacet list 列出全部未结束任务，clean --discard 为 CLI 提供解除手段。jobs 表驱动覆盖各状态，真实引擎端到端覆盖 A1、A2、A5、A6、A10–A13；A15 只验证停放任务不持有尝试且运行阶段不超过档位上限，未用真实模型 worker 验证。尚缺：处理中同类任务并行与按任务种类的调度优先级（下一期）"
   },
   "BUX-11": {
    "status": "partial",

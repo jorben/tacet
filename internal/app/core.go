@@ -18,13 +18,16 @@ var (
 )
 
 // ImportRequest names the files of a new batch. Kind "quick" is the
-// single-file path (FR-28); at most one unfinished quick task and one regular
-// batch exist at a time.
+// single-file path (FR-28); at most one unparked unfinished quick task and one
+// unparked unfinished regular batch exist at a time.
 type ImportRequest struct {
 	Files     []string // absolute paths
 	Kind      string   // "quick" or "batch"
 	Preset    string   // empty: the built-in preset
 	OutputDir string   // absolute; where outputs are published
+	// ParkWaiting makes room when the task holding the slot only waits for a person: it is parked, stays
+	// available and no longer holds the slot. A task with work under way and a draft still refuse the import.
+	ParkWaiting bool
 }
 
 // FileStatus is the neutral, bounded description of one file. Name is the
@@ -63,6 +66,10 @@ type BatchStatus struct {
 	// Started: the settings were frozen (the batch was confirmed). Authorized: publishing was authorized.
 	Started    bool `json:"started"`
 	Authorized bool `json:"authorized"`
+	// Parked: the batch made room for a newer one of its kind; it stays until it is finished or cleaned.
+	Parked bool `json:"parked,omitempty"`
+	// Displaced is set by Import only: the batch this import parked.
+	Displaced string `json:"displaced,omitempty"`
 }
 
 // StartRequest confirms a batch: the preset and the publish authorization.
@@ -243,8 +250,8 @@ type Core interface {
 	Import(ctx context.Context, r ImportRequest) (BatchStatus, error)
 	// Preflight returns once every file of a draft batch has been inspected.
 	Preflight(ctx context.Context, batch string) (BatchStatus, error)
-	// Unfinished lists the batches that survived a restart (at most one quick and one regular),
-	// paused where they were interrupted, with their rows.
+	// Unfinished lists the batches that are not finished, parked ones included, with their rows. After a
+	// restart they are paused where they were interrupted.
 	Unfinished(ctx context.Context) ([]BatchStatus, error)
 	Start(ctx context.Context, r StartRequest) error
 	Status(ctx context.Context, batch string, limit int) (BatchStatus, error)

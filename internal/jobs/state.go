@@ -40,8 +40,21 @@ func (s State) Terminal() bool {
 	return false
 }
 
+// waitsForPerson reports whether nothing happens to the file until a person acts
+// on it (or it has ended). A file ready to publish moves on by itself once its
+// batch publishes automatically.
+func (s State) waitsForPerson(autoPublish bool) bool {
+	switch s {
+	case AwaitingReview, Blocked, Failed, Paused, Locked:
+		return true
+	case ReadyToPublish:
+		return !autoPublish
+	}
+	return s.Terminal()
+}
+
 // BatchKind separates the single-file quick path from regular batches. A
-// workspace holds at most one unfinished batch of each kind (FR-28).
+// workspace holds at most one unparked unfinished batch of each kind (FR-28).
 type BatchKind string
 
 const (

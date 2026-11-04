@@ -3,10 +3,11 @@ import { exportedCount, countFiles } from "../domain/batch";
 import { fmt } from "../domain/format";
 import { getService } from "../services";
 import { getState, store } from "../store";
-import { slotBusy } from "../store/selectors";
+import { slotBusy, unfinishedBatch } from "../store/selectors";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
+import { discardLiveTask, savedBatchId } from "./live";
 
 export function minimiseWindow(): void {
   void getService().minimiseWindow().catch(() => {});
@@ -37,7 +38,7 @@ export function requestClose(): void {
 /** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once. */
 export function requestQuit(): void {
   const s = getState();
-  if (!slotBusy(s, "single") && !slotBusy(s, "batch") && !s.history.some((h) => h.park)) { quitApp(); return; }
+  if (!slotBusy(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park)) { quitApp(); return; }
   openModal({ type: "closeWindow" });
 }
 
@@ -51,12 +52,16 @@ export function saveAndQuit(): void {
 /** Discard unfinished work and quit; exported files are not affected. */
 export function stopAndQuit(): void {
   closeModal();
+  // The kernel would list them all again at the next start: what was listed in the dialog is stopped there too.
+  const before = getState();
+  const kept = [savedBatchId(slotBusy(before, "single") ?? undefined), savedBatchId(unfinishedBatch(before) ?? undefined),
+    ...before.history.filter((h) => h.park).map((h) => savedBatchId(h.saved))].filter((id): id is string => !!id);
   store.update((d) => {
     if (d.single && d.single.from === "batch") leaveBatchFile(d);
   });
   const s = getState();
   if (slotBusy(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
-  const bb = slotBusy(s, "batch");
+  const bb = unfinishedBatch(s);
   if (bb) {
     stopBatchTimer();
     store.update((d) => {
@@ -70,5 +75,5 @@ export function stopAndQuit(): void {
     });
   }
   store.update((d) => { d.history = d.history.filter((h) => !h.park); d.view = "home"; });
-  quitApp();
+  void Promise.all([...new Set(kept)].map(discardLiveTask)).finally(quitApp);
 }

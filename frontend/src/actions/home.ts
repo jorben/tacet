@@ -5,12 +5,13 @@ import { presetModelId } from "../domain/presets";
 import { createSingle } from "../domain/single";
 import type { BatchSummary, HistoryEntry, Single } from "../domain/types";
 import { getState, store } from "../store";
-import { liveHistory, slotBusy } from "../store/selectors";
+import { liveHistory, slotBusy, slotSingle } from "../store/selectors";
 import { closeModal, closePop, openModal, toast } from "../overlay/store";
-import { archiveBatch, newBatch, parkBatch, resumeBatch } from "./batch";
+import { archiveBatch, leaveBatchFile, newBatch, parkBatch, resumeBatch } from "./batch";
+import { discardLiveTask, liveBatchSlotFree, reopenLiveSingle, savedBatchId, singleSlotFree } from "./live";
 import { needModel } from "./models";
+import { shelveLiveBatch, shelveSingle } from "./shelf";
 import { newSingle } from "./single";
-import { nextId } from "./timers";
 
 export interface IncomingFile {
   name: string;
@@ -31,32 +32,43 @@ export function takeFiles(files: IncomingFile[]): void {
 }
 
 /**
- * One single task and one batch at a time. An unfinished task is never replaced silently: the user chooses
- * between keeping it (saved under “最近”) and going back to it.
+ * One single task and one batch on screen at a time. A task waiting for the person gives way without asking and
+ * stays under “最近” (FR-28); one with work under way stays where it is. Only the batches of the demonstration,
+ * which has no kernel to keep them, still ask.
  */
 export function needSlot(kind: "single" | "batch", go: () => void): void {
+  if (kind === "single") { needSingleSlot(go); return; }
   const s = getState();
-  const cur = kind === "single" ? slotBusy(s, "single") : slotBusy(s, "batch");
-  if (!cur) {
-    if (kind === "batch" && s.batch) archiveBatch();
+  if (s.batch?.live) {
+    if (s.batch.phase === "precheck") { toast("当前批次还未开始，请先开始或取消"); return; }
+    if (!liveBatchSlotFree()) return;
+    store.update((d) => { leaveBatchFile(d); shelveLiveBatch(d); });
     go();
     return;
   }
-  if (kind === "single" && (cur as Single).phase !== "review") {
-    toast("「" + (cur as Single).name + "」正在处理，请稍候");
+  if (!slotBusy(s, "batch")) {
+    if (s.batch) archiveBatch();
+    go();
     return;
   }
-  openModal({ type: "slotConflict", kind, go });
+  openModal({ type: "slotConflict", go });
 }
 
-/** Choose “保存并继续” in the slot dialog: park the busy task and carry on with `go`. */
-export function parkAndContinue(kind: "single" | "batch", go: () => void): void {
+function needSingleSlot(go: () => void): void {
+  const cur = slotSingle(getState());
+  if (cur && !singleSlotFree()) return;
+  if (cur && cur.phase !== "done") {
+    store.update((d) => { leaveBatchFile(d); shelveSingle(d); });
+    toast("已保存到“最近”");
+  }
+  go();
+}
+
+/** Choose “保存并继续” in the slot dialog of a demonstration batch: keep it and carry on with `go`. */
+export function parkAndContinue(go: () => void): void {
   closeModal();
   const s = getState();
-  if (kind === "single") {
-    parkSingle();
-    toast("已保存到“最近”");
-  } else if (s.batch!.phase === "precheck") {
+  if (s.batch!.phase === "precheck") {
     store.update((d) => { d.batch = null; });
   } else {
     const days = keepDays(s.batch);
@@ -66,19 +78,10 @@ export function parkAndContinue(kind: "single" | "batch", go: () => void): void 
   go();
 }
 
-/** Back to the task that holds the slot. */
-export function viewSlotTask(kind: "single" | "batch"): void {
+/** Back to the batch that holds the slot. */
+export function viewSlotTask(): void {
   closeModal();
-  store.update((d) => { d.view = kind; });
-}
-
-export function parkSingle(): void {
-  store.update((d) => {
-    const s = d.single!;
-    d.history.unshift({ id: nextId("h"), k: "file", ext: s.ext, name: s.name, meta: s.pages.length + " 页", st: "warn", stl: "待确认", when: "刚刚", saved: s, undo: d.undo, park: true });
-    d.single = null;
-    d.undo = [];
-  });
+  store.update((d) => { d.view = "batch"; });
 }
 
 /* ── Recent tasks ─────────────────────────────────────────────────────────── */
@@ -114,6 +117,7 @@ export function openHistoryEntry(id: string): void {
   if (!x) return;
   if (["done", "part"].includes(x.st) || x.stl.startsWith("已导出")) { openHistoryResult(x); return; }
   if (x.live) { store.update((d) => { d.view = x.live!; }); return; }
+  if (x.park && savedBatchId(x.saved)) { openModal({ type: "resumeBatch", entryId: x.id }); return; }
   if (x.park) {
     needSlot("single", () => store.update((d) => {
       d.history = d.history.filter((h) => h.id !== x.id);
@@ -132,17 +136,23 @@ export function openHistoryEntry(id: string): void {
   openModal({ type: "historyItem", entryId: x.id });
 }
 
-/** “继续处理” in the dialog of a saved batch. */
+/** “继续处理” in the dialog of a saved task. */
 export function resumeSavedBatch(entryId: string): void {
   closeModal();
+  const x = getState().history.find((h) => h.id === entryId);
+  if (x?.k === "file") { void reopenLiveSingle(entryId); return; }
   needSlot("batch", () => { resumeBatch(entryId); toast("已恢复，继续处理"); });
 }
 
-export function discardSavedTask(entryId: string): void {
+/** “停止并清理”. What the kernel keeps goes first: a task it would not give up stays listed. */
+export async function discardSavedTask(entryId: string): Promise<void> {
   const x = getState().history.find((h) => h.id === entryId);
   closeModal();
+  if (!x) return;
+  const batch = savedBatchId(x.saved);
+  if (batch && !(await discardLiveTask(batch))) return;
   store.update((d) => { d.history = d.history.filter((h) => h.id !== entryId); });
-  if (x) toast("已清理「" + x.name + "」");
+  toast("已清理「" + x.name + "」");
 }
 
 export function setHistoryPhase(phase: "result" | "manifest"): void {

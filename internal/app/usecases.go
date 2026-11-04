@@ -134,7 +134,7 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 			return BatchStatus{}, ErrInvalid
 		}
 	}
-	var batch string
+	var batch, displaced string
 	var ids []string
 	var members []Member
 	preset := r.Preset
@@ -149,6 +149,20 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 		batch = fmt.Sprintf("b%04d", n)
 		if err = putRun(tx, Run{Batch: batch, Preset: preset, OutputDir: r.OutputDir, Kind: r.Kind}); err != nil {
 			return err
+		}
+		if r.ParkWaiting {
+			displaced, err = e.jobs.ParkHolder(tx, kind, func(b string) (bool, error) {
+				held, err := getRun(tx, b)
+				return held.Grant, err
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if e.beforeDraft != nil {
+			if err = e.beforeDraft(); err != nil {
+				return err
+			}
 		}
 		if err = e.jobs.CreateDraft(tx, batch, kind); err != nil {
 			return err
@@ -184,8 +198,13 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 		return BatchStatus{}, mapErr(err)
 	}
 	e.grantRetention(ctx, ids)
+	if displaced != "" {
+		e.changed(displaced)
+	}
 	e.changed(batch)
-	return e.Status(ctx, batch, 50)
+	st, err := e.Status(ctx, batch, 50)
+	st.Displaced = displaced
+	return st, err
 }
 
 func mapErr(err error) error {
@@ -503,6 +522,10 @@ func (e *Engine) Status(ctx context.Context, batch string, limit int) (BatchStat
 		run, _ := getRun(tx, batch)
 		st.Kind = run.Kind
 		st.Authorized = run.Grant
+		var err error
+		if st.Parked, err = e.jobs.Parked(tx, batch); err != nil {
+			return err
+		}
 		for i, j := range ms {
 			pending, _ := (exceptions.Repository{}).Open(tx, j.ID)
 			s := verdict.Judge(factsOf(j, pending, run.Grant))
@@ -1081,7 +1104,7 @@ func (e *Engine) AddManual(ctx context.Context, job string, seq, start, end int,
 	return id, e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
 }
 
-// Unfinished lists the batches that still hold an active slot, as a status each.
+// Unfinished lists the batches that are not finished, parked ones included, as a status each.
 func (e *Engine) Unfinished(ctx context.Context) ([]BatchStatus, error) {
 	var ids []string
 	if err := e.ws.Commit(ctx, func(tx store.Tx) error {

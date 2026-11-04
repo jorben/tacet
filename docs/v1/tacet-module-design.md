@@ -259,7 +259,7 @@ flowchart TB
 
 | 用例 | 编排 | 关键校验 / 结果 |
 | --- | --- | --- |
-| 导入 `Import` | 按文件数与用户选择决定走快捷路径或批次草稿（阈值 M0 冻结，FR-28）→ `jobs.CreateDraft` → 提交预检阶段；有进行中的网络活动时只登记选择（需求文档 3.4.1 节） | 已有未完成的快捷任务或批次时返回 `QUICK_TASK_ACTIVE` / `BATCH_ACTIVE`，由用户继续或取消原任务，不静默替换 |
+| 导入 `Import` | 按文件数与用户选择决定走快捷路径或批次草稿（阈值 M0 冻结，FR-28）→ （请求要求时先 `jobs.ParkHolder` 停放只等人的同类任务，同一事务）`jobs.CreateDraft` → 提交预检阶段；有进行中的网络活动时只登记选择（需求文档 3.4.1 节） | 同类未停放的任务有文件还在处理或是未开始的草稿时返回 `QUICK_TASK_ACTIVE` / `BATCH_ACTIVE`，不静默替换；事务失败时停放一并回滚 |
 | 开始 `Start` | 快捷路径在预检通过后自动调用，批次由用户在预检页确认（处理模式、保留期限、发布授权方式）→ `snapshot.Freeze` → `models.CheckBinding` → 就绪则 `jobs.Confirm`，否则记为等待操作 | `CompatReport.Blocking` 非空时拒绝；`NeedsNarrowing` 不拒绝开始，也不询问（只有编辑规则组内的规则会在保存前询问，修改映射直接保存，FR-18、5.2 节）；等待操作不创建检测任务，模型就绪后须用户明确继续 |
 | 提交决定 `CommitDecisions` | `review.Commit` → `jobs.OnDecisionsChanged(受影响任务)` | 物化后的成员数与界面展示的范围摘要不一致时返回 `SCOPE_CHANGED` |
 | 确认并导出 `ConfirmAndExport` | 同一提交区内 `review.Commit` + `publish.Grant`（绑定处置键，MD-16）→ `jobs.OnDecisionsChanged` | 快捷路径专用（FR-28、架构文档 6.1 节） |
@@ -453,7 +453,7 @@ func (m *Jobs) OnStageOutcome(a kernel.AttemptRef, out StageOutcome) error {
 | 插件崩溃、超时、协议错误、回写失败、输出损坏 | 整个文件处理失败 | 用户可重新处理 1 次，再次失败为 `unprocessable` |
 | 密码错误 | 保持 `blocked`，可重输 | 不计次数 |
 
-**并存与优先级。** 同一工作区至多一个未完成的快捷任务与一个未完成的批次（FR-28）。快捷任务的全部阶段为交互级；复核中修改后需重新导出的文件，其导出、验证与发布阶段也提升为交互级，直到发布或回到复核（AR-16）。
+**并存与优先级。** 同一工作区至多一个未停放的未完成快捷任务与一个未停放的未完成批次（FR-28），由 `jobs_batch` 的部分唯一索引（`finished=0 AND parked=0`）保证。已确认且没有文件在排队或处理（文件都处于 `awaiting_review`、未授权的 `ready_to_publish`、`blocked`、`failed`、`paused`、`locked` 或终止状态）的批次，可在同类新草稿的同一事务内停放；草稿不停放。停放只改批次标记，不动文件状态、不派发阶段，直到批次结束都不再占名额，继续处理也不取回名额，并发由调度器限制。快捷任务的全部阶段为交互级；复核中修改后需重新导出的文件，其导出、验证与发布阶段也提升为交互级，直到发布或回到复核（AR-16）。
 
 **暂停、取消与恢复。**
 

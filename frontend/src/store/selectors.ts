@@ -25,6 +25,11 @@ export function slotBusy(s: AppState, kind: "single" | "batch"): Single | Batch 
   return b && !(["result", "manifest"].includes(b.phase) && isSettled(b)) ? b : null;
 }
 
+/** The batch on screen while something of it is open, even when nothing runs: it is not left without a word. */
+export function unfinishedBatch(s: AppState): Batch | null {
+  return slotBusy(s, "batch") ?? (s.batch && batchStatus(s.batch)[0] === "warn" ? s.batch : null);
+}
+
 /** The tasks that are still alive in their slot, followed by the saved ones. */
 export function liveHistory(s: Pick<AppState, "batch" | "single" | "behind" | "history">): HistoryEntry[] {
   const out: HistoryEntry[] = [];

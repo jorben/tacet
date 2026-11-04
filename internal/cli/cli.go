@@ -32,10 +32,11 @@ var commands = []struct{ name, summary string }{
 	{"preflight", "Check files without processing them"},
 	{"run", "Process a file list with an explicit policy and publish authorization"},
 	{"status", "Show batch status and the per-file report"},
+	{"list", "List the batches that are not finished, parked ones included"},
 	{"resume", "Resume a batch with its original snapshot"},
 	{"retry", "Retry selected members"},
 	{"unlock", "Enter the passwords of a batch's files on this terminal"},
-	{"clean", "Clean up task data"},
+	{"clean", "Clean up task data (--discard also stops a batch that is not finished)"},
 }
 
 // Opener opens the core over a workspace directory.
@@ -93,6 +94,8 @@ func RunWith(ctx context.Context, args []string, stdout, stderr io.Writer, open 
 		return e.run(args[1:])
 	case "status":
 		return e.status(args[1:])
+	case "list":
+		return e.list(args[1:])
 	case "resume":
 		return e.resume(args[1:])
 	case "retry":
@@ -247,7 +250,11 @@ func (e *env) print(st app.BatchStatus) {
 		e.emit("result", st)
 		return
 	}
-	fmt.Fprintf(e.out, "batch %s: %s, %d file(s), %d delivered, exit %d\n", st.ID, st.Phase, st.Total, st.Delivered, st.ExitCode)
+	parked := ""
+	if st.Parked {
+		parked = ", parked"
+	}
+	fmt.Fprintf(e.out, "batch %s: %s%s, %d file(s), %d delivered, exit %d\n", st.ID, st.Phase, parked, st.Total, st.Delivered, st.ExitCode)
 	for _, f := range st.Files {
 		line := fmt.Sprintf("  %s  %-24s", f.Name, f.Status)
 		if f.State != f.Status {
@@ -348,6 +355,28 @@ func (e *env) inputFlags(name string) (*flag.FlagSet, *input) {
 	return fs, in
 }
 
+// imported creates the batch of a command, making room if the task of this kind only waits for the person.
+func (e *env) imported(core app.Core, in *input, list []string) (app.BatchStatus, error) {
+	st, err := core.Import(e.ctx, app.ImportRequest{Kind: kindOf(in.quick, len(list)), Files: list, OutputDir: in.out, Preset: in.preset, ParkWaiting: true})
+	if err == nil && st.Displaced != "" {
+		e.emit("parked", map[string]string{"batch": st.Displaced})
+		if !e.asJSON {
+			fmt.Fprintf(e.err, "tacet: batch %s still waits for a person and was parked; see: tacet list\n", st.Displaced)
+		}
+	}
+	return st, err
+}
+
+// failImport reports a refused import. A slot refused here is held by a task with work under way or a draft: a
+// task that only waited for a person would have been parked.
+func (e *env) failImport(err error) int {
+	code := codeOf(err)
+	if code == app.CodeBatchActive || code == app.CodeQuickTaskActive {
+		return e.fail(code, "a task of this kind is being worked on or has not started; see: tacet list")
+	}
+	return e.fail(code, "")
+}
+
 func (e *env) preflight(args []string) int {
 	fs, in := e.inputFlags("preflight")
 	if err := fs.Parse(args); err != nil {
@@ -366,9 +395,9 @@ func (e *env) preflight(args []string) int {
 		return code
 	}
 	defer core.Close()
-	st, err := core.Import(e.ctx, app.ImportRequest{Kind: kindOf(in.quick, len(list)), Files: list, OutputDir: in.out, Preset: in.preset})
+	st, err := e.imported(core, in, list)
 	if err != nil {
-		return e.fail(codeOf(err), "")
+		return e.failImport(err)
 	}
 	if st, err = core.Preflight(e.ctx, st.ID); err != nil {
 		return e.fail(codeOf(err), "")
@@ -424,9 +453,9 @@ func (e *env) run(args []string) int {
 		return code
 	}
 	defer core.Close()
-	st, err := core.Import(e.ctx, app.ImportRequest{Kind: kindOf(in.quick, len(list)), Files: list, OutputDir: in.out, Preset: in.preset})
+	st, err := e.imported(core, in, list)
 	if err != nil {
-		return e.fail(codeOf(err), "")
+		return e.failImport(err)
 	}
 	e.emit("batch", map[string]any{"batch": st.ID, "total": st.Total})
 	if !e.asJSON {
@@ -440,20 +469,21 @@ func (e *env) run(args []string) int {
 		}
 		// The refusal is the outcome: it is reported before discarding, which waits and must not hide it.
 		code := e.fail(codeOf(err), "")
-		e.discard(core, st.ID)
+		_ = e.discard(core, st.ID) // the run has failed already; what is left can be cleaned later
 		return code
 	}
 	res, err := e.follow(core, st.ID)
 	return e.finish(core, st.ID, res, err)
 }
 
-// discard gives up the draft of a run whose start the core refused. The core keeps such a draft, for a caller
-// that can start it again once the cause is gone (the desktop app); this command is over, so it must not go
-// on holding the batch slot.
-func (e *env) discard(core app.Core, batch string) {
+// discard stops a batch and removes what the workspace holds for it: the draft of a run whose start the core
+// refused, or a batch the person gives up (clean --discard). The core keeps a refused draft, for a caller that
+// can start it again once the cause is gone (the desktop app); this command is over, so it must not go on
+// holding the batch slot.
+func (e *env) discard(core app.Core, batch string) error {
 	bg := context.Background()
-	if core.Cancel(bg, batch) != nil {
-		return // files still in the draft are what Resume below could begin
+	if err := core.Cancel(bg, batch); err != nil {
+		return err // files still in the draft are what Resume below could begin
 	}
 	// The refused start stays on record (run.Pending) and a later Wait would never end on it. Only Resume drops
 	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen. A
@@ -464,7 +494,7 @@ func (e *env) discard(core app.Core, batch string) {
 	if core.Resume(bg, batch) == nil {
 		core.Wait(e.ctx, batch)
 	}
-	core.Clean(bg, batch)
+	return core.Clean(bg, batch)
 }
 
 func (e *env) status(args []string) int {
@@ -488,6 +518,38 @@ func (e *env) status(args []string) int {
 	}
 	e.print(st)
 	return st.ExitCode
+}
+
+// list shows every batch that is not finished, so a parked one can be found again. Listing succeeded whatever
+// the batches wait for: their own verdicts are read with status.
+func (e *env) list(args []string) int {
+	var c common
+	fs := e.flags("list", &c, false)
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	e.asJSON = c.json
+	core, code := e.openCore(c)
+	if code != 0 {
+		return code
+	}
+	defer core.Close()
+	bs, err := core.Unfinished(e.ctx)
+	if err != nil {
+		return e.fail(codeOf(err), "")
+	}
+	for _, b := range bs {
+		if e.asJSON {
+			e.emit("unfinished", b)
+			continue
+		}
+		held := "holds the slot"
+		if b.Parked {
+			held = "parked"
+		}
+		fmt.Fprintf(e.out, "batch %s: %s, %s, %s, %d file(s), %d delivered\n", b.ID, b.Kind, held, b.Phase, b.Total, b.Delivered)
+	}
+	return ExitOK
 }
 
 func (e *env) resume(args []string) int {
@@ -543,7 +605,9 @@ func (e *env) retry(args []string) int {
 
 func (e *env) clean(args []string) int {
 	var c common
+	var stop bool
 	fs := e.flags("clean", &c, true)
+	fs.BoolVar(&stop, "discard", false, "also stop a batch that is not finished; what it has not delivered is lost")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -556,7 +620,14 @@ func (e *env) clean(args []string) int {
 		return code
 	}
 	defer core.Close()
-	if err := core.Clean(e.ctx, c.batch); err != nil {
+	if stop {
+		if err := e.discard(core, c.batch); err != nil {
+			return e.fail(codeOf(err), "")
+		}
+	} else if err := core.Clean(e.ctx, c.batch); err != nil {
+		if errors.Is(err, app.ErrNotAllowed) {
+			return e.fail(codeOf(err), fmt.Sprintf("the batch is not finished; to stop and clean it: tacet clean --discard --batch %s", c.batch))
+		}
 		return e.fail(codeOf(err), "")
 	}
 	if e.asJSON {

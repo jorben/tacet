@@ -34,10 +34,10 @@ export interface AppState {
   /** A fresh configuration load resets transient editor state, even if the selected id stays the same. */
   configLoad: number;
 
-  /** One single-file task and one batch run at a time (see `needSlot`). */
+  /** The single-file task and the batch on screen; others wait under “最近” (see `needSlot`). */
   single: Single | null;
   batch: Batch | null;
-  /** The single task parked while a file of a batch is open for review. */
+  /** The single task set aside while a file of a batch is open for review. */
   behind: { single: Single; undo: DecisionSnapshot[] } | null;
   /** Undo stack of the open single document. */
   undo: DecisionSnapshot[];

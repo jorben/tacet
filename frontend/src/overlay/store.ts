@@ -65,7 +65,7 @@ export type ModalSpec =
   | { type: "recent" }
   | { type: "historyItem"; entryId: string }
   | { type: "resumeBatch"; entryId: string }
-  | { type: "slotConflict"; kind: "single" | "batch"; go: () => void }
+  | { type: "slotConflict"; go: () => void }
   | { type: "switchPreset"; preset: string; go: () => void }
   | { type: "bulkConfirm"; gid: string; k: string }
   | { type: "password"; gid: string; members: number[] | undefined }

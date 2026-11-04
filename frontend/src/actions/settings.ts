@@ -6,7 +6,7 @@ import { openKeepMenu } from "./batch";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { slotBusy } from "../store/selectors";
 import { saveSettingsSoon } from "./liveConfig";
-import { isLive, liveEngine } from "./live";
+import { discardLiveTask, isLive, liveEngine, savedBatchId } from "./live";
 
 const systemTheme = (): "light" | "dark" => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
@@ -80,6 +80,8 @@ export async function openWorkspaceDirectory(): Promise<void> {
 
 export function cleanWorkspace(): void {
   closeModal();
+  const kept = getState().history.filter((h) => h.st === "keep").map((h) => savedBatchId(h.saved)).filter((id): id is string => !!id);
   store.update((d) => { d.history = d.history.filter((h) => h.st !== "keep"); });
+  kept.forEach((id) => void discardLiveTask(id));
   toast("已清理 · 1.4 GiB");
 }
