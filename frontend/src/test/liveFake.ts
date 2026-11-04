@@ -31,21 +31,26 @@ export class FakeEngine implements EngineService {
   previews: Partial<Record<number, EnginePagePreview>> = {};
   previewFails: Error | null = null;
   startFails: Error | null = null;
+  /** The next start waits for this, and fails with `startFails` if a test set it by then; later ones do not wait. */
+  startGate: Promise<void> | null = null;
+  /** The next read of rows, and of a document, waits for this. */
+  filesGate: Promise<void> | null = null;
+  documentGate: Promise<void> | null = null;
+  pauseFails: Error | null = null;
   importFails: Error | null = null;
   publishFails: Error | null = null;
   unlockFails: Error | null = null;
   resumeFails: Error | null = null;
   private handler: ((b: EngineBatch) => void) | null = null;
-  private quick = false;
   /** The batch the rows belong to. Others keep theirs in `kept` while they are parked or set aside. */
   current = "b0001";
   private count = 0;
   kept = new Map<string, EngineFile[]>();
-  /** Who holds each kind's slot, and what the kernel knows about them: as the real rule, confirmed and all waiting. */
-  private holder: Partial<Record<"quick" | "batch", string>> = {};
-  private begun = new Map<string, boolean>(); // started -> authorized
+  /** The batches that were started, and whether publishing was authorized. */
+  private begun = new Map<string, boolean>();
   private beforePause = new Map<string, EngineFile[]>();
-  parkAsked: boolean[] = [];
+  /** The kind each batch was imported as. */
+  private kinds = new Map<string, "quick" | "batch">();
   /** How many batches were started. */
   begunCount() { return this.begun.size; }
   resumed: string[] = [];
@@ -58,10 +63,10 @@ export class FakeEngine implements EngineService {
     const granted = this.begun.get(id)!;
     return this.rowsOf(id).every((r) => ["awaiting_review", "blocked", "failed", "paused", "locked", "completed", "partial", "skipped", "unprocessable", "cancelled"].includes(r.state) || (r.state === "ready_to_publish" && !granted));
   }
-  private ended(id: string): boolean { return this.rowsOf(id).length > 0 && this.rowsOf(id).every((r) => ["completed", "partial", "skipped", "unprocessable", "cancelled"].includes(r.state)); }
   private statusOf(id: string): EngineBatch {
     const rows = this.rowsOf(id);
-    return { id, kind: id === this.current && this.quick ? "quick" : "batch", phase: "running", total: rows.length, counts: {}, delivered: 0, exit_code: 2, files: rows.slice(0, 200) };
+    const active = rows.filter((r) => ["preflighting", "queued", "extracting_detecting", "resolving", "exporting", "validating", "publishing"].includes(r.state)).length;
+    return { id, kind: this.kinds.get(id) ?? "batch", phase: "running", total: rows.length, counts: {}, delivered: rows.filter((r) => r.state === "completed").length, exit_code: 2, files: rows.slice(0, 200), active, parked: this.waiting(id), started: this.begun.has(id) };
   }
   /** An event about any batch, as the kernel sends for one that is parked too. */
   async emitFor(id: string, rows: EngineFile[]) {
@@ -74,6 +79,7 @@ export class FakeEngine implements EngineService {
     return { id: "j" + (i + 1), name: "f" + String(i + 1).padStart(4, "0"), state, status: state, format: "txt", pending: 0, findings: 0, ...extra };
   }
   private batch(): EngineBatch { return this.statusOf(this.current); }
+  statusFor(id: string): EngineBatch { return this.statusOf(id); }
   /** Moves the single file to a state and tells the listener, as the kernel's event does. */
   async emit(state: string, extra: Partial<EngineFile> = {}) {
     this.rows = [this.row(0, state, extra)];
@@ -93,18 +99,10 @@ export class FakeEngine implements EngineService {
   async workspaceInfo() { this.calls.push("workspaceInfo"); if (this.workspaceFails) throw this.workspaceFails; return this.workspace; }
   async openWorkspace() { this.calls.push("openWorkspace"); if (this.workspaceFails) throw this.workspaceFails; }
   importedPreset: string | undefined;
-  async importFiles(a: { files: string[]; quick: boolean; preset?: string; parkWaiting?: boolean }) {
+  async importFiles(a: { files: string[]; quick: boolean; preset?: string }) {
     this.importedPreset = a.preset;
     this.calls.push("import:" + (a.quick ? "quick" : "batch") + ":" + a.files.length);
-    this.parkAsked.push(!!a.parkWaiting);
     if (this.importFails) throw this.importFails;
-    const kind = a.quick ? "quick" : "batch";
-    const held = this.holder[kind];
-    let displaced: string | undefined;
-    if (held && !this.ended(held)) {
-      if (!a.parkWaiting || !this.waiting(held)) throw new Error(a.quick ? "QUICK_TASK_ACTIVE" : "BATCH_ACTIVE");
-      displaced = held;
-    }
     this.count++;
     if (this.count > 1) { // the rows of the first task are what a test scripted; later ones start afresh unless it scripted those too
       this.kept.set(this.current, this.rows);
@@ -112,10 +110,9 @@ export class FakeEngine implements EngineService {
       this.rows = this.nextRows ?? a.files.map((_, i) => this.row(i, "preflighting"));
       this.nextRows = null;
     }
-    this.holder[kind] = this.current;
-    this.quick = a.quick;
+    this.kinds.set(this.current, a.quick ? "quick" : "batch");
     if (!this.rows.length) this.rows = a.files.map((_, i) => this.row(i, "preflighting"));
-    return { ...this.batch(), displaced };
+    return this.batch();
   }
   nextRows: EngineFile[] | null = null;
   unfinishedList: EngineBatch[] = [];
@@ -124,7 +121,9 @@ export class FakeEngine implements EngineService {
   async start(a: Parameters<EngineService["start"]>[0]) {
     this.calls.push("start");
     this.started = a;
-    if (this.startFails) throw this.startFails;
+    const gate = this.startGate;
+    if (gate) { this.startGate = null; await gate; }
+    if (this.startFails) { const err = this.startFails; if (gate) this.startFails = null; throw err; }
     this.begun.set(a.batch, a.authorize);
   }
   async status(b?: string) {
@@ -133,7 +132,10 @@ export class FakeEngine implements EngineService {
   }
   async files(b: string, offset: number, limit: number) {
     this.calls.push("files:" + offset);
-    return this.rowsOf(b).slice(offset, offset + limit);
+    const rows = this.rowsOf(b); // the answer is what the kernel had when it was asked
+    const gate = this.filesGate;
+    if (gate) { this.filesGate = null; await gate; }
+    return rows.slice(offset, offset + limit);
   }
   publishedBatch = "";
   async publish(b: string, partial: boolean, dir?: string) {
@@ -144,6 +146,7 @@ export class FakeEngine implements EngineService {
   }
   async pause(b?: string) {
     this.calls.push("pause");
+    if (this.pauseFails) throw this.pauseFails;
     if (!b) return;
     this.beforePause.set(b, this.rowsOf(b));
     this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: "paused" })));
@@ -176,6 +179,8 @@ export class FakeEngine implements EngineService {
     if (this.unlockFails) throw this.unlockFails;
   }
   async documentUnits(_job: string, after: number) {
+    const gate = this.documentGate;
+    if (gate) { this.documentGate = null; await gate; }
     if (this.documentFails) { const err = this.documentFails; this.documentFails = null; throw err; }
     return this.units.filter((u) => u.seq > after).map((u) => ({ ...u, findings: (u.findings ?? []).map((f) => (this.kernelDecisions.has(f.id) ? { ...f, decision: this.kernelDecisions.get(f.id) ? "keep" : "redact" } : f)) }));
   }

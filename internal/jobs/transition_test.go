@@ -363,3 +363,65 @@ func TestInvalidationKeepsPauseAndBlockAndMovesTheRestartPointBack(t *testing.T)
 		}
 	}
 }
+
+// A person changed the file and waits: it stays ahead of background work through to publishing, and until then only
+// going back to review ends that (AR-16).
+func TestADecisionKeepsTheFileAheadUntilItIsBackUnderReview(t *testing.T) {
+	R, E, V, U := kernel.StageResolve, kernel.StageExport, kernel.StageValidate, kernel.StagePublish
+	s := Snapshot{State: AwaitingReview}
+	if s.Reviewed {
+		t.Fatal("reviewed before anybody decided")
+	}
+	s = step(t, s, Event{Kind: EvDecisionsChange}).Snapshot
+	for _, e := range []Event{
+		{Kind: EvStageOutcome, Stage: R, Outcome: sched.StageOutcome{Kind: sched.Completed}},
+		{Kind: EvStageOutcome, Stage: E, Outcome: sched.StageOutcome{Kind: sched.Completed}},
+		{Kind: EvStageOutcome, Stage: V, Outcome: sched.StageOutcome{Kind: sched.Completed, Detail: string(validate.Passed)}},
+		{Kind: EvDispatch},
+	} {
+		if !s.Reviewed {
+			t.Fatalf("lost before %s, in %s", e.Kind, s.State)
+		}
+		s = step(t, s, e).Snapshot
+	}
+	if s.State != Publishing || !s.Reviewed || U != stageOf[s.State] {
+		t.Fatalf("at publishing: %+v", s)
+	}
+	back := step(t, Snapshot{State: Resolving, Reviewed: true}, Event{Kind: EvStageOutcome, Stage: R, Outcome: sched.StageOutcome{Kind: sched.NeedsReview}}).Snapshot
+	if back.State != AwaitingReview || back.Reviewed {
+		t.Fatalf("back under review: %+v", back)
+	}
+	// wherever the file stands when the decision comes
+	for _, state := range []State{Exporting, Validating, ReadyToPublish, Resolving} {
+		if got := step(t, Snapshot{State: state}, Event{Kind: EvDecisionsChange}).Snapshot; !got.Reviewed {
+			t.Errorf("a decision in %s: %+v", state, got)
+		}
+	}
+	if got := step(t, Snapshot{State: Failed, FailedStage: V}, Event{Kind: EvDecisionsChange}).Snapshot; !got.Reviewed {
+		t.Errorf("a decision on a failed file: %+v", got)
+	}
+	if got := step(t, Snapshot{State: Paused, Resume: AwaitingReview}, Event{Kind: EvDecisionsChange}).Snapshot; !got.Reviewed || got.State != Paused {
+		t.Errorf("a decision under a pause: %+v", got)
+	}
+}
+
+// What it takes for a file, and so for a started batch of such files, to wait for a person (FR-28).
+func TestWhichStatesWaitForAPerson(t *testing.T) {
+	waiting := []State{AwaitingReview, Blocked, Failed, Paused, Locked, Completed, Partial, Skipped, Unprocessable, Cancelled}
+	working := []State{Preflighting, Queued, ExtractingDetecting, Resolving, Exporting, Validating, Publishing}
+	for _, autoPublish := range []bool{false, true} {
+		for _, s := range waiting {
+			if !s.WaitsForPerson(autoPublish) {
+				t.Errorf("%s with auto publish %v does not wait", s, autoPublish)
+			}
+		}
+		for _, s := range working {
+			if s.WaitsForPerson(autoPublish) {
+				t.Errorf("%s with auto publish %v waits", s, autoPublish)
+			}
+		}
+	}
+	if !ReadyToPublish.WaitsForPerson(false) || ReadyToPublish.WaitsForPerson(true) {
+		t.Error("a file ready to publish waits only until publishing is authorized")
+	}
+}

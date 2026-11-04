@@ -3,7 +3,7 @@ import { exportedCount, countFiles } from "../domain/batch";
 import { fmt } from "../domain/format";
 import { getService } from "../services";
 import { getState, store } from "../store";
-import { slotBusy, unfinishedBatch } from "../store/selectors";
+import { unfinishedBatch, unfinishedOnScreen } from "../store/selectors";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
@@ -38,7 +38,7 @@ export function requestClose(): void {
 /** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once. */
 export function requestQuit(): void {
   const s = getState();
-  if (!slotBusy(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park)) { quitApp(); return; }
+  if (!unfinishedOnScreen(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park)) { quitApp(); return; }
   openModal({ type: "closeWindow" });
 }
 
@@ -57,13 +57,13 @@ export function stopAndQuit(): void {
   closeModal();
   // The kernel would list them all again at the next start: what was listed in the dialog is stopped there too.
   const before = getState();
-  const kept = [savedBatchId(slotBusy(before, "single") ?? undefined), savedBatchId(unfinishedBatch(before) ?? undefined),
+  const kept = [savedBatchId(unfinishedOnScreen(before, "single") ?? undefined), savedBatchId(unfinishedBatch(before) ?? undefined),
     ...before.history.filter((h) => h.park).map((h) => savedBatchId(h.saved))].filter((id): id is string => !!id);
   store.update((d) => {
     if (d.single && d.single.from === "batch") leaveBatchFile(d);
   });
   const s = getState();
-  if (slotBusy(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
+  if (unfinishedOnScreen(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
   const bb = unfinishedBatch(s);
   if (bb) {
     stopBatchTimer();

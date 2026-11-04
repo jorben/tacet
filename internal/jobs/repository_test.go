@@ -110,17 +110,12 @@ func TestRepositoryCoexistsQuickAndRegularWithoutReplacing(t *testing.T) {
 	f := fixtureDB(t)
 	f.create(t, "quick", QuickBatch)
 	f.create(t, "regular", RegularBatch)
-	for _, test := range []struct {
-		kind BatchKind
-		want error
-	}{{QuickBatch, ErrQuickActive}, {RegularBatch, ErrBatchActive}} {
-		if err := f.commit(func(tx store.Tx) error { return f.repo.CreateDraft(tx, "replacement", test.kind) }); !errors.Is(err, test.want) {
-			t.Fatalf("silent replacement: %v", err)
-		}
-	}
+	f.create(t, "quick2", QuickBatch) // beside the other of its kind: it replaces nothing
+	f.create(t, "regular2", RegularBatch)
 	f.member(t, "quick", "jq")
 	f.member(t, "regular", "jr")
-	if f.get(t, "jq").Batch != "quick" || f.get(t, "jr").Batch != "regular" {
+	f.member(t, "quick2", "jq2")
+	if f.get(t, "jq").Batch != "quick" || f.get(t, "jr").Batch != "regular" || f.get(t, "jq2").Batch != "quick2" {
 		t.Fatal("draft members changed")
 	}
 }
@@ -364,7 +359,7 @@ func TestRepositoryBoundedPagesAndActiveSlotRelease(t *testing.T) {
 			t.Fatal("bounded cursor query lost or repeated members")
 		}
 		return f.repo.FinishBatch(tx, "b")
-	}); !errors.Is(err, ErrBatchActive) {
+	}); !errors.Is(err, ErrBatchOpen) {
 		t.Fatalf("unfinished batch released: %v", err)
 	}
 	for _, id := range []string{"j1", "j2", "j3"} {

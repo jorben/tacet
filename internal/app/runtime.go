@@ -294,7 +294,13 @@ func (e *Engine) startDispatch(context.Context) error {
 
 // dispatch is jobs.Dispatch: begin the stage durably, then hand it to the scheduler.
 func (e *Engine) dispatch(id string, stage kernel.StageKind) {
+	done := make(chan struct{})
+	e.nextStage.Store(id, done)
 	go func() {
+		defer func() {
+			e.nextStage.CompareAndDelete(id, done)
+			close(done)
+		}()
 		if e.beforeDispatch != nil {
 			e.beforeDispatch(stage)
 		}
@@ -305,7 +311,7 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 			return
 		}
 		ctx := context.Background()
-		var a kernel.AttemptRef
+		var view sched.JobView
 		err := e.ws.Commit(ctx, func(tx store.Tx) error {
 			j, err := e.jobs.Get(tx, id)
 			if err != nil {
@@ -314,16 +320,30 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 			if j.AttemptID != "" {
 				return errDuplicate // an earlier notification already began this stage
 			}
-			a, err = e.jobs.BeginStage(tx, id, j.Version, e.ws.Generation())
+			run, err := getRun(tx, j.Batch)
+			if err != nil {
+				return err
+			}
+			a, err := e.jobs.BeginStage(tx, id, j.Version, e.ws.Generation())
+			view = sched.JobView{Attempt: a, Stage: stage, Priority: stagePriority(run.Kind, j.Position), Group: j.Batch}
 			return err
 		})
 		if err == nil {
-			err = e.queue.Submit(sched.JobView{Attempt: a, Stage: stage, Priority: kernel.Interactive})
+			err = e.queue.Submit(view)
 		}
 		if err != nil && !errors.Is(err, errDuplicate) {
 			e.fail(id, stage, err)
 		}
 	}()
+}
+
+// stagePriority is what a stage is scheduled as (architecture 5.1): a person waits for a quick task and for a file
+// they just decided on; the rest of a batch is background work.
+func stagePriority(kind string, position jobs.Snapshot) kernel.Priority {
+	if kind == "quick" || position.Reviewed {
+		return kernel.Interactive
+	}
+	return kernel.Background
 }
 
 // fail records a dispatch that could not even start as a failed stage.
@@ -375,6 +395,13 @@ func (e *Engine) complete(view sched.JobView, out sched.StageOutcome) error {
 	}
 	e.afterState(ctx, job)
 	e.changed(job.Batch)
+	// A person waits for this file: its next stage is queued before the dispatcher, which is what runs this, takes
+	// another, so no background stage comes between its stages (architecture 5.1).
+	if view.Priority == kernel.Interactive {
+		if next, ok := e.nextStage.Load(view.Attempt.JobID); ok {
+			<-next.(chan struct{})
+		}
+	}
 	return nil
 }
 
@@ -444,7 +471,10 @@ func (e *Engine) recoverJobs(ctx context.Context) error {
 		return err
 	}
 	for _, id := range ids {
-		if err := e.ws.Commit(ctx, func(tx store.Tx) error { _, err := e.jobs.RecoverMember(tx, id); return err }); err != nil {
+		err := e.ws.Commit(ctx, func(tx store.Tx) error { _, err := e.jobs.RecoverMember(tx, id); return err })
+		// an import that stopped between its transactions named this file and never added it: nothing to recover,
+		// and it must not keep the workspace from closing or opening
+		if err != nil && !errors.Is(err, jobs.ErrJobMissing) {
 			return err
 		}
 	}

@@ -125,7 +125,7 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 	if r.Kind == "quick" {
 		kind = jobs.QuickBatch
 	}
-	if len(r.Files) == 0 || len(r.Files) > 100000 || (r.Kind != "quick" && r.Kind != "batch") || (kind == jobs.QuickBatch && len(r.Files) != 1) || !isAbsDir(r.OutputDir) {
+	if len(r.Files) == 0 || len(r.Files) > maxBatchFiles || (r.Kind != "quick" && r.Kind != "batch") || (kind == jobs.QuickBatch && len(r.Files) != 1) || !isAbsDir(r.OutputDir) {
 		return BatchStatus{}, ErrInvalid
 	}
 	for _, f := range r.Files {
@@ -134,7 +134,7 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 			return BatchStatus{}, ErrInvalid
 		}
 	}
-	var batch, displaced string
+	var batch string
 	var ids []string
 	var members []Member
 	preset := r.Preset
@@ -149,15 +149,6 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 		batch = fmt.Sprintf("b%04d", n)
 		if err = putRun(tx, Run{Batch: batch, Preset: preset, OutputDir: r.OutputDir, Kind: r.Kind}); err != nil {
 			return err
-		}
-		if r.ParkWaiting {
-			displaced, err = e.jobs.ParkHolder(tx, kind, func(b string) (bool, error) {
-				held, err := getRun(tx, b)
-				return held.Grant, err
-			})
-			if err != nil {
-				return err
-			}
 		}
 		if e.beforeDraft != nil {
 			if err = e.beforeDraft(); err != nil {
@@ -203,21 +194,12 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 		return BatchStatus{}, mapErr(err)
 	}
 	e.grantRetention(ctx, ids)
-	if displaced != "" {
-		e.changed(displaced)
-	}
 	e.changed(batch)
-	st, err := e.Status(ctx, batch, 50)
-	st.Displaced = displaced
-	return st, err
+	return e.Status(ctx, batch, 50)
 }
 
 func mapErr(err error) error {
 	switch {
-	case errors.Is(err, jobs.ErrQuickActive):
-		return fmt.Errorf("%w", errors.New(CodeQuickTaskActive))
-	case errors.Is(err, jobs.ErrBatchActive):
-		return errors.New(CodeBatchActive)
 	case errors.Is(err, jobs.ErrVersionConflict):
 		return ErrVersion
 	}
@@ -527,10 +509,6 @@ func (e *Engine) Status(ctx context.Context, batch string, limit int) (BatchStat
 		run, _ := getRun(tx, batch)
 		st.Kind = run.Kind
 		st.Authorized = run.Grant
-		var err error
-		if st.Parked, err = e.jobs.Parked(tx, batch); err != nil {
-			return err
-		}
 		for i, j := range ms {
 			pending, _ := (exceptions.Repository{}).Open(tx, j.ID)
 			s := verdict.Judge(factsOf(j, pending, run.Grant))
@@ -555,10 +533,20 @@ func (e *Engine) Status(ctx context.Context, batch string, limit int) (BatchStat
 		return BatchStatus{}, err
 	}
 	st.Started = e.confirmed(ctx, batch)
+	st.Parked = st.Started && allWaitForPerson(ms, st.Authorized)
 	sum := verdict.Summarize(statuses)
 	st.Phase, st.Delivered, st.ExitCode = string(sum.Phase), sum.Delivered, verdict.ExitCode(statuses)
 	st.Truncated = len(ms) > len(st.Files)
 	return st, nil
+}
+
+func allWaitForPerson(ms []jobs.Job, autoPublish bool) bool {
+	for _, j := range ms {
+		if !j.Position.State.WaitsForPerson(autoPublish) {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) Wait(ctx context.Context, batch string) (BatchStatus, error) {
@@ -1130,7 +1118,7 @@ func (e *Engine) AddManual(ctx context.Context, job string, seq, start, end int,
 	return id, e.decisionsChanged(ctx, job)
 }
 
-// Unfinished lists the batches that are not finished, parked ones included, as a status each.
+// Unfinished lists the batches that are not finished as a status each, oldest first.
 func (e *Engine) Unfinished(ctx context.Context) ([]BatchStatus, error) {
 	var ids []string
 	if err := e.ws.Commit(ctx, func(tx store.Tx) error {

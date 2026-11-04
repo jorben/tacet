@@ -159,15 +159,6 @@ func TestCommandsReachTheCoreAndHideDetails(t *testing.T) {
 	if c.imported.Kind != "quick" || c.imported.OutputDir != "/out" || c.imported.Preset != "p" || len(c.imported.Files) != 1 {
 		t.Fatalf("%+v", c.imported)
 	}
-	if c.imported.ParkWaiting {
-		t.Fatal("parked without being asked to")
-	}
-	if _, err := s.ImportFiles(ImportArgs{Files: []string{"/a.txt"}, OutputDir: "/out", ParkWaiting: true}); err != nil {
-		t.Fatal(err)
-	}
-	if !c.imported.ParkWaiting {
-		t.Fatal("the request to park did not reach the core")
-	}
 	if err := s.Start(StartArgs{Batch: "b0001", Authorize: true, AllowPartial: true}); err != nil || !c.started.Authorize || !c.started.AllowPartial {
 		t.Fatalf("%+v %v", c.started, err)
 	}
@@ -181,8 +172,8 @@ func TestCommandsReachTheCoreAndHideDetails(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), "secret") || err.Error() != "INTERNAL_ERROR" {
 		t.Fatalf("leaked or unnamed: %v", err)
 	}
-	c.err = errors.New("QUICK_TASK_ACTIVE")
-	if err = s.Start(StartArgs{}); err == nil || err.Error() != "QUICK_TASK_ACTIVE" {
+	c.err = errors.New("WORKSPACE_BUSY")
+	if err = s.Start(StartArgs{}); err == nil || err.Error() != "WORKSPACE_BUSY" {
 		t.Fatalf("a closed code must pass through: %v", err)
 	}
 	c.err = errors.New("NOT_ALLOWED: the file /x is not waiting")

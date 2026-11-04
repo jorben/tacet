@@ -18,16 +18,13 @@ var (
 )
 
 // ImportRequest names the files of a new batch. Kind "quick" is the
-// single-file path (FR-28); at most one unparked unfinished quick task and one
-// unparked unfinished regular batch exist at a time.
+// single-file path, whose stages run ahead of those of a batch (FR-28). Any
+// number of unfinished tasks of either kind exist side by side.
 type ImportRequest struct {
 	Files     []string // absolute paths
 	Kind      string   // "quick" or "batch"
 	Preset    string   // empty: the built-in preset
 	OutputDir string   // absolute; where outputs are published
-	// ParkWaiting makes room when the task holding the slot only waits for a person: it is parked, stays
-	// available and no longer holds the slot. A task with work under way and a draft still refuse the import.
-	ParkWaiting bool
 }
 
 // FileStatus is the neutral, bounded description of one file. Name is the
@@ -66,10 +63,8 @@ type BatchStatus struct {
 	// Started: the settings were frozen (the batch was confirmed). Authorized: publishing was authorized.
 	Started    bool `json:"started"`
 	Authorized bool `json:"authorized"`
-	// Parked: the batch made room for a newer one of its kind; it stays until it is finished or cleaned.
+	// Parked: the batch was started and none of its files moves on without a person (paused ones included).
 	Parked bool `json:"parked,omitempty"`
-	// Displaced is set by Import only: the batch this import parked.
-	Displaced string `json:"displaced,omitempty"`
 }
 
 // StartRequest confirms a batch: the preset and the publish authorization.

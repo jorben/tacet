@@ -191,10 +191,6 @@ func TestReviewDecisionsLetTheFileContinue(t *testing.T) {
 	if f.State != "awaiting_review" || f.Pending != 2 || st.ExitCode != 2 {
 		t.Fatalf("%+v", st)
 	}
-	// a second quick task cannot start while this one is unfinished
-	if _, err = e.Import(ctx, ImportRequest{Kind: "quick", Files: []string{p}, OutputDir: out}); err == nil || err.Error() != CodeQuickTaskActive {
-		t.Fatalf("second quick task: %v", err)
-	}
 	fs, err := e.Findings(ctx, f.ID, 0, 50)
 	if err != nil || len(fs) != 2 {
 		t.Fatal(fs, err)
@@ -1109,7 +1105,7 @@ func dirEntries(dir string) int {
 }
 
 // With "do not keep" chosen, unfinished work does not survive a restart: its data and key are gone, the
-// batch is closed (so the slot is free), and what was shown about it stays readable by neutral name.
+// batch is closed, and what was shown about it stays readable by neutral name.
 func TestNoRetentionRemovesUnfinishedWorkAtTheNextStart(t *testing.T) {
 	ws, in, out, key := filepath.Join(t.TempDir(), "ws"), t.TempDir(), t.TempDir(), &memKey{}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -1154,7 +1150,7 @@ func TestNoRetentionRemovesUnfinishedWorkAtTheNextStart(t *testing.T) {
 	if _, err := e.ws.Keys().Get(keys.Task, job); err == nil {
 		t.Fatal("the task key must be erased")
 	}
-	// the quick slot is free again
+	// and the next quick task starts as usual
 	if _, err = e.Import(ctx, ImportRequest{Kind: "quick", Files: []string{reviewFile(t, in)}, OutputDir: out}); err != nil {
 		t.Fatalf("slot: %v", err)
 	}

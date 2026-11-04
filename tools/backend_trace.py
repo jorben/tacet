@@ -41,7 +41,7 @@ GROUPS = (
     ("FR-17", "rules, detect, policy", "字段路径/表头匹配、精确数字、类型授权和结构不匹配例外"),
     ("FR-21 FR-22 FR-23 MD-11 MD-17 MD-18", "review, exceptions, findings, query", "分组筛选、两阶段批量提交/撤销、范围变更、补充词表与部分结果授权"),
     ("FR-27 FR-29 MD-15", "preview, plan, gui", "有界版本化文本/栅格预览、选区、共用几何、固定纹理与像素核对"),
-    ("FR-28 AR-16", "app, jobs, sched, gui", "快捷/批次并存、等人任务停放、冲突拒绝、交互优先及一次确认导出"),
+    ("FR-28 AR-16", "app, jobs, sched, gui", "同类任务并行、等人任务停放、交互优先与批次轮流及一次确认导出"),
     ("FR-30 SEC-11 MD-16", "publish, workspace, platform", "确切字节摘要、授权版本、竞争无覆盖发布与崩溃补记"),
     ("FR-34 FR-35 FR-37 MD-13 MD-14", "validate, coverage, verdict, plan", "再检测与输出关联、部件独立对账、新风险复核、限次扩大/重跑与发布门槛"),
     ("SEC-07 AR-15", "platform, host, refs", "未授权目录/网络/环境写入/逃逸拒绝、句柄继承及代次结束后资源吊销"),

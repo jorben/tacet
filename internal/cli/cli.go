@@ -29,7 +29,7 @@ const (
 )
 
 var commands = []struct{ name, summary string }{
-	{"preflight", "Check files without processing them (a task that only waits for a person is parked to make room)"},
+	{"preflight", "Check files without processing them"},
 	{"run", "Process a file list with an explicit policy and publish authorization"},
 	{"status", "Show batch status and the per-file report"},
 	{"list", "List the batches that are not finished, parked ones included"},
@@ -355,26 +355,23 @@ func (e *env) inputFlags(name string) (*flag.FlagSet, *input) {
 	return fs, in
 }
 
-// imported creates the batch of a command, making room if the task of this kind only waits for the person.
-func (e *env) imported(core app.Core, in *input, list []string) (app.BatchStatus, error) {
-	st, err := core.Import(e.ctx, app.ImportRequest{Kind: kindOf(in.quick, len(list)), Files: list, OutputDir: in.out, Preset: in.preset, ParkWaiting: true})
-	if err == nil && st.Displaced != "" {
-		e.emit("parked", map[string]string{"batch": st.Displaced})
+// announceParked names the earlier batches that wait for a person, so a run does not leave them forgotten. A batch
+// from an earlier command is paused until it is resumed, which is such a wait. It is only a reminder: failing to
+// list them does not concern this run.
+func (e *env) announceParked(core app.Core) {
+	bs, err := core.Unfinished(e.ctx)
+	if err != nil {
+		return
+	}
+	for _, b := range bs {
+		if !b.Parked {
+			continue
+		}
+		e.emit("parked", map[string]string{"batch": b.ID})
 		if !e.asJSON {
-			fmt.Fprintf(e.err, "tacet: batch %s still waits for a person and was parked; see: tacet list\n", st.Displaced)
+			fmt.Fprintf(e.err, "tacet: batch %s still waits for a person (parked); see: tacet list\n", b.ID)
 		}
 	}
-	return st, err
-}
-
-// failImport reports a refused import. A slot refused here is held by a task with work under way or a draft: a
-// task that only waited for a person would have been parked.
-func (e *env) failImport(err error) int {
-	code := codeOf(err)
-	if code == app.CodeBatchActive || code == app.CodeQuickTaskActive {
-		return e.fail(code, "a task of this kind is being worked on or has not started; see: tacet list")
-	}
-	return e.fail(code, "")
 }
 
 func (e *env) preflight(args []string) int {
@@ -395,15 +392,14 @@ func (e *env) preflight(args []string) int {
 		return code
 	}
 	defer core.Close()
-	st, err := e.imported(core, in, list)
+	st, err := importFiles(e, core, in, list)
 	if err != nil {
-		return e.failImport(err)
+		return e.fail(codeOf(err), "")
 	}
 	if st, err = core.Preflight(e.ctx, st.ID); err != nil {
 		return e.fail(codeOf(err), "")
 	}
-	// a preflight leaves nothing of its own behind: the draft is cancelled and cleaned. A task it parked to make
-	// room stays parked (it was named above): it is still there, and only no longer holds the slot.
+	// a preflight leaves nothing behind: the draft is cancelled and cleaned, and no other task was touched
 	ok := true
 	for _, f := range st.Files {
 		if f.State != "preflighted" {
@@ -417,6 +413,10 @@ func (e *env) preflight(args []string) int {
 		return ExitIncomplete
 	}
 	return ExitOK
+}
+
+func importFiles(e *env, core app.Core, in *input, list []string) (app.BatchStatus, error) {
+	return core.Import(e.ctx, app.ImportRequest{Kind: kindOf(in.quick, len(list)), Files: list, OutputDir: in.out, Preset: in.preset})
 }
 
 func kindOf(quick bool, n int) string {
@@ -454,9 +454,10 @@ func (e *env) run(args []string) int {
 		return code
 	}
 	defer core.Close()
-	st, err := e.imported(core, in, list)
+	e.announceParked(core)
+	st, err := importFiles(e, core, in, list)
 	if err != nil {
-		return e.failImport(err)
+		return e.fail(codeOf(err), "")
 	}
 	e.emit("batch", map[string]any{"batch": st.ID, "total": st.Total})
 	if !e.asJSON {
@@ -479,8 +480,7 @@ func (e *env) run(args []string) int {
 
 // discard stops a batch and removes what the workspace holds for it: the draft of a run whose start the core
 // refused, or a batch the person gives up (clean --discard). The core keeps a refused draft, for a caller that
-// can start it again once the cause is gone (the desktop app); this command is over, so it must not go on
-// holding the batch slot.
+// can start it again once the cause is gone (the desktop app); this command is over, so it leaves nothing behind.
 func (e *env) discard(core app.Core, batch string) error {
 	bg := context.Background()
 	if err := core.Cancel(bg, batch); err != nil {
@@ -489,9 +489,9 @@ func (e *env) discard(core app.Core, batch string) error {
 	// The refused start stays on record (run.Pending) and a later Wait would never end on it. Only Resume drops
 	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen. A
 	// Resume that fails has not dropped it, so nothing would end that wait, and the record stays. With no attempt
-	// running it holds no slot (Cancel finished the batch) and the files can still be cleaned. With one running,
-	// its file is still Cancelling: the FinishBatch in Cancel got ErrBatchActive, which is ignored, so the batch is
-	// not finished and Clean below is refused.
+	// running Cancel finished the batch and the files can still be cleaned. With one running, its file is still
+	// Cancelling: the FinishBatch in Cancel got ErrBatchOpen, which is ignored, so the batch is not finished and
+	// Clean below is refused.
 	if core.Resume(bg, batch) == nil {
 		core.Wait(e.ctx, batch)
 	}
@@ -544,9 +544,12 @@ func (e *env) list(args []string) int {
 			e.emit("unfinished", b)
 			continue
 		}
-		held := "holds the slot"
-		if b.Parked {
+		held := "not started"
+		switch {
+		case b.Parked:
 			held = "parked"
+		case b.Started:
+			held = "under way"
 		}
 		fmt.Fprintf(e.out, "batch %s: %s, %s, %s, %d file(s), %d delivered\n", b.ID, b.Kind, held, b.Phase, b.Total, b.Delivered)
 	}

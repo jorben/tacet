@@ -5,7 +5,7 @@ import { batchStatus } from "../../domain/batch";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState, type AppState } from "../../store";
-import { isRecoverable, slotBusy, unfinishedBatch } from "../../store/selectors";
+import { isRecoverable, unfinishedBatch, unfinishedOnScreen } from "../../store/selectors";
 import { Button, ButtonLink, Icon, KeyValue, pushLeft } from "../../ui";
 
 const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "GitHub" } as const;
@@ -13,7 +13,7 @@ const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "Git
 /** Unfinished work, one line each. `includeSaved` also lists tasks that were saved for later. */
 function unfinishedTasks(s: AppState, includeSaved: "parked" | "all"): string[] {
   const out: string[] = [];
-  const single = slotBusy(s, "single");
+  const single = unfinishedOnScreen(s, "single");
   const batch = unfinishedBatch(s);
   if (single) out.push(single.name + " · " + (single.phase === "review" ? "待确认" : "处理中"));
   if (batch) out.push(batch.title + " · " + batchStatus(batch)[1]);

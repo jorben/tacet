@@ -4,7 +4,7 @@ import { getState, store } from "../store";
 import { closeModal, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openKeepMenu } from "./batch";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
-import { isRecoverable, slotBusy } from "../store/selectors";
+import { isRecoverable, unfinishedOnScreen } from "../store/selectors";
 import { saveSettingsSoon } from "./liveConfig";
 import { discardLiveTask, isLive, liveEngine, savedBatchId } from "./live";
 
@@ -55,8 +55,8 @@ export function confirmUpdate(unfinished?: "drop" | "rerun"): void {
   closeModal();
   if (unfinished === "drop") {
     const s = getState();
-    if (slotBusy(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
-    if (slotBusy(s, "batch")) { stopBatchTimer(); store.update((d) => { d.batch = null; }); }
+    if (unfinishedOnScreen(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
+    if (unfinishedOnScreen(s, "batch")) { stopBatchTimer(); store.update((d) => { d.batch = null; }); }
     store.update((d) => { d.history = d.history.filter((h) => !isRecoverable(h)); });
   }
   store.update((d) => { d.update.status = "updating"; });

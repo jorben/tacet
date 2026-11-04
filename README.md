@@ -104,7 +104,7 @@ wails3 task build:cli DEV=true
 Usage: tacet <command> [options]
 
 Commands:
-  preflight  Check files without processing them (a task that only waits for a person is parked to make room)
+  preflight  Check files without processing them
   run        Process a file list with an explicit policy and publish authorization
   status     Show batch status and the per-file report
   list       List the batches that are not finished, parked ones included
@@ -118,7 +118,7 @@ Commands:
 示例（仅规则预设，无需下载模型）：
 
 ```bash
-# 只预检，不处理、不留下自己的任务数据（只等人的任务同样会被停放，见下）
+# 只预检，不处理、不留下任务数据，也不影响其他任务
 bin/cli/tacet preflight contract.docx report.pdf
 
 # 处理并发布到已存在的输出目录
@@ -129,7 +129,7 @@ bin/cli/tacet run --preset builtin-preset-office --authorize --out out contract.
 bin/cli/tacet run --preset builtin-preset-office --authorize --out out --list files.txt --json
 
 # 查看、恢复、重试、清理批次
-# 只剩等人文件的批次（如有文件待复核）在下一次 run 或 preflight 时停放，不占名额，用 list 找回
+# 多个任务可以同时存在，单文件优先调度；只剩等人文件的批次（如有文件待复核）显示为 parked，下一次 run 会提醒，用 list 找回
 bin/cli/tacet list
 bin/cli/tacet status --batch <id>
 bin/cli/tacet resume --batch <id>

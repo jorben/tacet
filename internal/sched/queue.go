@@ -3,7 +3,6 @@ package sched
 import (
 	"context"
 	"errors"
-	"sort"
 	"sync"
 
 	"github.com/jorben/tacet/internal/kernel"
@@ -63,6 +62,8 @@ type Queue struct {
 	workers          map[string]int
 	used             kernel.ResourceClaim
 	order            uint64
+	turn             uint64
+	turns            map[string]uint64 // per group, when it last had its turn (or arrived): the lowest goes next
 	paused, pressure bool
 	storedBytes      int64
 	wake             chan struct{}
@@ -80,7 +81,7 @@ func NewQueue(b Budget, gate *netgate.Gate, runners ...StageRunner) (*Queue, err
 		limits[kind] = limit
 	}
 	b.Workers = limits
-	q := &Queue{budget: b, gate: gate, runners: map[kernel.StageKind]StageRunner{}, active: map[kernel.AttemptRef]*Ticket{}, known: map[kernel.AttemptRef]bool{}, workers: map[string]int{}, wake: make(chan struct{}, 1)}
+	q := &Queue{budget: b, gate: gate, runners: map[kernel.StageKind]StageRunner{}, active: map[kernel.AttemptRef]*Ticket{}, known: map[kernel.AttemptRef]bool{}, workers: map[string]int{}, turns: map[string]uint64{}, wake: make(chan struct{}, 1)}
 	for _, runner := range runners {
 		if runner == nil || !validStage(runner.Kind()) {
 			return nil, ErrRunner
@@ -139,11 +140,34 @@ func (q *Queue) Submit(job JobView) error {
 	if len(q.pending) >= q.budget.MaxQueued {
 		return ErrQueueFull
 	}
+	if len(q.pending) == 0 && len(q.active) == 0 {
+		clear(q.turns) // nothing is waiting on a turn: what earlier batches had means nothing any more
+	}
+	if _, seen := q.turns[job.Group]; !seen {
+		q.takeTurn(job.Group) // a new group joins the end of the round
+	}
 	q.order++
 	q.pending = append(q.pending, reservation{job: job, claim: claim, order: q.order})
 	q.known[job.Attempt] = true
 	q.signal()
 	return nil
+}
+
+func (q *Queue) takeTurn(group string) {
+	q.turn++
+	q.turns[group] = q.turn
+}
+
+// ahead orders requests of one priority: the group whose turn was longest ago first, then downstream first and in
+// order within a group. Turns are unique per group, so this is a total order.
+func (q *Queue) ahead(a, b reservation) bool {
+	if a.job.Group != b.job.Group {
+		return q.turns[a.job.Group] < q.turns[b.job.Group]
+	}
+	if stageRank(a.job.Stage) != stageRank(b.job.Stage) {
+		return stageRank(a.job.Stage) > stageRank(b.job.Stage)
+	}
+	return a.order < b.order
 }
 
 func stageRank(stage kernel.StageKind) int {
@@ -203,10 +227,11 @@ type Ticket struct {
 func (t *Ticket) Job() JobView                { return t.request.job }
 func (t *Ticket) Claim() kernel.ResourceClaim { return t.request.claim }
 
-// Take applies strict interactive priority, then downstream-first ordering and
-// FIFO member order within a stage. Active background work is never preempted.
-// When interactive work is pending, no new background stage may be admitted,
-// even if only a smaller background claim happens to fit.
+// Take applies strict interactive priority, then turns between groups, then
+// downstream-first ordering and FIFO member order within a group. Active
+// background work is never preempted. When interactive work is pending, no new
+// background stage may be admitted, even if only a smaller background claim
+// happens to fit.
 func (q *Queue) Take() (*Ticket, WaitReason) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -229,40 +254,34 @@ func (q *Queue) Take() (*Ticket, WaitReason) {
 			break
 		}
 	}
-	indexes := make([]int, 0, len(q.pending))
-	for i, request := range q.pending {
-		if !interactive || request.job.Priority == kernel.Interactive {
-			indexes = append(indexes, i)
-		}
-	}
-	sort.SliceStable(indexes, func(i, j int) bool {
-		a, b := q.pending[indexes[i]], q.pending[indexes[j]]
-		if stageRank(a.job.Stage) != stageRank(b.job.Stage) {
-			return stageRank(a.job.Stage) > stageRank(b.job.Stage)
-		}
-		return a.order < b.order
-	})
 	reason := WaitCapacity
-	for _, index := range indexes {
-		request := q.pending[index]
+	best := -1
+	for i, request := range q.pending {
+		if interactive && request.job.Priority != kernel.Interactive {
+			continue
+		}
 		if q.budget.HighWaterBytes > 0 && q.storedBytes >= q.budget.HighWaterBytes && growsStorage(request.job.Stage) {
 			reason = WaitStorage
 			continue
 		}
-		if !q.fits(request.claim, request.job.Priority) {
-			continue
+		if q.fits(request.claim, request.job.Priority) && (best < 0 || q.ahead(request, q.pending[best])) {
+			best = i
 		}
-		lease, err := q.gate.Acquire(netgate.Processing)
-		if err != nil {
-			return nil, WaitActivity
-		}
-		ticket := &Ticket{queue: q, request: request, lease: lease}
-		q.active[request.job.Attempt] = ticket
-		q.pending = append(q.pending[:index], q.pending[index+1:]...)
-		q.reserve(request.claim, 1)
-		return ticket, ""
 	}
-	return nil, reason
+	if best < 0 {
+		return nil, reason
+	}
+	request := q.pending[best]
+	lease, err := q.gate.Acquire(netgate.Processing)
+	if err != nil {
+		return nil, WaitActivity
+	}
+	ticket := &Ticket{queue: q, request: request, lease: lease}
+	q.active[request.job.Attempt] = ticket
+	q.pending = append(q.pending[:best], q.pending[best+1:]...)
+	q.reserve(request.claim, 1)
+	q.takeTurn(request.job.Group)
+	return ticket, ""
 }
 
 func (q *Queue) reserve(c kernel.ResourceClaim, direction int64) {

@@ -471,11 +471,11 @@ export interface HistoryEntry {
   st: HistoryStatus;
   stl: string;
   when: string;
-  /** Entry of a task that is still running in its slot. */
+  /** Entry of a task that is on screen. */
   live?: "batch" | "single";
   saved?: Single | Batch | BatchSummary;
   undo?: DecisionSnapshot[];
-  /** A single document parked to make room for another one. */
+  /** A single document under “最近”: it goes on there if it has work, and continues from here. */
   park?: boolean;
 }
 

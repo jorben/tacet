@@ -134,10 +134,18 @@ func (e *Engine) applyRetention(ctx context.Context) error {
 	return err
 }
 
+// maxBatchFiles is how many files one import may name.
+const maxBatchFiles = 100000
+
+// maxQueuedStages bounds the stages waiting at one time. Every file of every running task can have one waiting and
+// tasks run side by side, so it leaves room for several imports of the largest size: over it a file fails to
+// dispatch, which is not a way to run out of room in normal use.
+const maxQueuedStages = 16 * maxBatchFiles
+
 // budgetFor is the scheduler budget of a resource tier: the comfortable tier works on one file at a
 // time within 2 GiB, the standard tier on two within 4 GiB.
 func budgetFor(tier string) sched.Budget {
-	b := sched.Budget{MemoryBytes: 2 << 30, ScratchBytes: 4 << 30, CandidateBytes: 4 << 30, QueueBytes: 64 << 20, CPUSlots: 1, MaxRunning: 1, MaxQueued: 100000,
+	b := sched.Budget{MemoryBytes: 2 << 30, ScratchBytes: 4 << 30, CandidateBytes: 4 << 30, QueueBytes: 64 << 20, CPUSlots: 1, MaxRunning: 1, MaxQueued: maxQueuedStages,
 		Workers: map[string]int{"format": 1, "detect": 1}}
 	if tier == "std" {
 		b.MemoryBytes, b.CPUSlots, b.MaxRunning = 4<<30, 2, 2

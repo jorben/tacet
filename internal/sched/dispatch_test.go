@@ -3,6 +3,7 @@ package sched
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -146,5 +147,121 @@ func TestDispatcherExternalLeaseReleaseNeedsWake(t *testing.T) {
 	q.Wake()
 	if err := receive(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+// pipeline runs jobs through a dispatcher on one slot, as the comfortable tier does. A file's next stage is submitted
+// from the completion of the last, so the order is decided by the queue alone. It returns what ran, in order.
+func pipeline(t *testing.T, before func(q *Queue), next func(q *Queue, done JobView) error, want int) []string {
+	t.Helper()
+	b := budget()
+	b.MaxRunning, b.MaxQueued = 1, 2000
+	stages := []kernel.StageKind{kernel.StagePreflight, kernel.StageExtractDetect, kernel.StageResolve, kernel.StageExport, kernel.StageValidate, kernel.StagePublish}
+	runners := make([]StageRunner, len(stages))
+	for i, s := range stages {
+		runners[i] = &fakeRunner{stage: s}
+	}
+	q, _ := queue(t, b, runners...)
+	before(q)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var order []string
+	finished := make(chan struct{})
+	done := make(chan error, 1)
+	d := NewDispatcher(q)
+	go func() {
+		done <- d.Run(ctx, func(view JobView, _ StageOutcome) error {
+			order = append(order, view.Attempt.JobID)
+			if len(order) == want {
+				close(finished)
+			}
+			return next(q, view)
+		})
+	}()
+	receive(t, finished)
+	cancel()
+	receive(t, done)
+	return order
+}
+
+// nextStage is what follows in a file's pipeline, as the same job under a new attempt; "" at the end of it.
+func nextStage(s kernel.StageKind) kernel.StageKind {
+	switch s {
+	case kernel.StagePreflight:
+		return kernel.StageExtractDetect
+	case kernel.StageExtractDetect:
+		return kernel.StageResolve
+	case kernel.StageResolve:
+		return kernel.StageExport
+	case kernel.StageExport:
+		return kernel.StageValidate
+	case kernel.StageValidate:
+		return kernel.StagePublish
+	}
+	return ""
+}
+
+func follow(q *Queue, done JobView) error {
+	stage := nextStage(done.Stage)
+	if stage == "" {
+		return nil
+	}
+	j := done
+	j.Stage = stage
+	j.Attempt.AttemptID += "+"
+	j.Attempt.JobVersion++
+	return q.Submit(j)
+}
+
+func position(order []string, pred func(string) bool) (first, last int) {
+	first = -1
+	for i, id := range order {
+		if pred(id) {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	return first, last
+}
+
+// A file of one batch beside 200 files of another: each is one of two turns, so it is through after at most twice its
+// own stages, however large the other batch is. Without turns it waits behind all 200 extractions.
+func TestALargeBatchDoesNotStarveASmallOne(t *testing.T) {
+	small := func(id string) bool { return id == "small" }
+	order := pipeline(t, func(q *Queue) {
+		for i := range 200 {
+			submit(t, q, inGroup("large", fmt.Sprintf("l%03d", i), kernel.StageExtractDetect, kernel.Background))
+		}
+		submit(t, q, inGroup("small", "small", kernel.StageExtractDetect, kernel.Background))
+	}, follow, 40)
+	first, last := position(order, small)
+	if first != 1 || last != 9 { // its 5 stages, each after one stage of the other batch
+		t.Fatalf("the small batch ran from %d to %d of %v, want 1 to 9", first, last, order)
+	}
+}
+
+// A quick file arriving while a batch runs: no further stage of the batch starts until the file is through. The stage
+// that ran as it came is not interrupted, and what was done before stays done.
+func TestALargeBatchDoesNotStarveAnInteractiveFile(t *testing.T) {
+	quick := func(id string) bool { return id == "quick" }
+	const before = 10
+	seen := 0
+	order := pipeline(t, func(q *Queue) {
+		for i := range 200 {
+			submit(t, q, inGroup("large", fmt.Sprintf("l%03d", i), kernel.StagePublish, kernel.Background))
+		}
+	}, func(q *Queue, done JobView) error {
+		if done.Group == "large" {
+			if seen++; seen == before {
+				return q.Submit(inGroup("single", "quick", kernel.StagePreflight, kernel.Interactive))
+			}
+		}
+		return follow(q, done)
+	}, before+6+5)
+	first, last := position(order, quick)
+	if first != before || last != before+5 {
+		t.Fatalf("the file ran from %d to %d of %v, want %d to %d", first, last, order, before, before+5)
 	}
 }

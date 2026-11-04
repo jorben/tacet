@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,14 +49,14 @@ const (
 	noReview    = "电话 13812345678\n"
 )
 
-func (r *parkRig) imp(kind string, park bool, files ...string) (BatchStatus, error) {
-	return r.e.Import(r.ctx, ImportRequest{Kind: kind, Files: files, OutputDir: r.out, ParkWaiting: park})
+func (r *parkRig) imp(kind string, files ...string) (BatchStatus, error) {
+	return r.e.Import(r.ctx, ImportRequest{Kind: kind, Files: files, OutputDir: r.out})
 }
 
 // waiting takes a task to where it waits for a person; it is not authorized to publish.
 func (r *parkRig) waiting(kind, body, wantState string) BatchStatus {
 	r.t.Helper()
-	st, err := r.imp(kind, true, r.file(body))
+	st, err := r.imp(kind, r.file(body))
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -73,8 +72,8 @@ func (r *parkRig) waiting(kind, body, wantState string) BatchStatus {
 	return st
 }
 
-// A1, A2: a waiting single task makes room; everything about it stays.
-func TestAWaitingTaskIsParkedByTheNextImportOfItsKind(t *testing.T) {
+// A1, A2: a waiting task stays as it is beside the next one of its kind, and is what is called parked.
+func TestAWaitingTaskStaysAsItWasBesideTheNextOneOfItsKind(t *testing.T) {
 	for _, tc := range []struct{ name, kind, body, state string }{
 		{"awaiting review", "quick", needsReview, "awaiting_review"},
 		{"ready, not authorized", "quick", noReview, "ready_to_publish"},
@@ -87,20 +86,12 @@ func TestAWaitingTaskIsParkedByTheNextImportOfItsKind(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			told := map[string]bool{}
-			var mu sync.Mutex
-			defer r.e.Subscribe(func(b string) { mu.Lock(); told[b] = true; mu.Unlock() })()
-			st, err := r.imp(tc.kind, true, r.file(noReview))
+			st, err := r.imp(tc.kind, r.file(noReview))
 			if err != nil {
 				t.Fatalf("the next import: %v", err)
 			}
-			mu.Lock()
-			if !told[old.ID] { // a window showing it reads it again
-				t.Errorf("no change was announced for the parked task: %v", told)
-			}
-			mu.Unlock()
-			if st.Displaced != old.ID || st.ID == old.ID {
-				t.Fatalf("displaced %q by %q, want %q", st.Displaced, st.ID, old.ID)
+			if st.ID == old.ID {
+				t.Fatalf("the import replaced %q", old.ID)
 			}
 			list, err := r.e.Unfinished(r.ctx)
 			if err != nil || len(list) != 2 {
@@ -111,7 +102,7 @@ func TestAWaitingTaskIsParkedByTheNextImportOfItsKind(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !kept.Parked || kept.Files[0].State != tc.state || kept.Files[0].Pending != old.Files[0].Pending {
-				t.Fatalf("the parked task changed: %+v", kept)
+				t.Fatalf("the waiting task changed: %+v", kept)
 			}
 			after, err := r.e.Findings(r.ctx, old.Files[0].ID, 0, 50)
 			if err != nil || len(after) != len(before) {
@@ -124,19 +115,8 @@ func TestAWaitingTaskIsParkedByTheNextImportOfItsKind(t *testing.T) {
 	}
 }
 
-// Without the request nothing is parked (A7): this is what an older caller gets.
-func TestWithoutParkWaitingAWaitingTaskStillRefuses(t *testing.T) {
-	r := newParkRig(t)
-	old := r.waiting("quick", needsReview, "awaiting_review")
-	if _, err := r.imp("quick", false, r.file(noReview)); err == nil || err.Error() != CodeQuickTaskActive {
-		t.Fatalf("import: %v", err)
-	}
-	if st, _ := r.e.Status(r.ctx, old.ID, 10); st.Parked {
-		t.Fatal("parked without being asked to")
-	}
-}
-
-// A3 with the real pipeline, and A5: paused is waiting for a person; a stage running or queued is not.
+// A5 with the real pipeline: a batch reads as parked once paused and not before, and in no state does it keep the
+// next one out.
 func TestABatchIsParkedOnceItIsPausedAndNotBefore(t *testing.T) {
 	r := newParkRig(t)
 	inspect, extract := make(chan struct{}), make(chan struct{})
@@ -149,48 +129,49 @@ func TestABatchIsParkedOnceItIsPausedAndNotBefore(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { close(extract) }) // before the engine closes (cleanups run last first)
-	st, err := r.imp("batch", true, r.file(noReview))
+	st, err := r.imp("batch", r.file(noReview))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// its file is being inspected and it was never confirmed: a draft, with its slot
-	if _, err = r.imp("batch", true, r.file(noReview)); err == nil || err.Error() != CodeBatchActive {
-		t.Fatalf("while inspecting: %v", err)
+	beside := func(when string, parked bool) {
+		t.Helper()
+		if _, err := r.imp("batch", r.file(noReview)); err != nil {
+			t.Fatalf("an import %s: %v", when, err)
+		}
+		if now, err := r.e.Status(r.ctx, st.ID, 10); err != nil || now.Parked != parked {
+			t.Fatalf("%s: %+v %v", when, now, err)
+		}
 	}
+	beside("while inspecting", false)
 	close(inspect)
 	if err = r.e.Start(r.ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
 		t.Fatal(err)
 	}
-	// confirmed and queued for its next stage: work under way, the slot stays
 	now, _ := r.e.Status(r.ctx, st.ID, 10)
 	if now.Files[0].State != "queued" {
 		t.Fatalf("not held in the queue: %+v", now.Files[0])
 	}
-	if _, err = r.imp("batch", true, r.file(noReview)); err == nil || err.Error() != CodeBatchActive {
-		t.Fatalf("while queued: %v", err)
-	}
+	beside("while queued", false)
 	if err = r.e.Pause(r.ctx, st.ID); err != nil {
 		t.Fatal(err)
 	}
 	if now, _ = r.e.Status(r.ctx, st.ID, 10); now.Files[0].State != "paused" {
 		t.Fatalf("not paused: %+v", now.Files[0])
 	}
-	next, err := r.imp("batch", true, r.file(noReview))
-	if err != nil {
-		t.Fatalf("after pausing: %v", err)
-	}
-	if next.Displaced != st.ID {
-		t.Fatalf("displaced %q", next.Displaced)
-	}
+	beside("after pausing", true)
 }
 
-// A file that goes back to work takes its batch out of waiting (mixed batches: internal/jobs).
-func TestABatchWhoseFileWentBackToWorkKeepsTheSlot(t *testing.T) {
+// A file that goes back to work takes its batch out of waiting (each state: internal/jobs).
+func TestABatchWhoseFileWentBackToWorkIsNotParked(t *testing.T) {
 	r := newParkRig(t)
 	st := r.waiting("batch", needsReview, "awaiting_review")
+	if !st.Parked {
+		t.Fatalf("the precondition: it waits and is not parked: %+v", st)
+	}
 	job := st.Files[0].ID
-	// a decision sends the file back to work: until it waits again the batch holds its slot
-	r.e.beforeDispatch = func(kernel.StageKind) { time.Sleep(300 * time.Millisecond) }
+	gate := make(chan struct{})
+	r.e.beforeDispatch = func(kernel.StageKind) { <-gate }
+	t.Cleanup(func() { close(gate) })
 	fs, err := r.e.Findings(r.ctx, job, 0, 50)
 	if err != nil || len(fs) == 0 {
 		t.Fatal(fs, err)
@@ -202,10 +183,7 @@ func TestABatchWhoseFileWentBackToWorkKeepsTheSlot(t *testing.T) {
 	if s := now.Files[0].State; s == "awaiting_review" || s == "ready_to_publish" {
 		t.Fatalf("the file did not go back to work: %s", s)
 	}
-	if _, err = r.imp("batch", true, r.file(noReview)); err == nil || err.Error() != CodeBatchActive {
-		t.Fatalf("while it works: %v", err)
-	}
-	if now, _ = r.e.Status(r.ctx, st.ID, 10); now.Parked {
+	if now.Parked {
 		t.Fatal("parked while working")
 	}
 }
@@ -213,17 +191,17 @@ func TestABatchWhoseFileWentBackToWorkKeepsTheSlot(t *testing.T) {
 // A publish that is authorized moves on by itself, so its file is not waiting for anyone.
 func TestAFileReadyToPublishByItselfIsNotWaiting(t *testing.T) {
 	r := newParkRig(t)
-	st, err := r.imp("batch", true, r.file(noReview))
+	st, err := r.imp("batch", r.file(noReview))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = r.e.Start(r.ctx, StartRequest{Batch: st.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "ready_to_publish" {
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "ready_to_publish" || !st.Parked {
 		t.Fatalf("%+v %v", st, err)
 	}
-	// granted, but the publish has not been dispatched: what the hook holds open
+	// granted, but the publish has not been dispatched
 	if err = r.e.ws.Commit(r.ctx, func(tx store.Tx) error {
 		run, err := getRun(tx, st.ID)
 		if err != nil {
@@ -234,84 +212,88 @@ func TestAFileReadyToPublishByItselfIsNotWaiting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.imp("batch", true, r.file(noReview)); err == nil || err.Error() != CodeBatchActive {
-		t.Fatalf("an authorized file: %v", err)
+	if now, err := r.e.Status(r.ctx, st.ID, 10); err != nil || now.Parked {
+		t.Fatalf("an authorized file: %+v %v", now, err)
 	}
 }
 
-// A6: a draft whose start was refused keeps its slot. Its files were not committed to a run.
+// A6: a draft whose start was refused has not started: it is not parked, and the next import goes beside it.
 func TestARefusedDraftIsNotParked(t *testing.T) {
 	r := newParkRig(t)
-	st, err := r.imp("batch", true, r.file(noReview))
+	st, err := r.imp("batch", r.file(noReview))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = r.e.Start(r.ctx, StartRequest{Batch: st.ID, Preset: "no-such-preset"}); err == nil {
 		t.Fatal("started with an unknown preset")
 	}
-	if _, err = r.imp("batch", true, r.file(noReview)); err == nil || err.Error() != CodeBatchActive {
-		t.Fatalf("over a draft: %v", err)
+	next, err := r.imp("batch", r.file(noReview))
+	if err != nil {
+		t.Fatalf("beside a draft: %v", err)
 	}
-	if now, _ := r.e.Status(r.ctx, st.ID, 10); now.Parked {
-		t.Fatal("a draft was parked")
+	if now, _ := r.e.Status(r.ctx, st.ID, 10); now.Parked || now.ID == next.ID {
+		t.Fatalf("a draft was parked or replaced: %+v", now)
+	}
+	// nor is one that was paused: all its files are stopped, but nobody has started it
+	if err = r.e.Pause(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	now, err := r.e.Status(r.ctx, st.ID, 10)
+	if err != nil || now.Files[0].State != "paused" || now.Parked {
+		t.Fatalf("a paused draft: %+v %v", now, err)
 	}
 }
 
-// A10: parking and the new draft are one transaction.
-func TestAnImportThatFailsLeavesTheHolderHoldingTheSlot(t *testing.T) {
+// A10: the first transaction of an import is all or nothing.
+func TestAnImportThatFailsLeavesNothingBehind(t *testing.T) {
 	r := newParkRig(t)
 	old := r.waiting("quick", needsReview, "awaiting_review")
 	boom := errors.New("DRAFT_FAILED")
 	calls := 0
 	r.e.beforeDraft = func() error { calls++; return boom }
-	if _, err := r.imp("quick", true, r.file(noReview)); !errors.Is(err, boom) {
+	if _, err := r.imp("quick", r.file(noReview)); !errors.Is(err, boom) {
 		t.Fatalf("import: %v", err)
 	}
 	if calls != 1 {
 		t.Fatalf("the failure ran %d times", calls)
 	}
 	r.e.beforeDraft = nil
-	now, err := r.e.Status(r.ctx, old.ID, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if now.Parked {
-		t.Fatal("the park survived the failed import")
-	}
-	if list, _ := r.e.Unfinished(r.ctx); len(list) != 1 {
+	if list, _ := r.e.Unfinished(r.ctx); len(list) != 1 || list[0].ID != old.ID {
 		t.Fatalf("the failed import left a batch: %+v", list)
 	}
-	// the holder still holds: without the request the next import is refused
-	if _, err = r.imp("quick", false, r.file(noReview)); err == nil || err.Error() != CodeQuickTaskActive {
-		t.Fatalf("the slot: %v", err)
+	if _, err := r.imp("quick", r.file(noReview)); err != nil {
+		t.Fatalf("the next import: %v", err)
 	}
 }
 
-// What Import leaves when it stops after its first transaction (the keys, the members, an interrupt): the holder stays
-// parked and can be continued, and the empty draft does not keep the next import out.
-func TestAnImportThatStopsBeforeItsFilesDoesNotKeepTheSlot(t *testing.T) {
+// What Import leaves when it stops after its first transaction (the keys, the members, an interrupt) keeps nothing
+// from happening: not the next import, not a restart, and nothing shows of it.
+func TestAnImportThatStopsBeforeItsFilesLeavesNothingInTheWay(t *testing.T) {
 	r := newParkRig(t)
 	old := r.waiting("quick", needsReview, "awaiting_review")
 	boom := errors.New("KEYS_FAILED")
 	r.e.beforeMembers = func() error { return boom }
-	if _, err := r.imp("quick", true, r.file(noReview)); !errors.Is(err, boom) {
+	if _, err := r.imp("quick", r.file(noReview)); !errors.Is(err, boom) {
 		t.Fatalf("import: %v", err)
 	}
 	r.e.beforeMembers = nil
 	now, err := r.e.Status(r.ctx, old.ID, 10)
-	if err != nil || !now.Parked || now.Files[0].State != "awaiting_review" {
-		t.Fatalf("the holder after the failed import: %+v %v", now, err)
+	if err != nil || now.Files[0].State != "awaiting_review" {
+		t.Fatalf("the earlier task after the failed import: %+v %v", now, err)
 	}
-	next, err := r.imp("quick", true, r.file(noReview))
-	if err != nil {
-		t.Fatalf("the next import was kept out by the empty draft: %v", err)
-	}
-	if next.Displaced != "" {
-		t.Fatalf("the empty draft was reported as parked: %q", next.Displaced)
+	if _, err = r.imp("quick", r.file(noReview)); err != nil {
+		t.Fatalf("the next import: %v", err)
 	}
 	list, err := r.e.Unfinished(r.ctx)
 	if err != nil || len(list) != 2 {
-		t.Fatalf("listed %+v %v, want the holder and the next one", list, err)
+		t.Fatalf("listed %+v %v, want the earlier task and the next one", list, err)
+	}
+	if err = r.e.Close(); err != nil {
+		t.Fatalf("closing with what the import left: %v", err)
+	}
+	r.e = openEngine(t, r.ws, r.key, false)
+	if list, err = r.e.Unfinished(r.ctx); err != nil || len(list) != 2 {
+		t.Fatalf("after a restart: %+v %v", list, err)
 	}
 }
 
@@ -409,9 +391,9 @@ func TestADecisionTakesBackTheExportOfAQuickTask(t *testing.T) {
 	if leftovers, _ := filepath.Glob(filepath.Join(r.out, "*.txt")); len(leftovers) != 0 {
 		t.Fatalf("delivered without another export: %v", leftovers)
 	}
-	// it is still waiting for a person, so it gives way
-	if _, err = r.imp("quick", true, r.file(noReview)); err != nil {
-		t.Fatalf("the next task: %v", err)
+	// it is still waiting for a person, so it reads as parked
+	if !st.Parked {
+		t.Fatalf("not parked: %+v", st)
 	}
 	if err = r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
 		t.Fatal(err)
@@ -465,7 +447,7 @@ func TestAManualSelectionTakesBackTheExportOfAQuickTask(t *testing.T) {
 // A batch states its authorization up front for files yet to come: a decision does not take it back (control).
 func TestADecisionDoesNotTakeBackTheAuthorizationOfABatch(t *testing.T) {
 	r := newParkRig(t)
-	st, err := r.imp("batch", true, r.file(needsReview))
+	st, err := r.imp("batch", r.file(needsReview))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +523,7 @@ func TestTheChoicesOnAParkedTaskSurviveARestart(t *testing.T) {
 	if units[0].Findings[0].Decision == "keep" {
 		t.Fatal("kept before anybody chose")
 	}
-	if _, err = r.imp("quick", true, r.file(noReview)); err != nil {
+	if _, err = r.imp("quick", r.file(noReview)); err != nil {
 		t.Fatal(err)
 	}
 	if err = r.e.DecideFindings(r.ctx, job, []FindingDecision{{ID: id, Keep: true}}); err != nil {
@@ -584,7 +566,7 @@ func TestAParkedTaskIsDeliveredAndReleasedAlongsideTheNewOne(t *testing.T) {
 
 	r := newParkRig(t)
 	old := r.waiting("quick", noReview, "ready_to_publish")
-	next, err := r.imp("quick", true, r.file(noReview))
+	next, err := r.imp("quick", r.file(noReview))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,17 +585,13 @@ func TestAParkedTaskIsDeliveredAndReleasedAlongsideTheNewOne(t *testing.T) {
 	if list, err := r.e.Unfinished(r.ctx); err != nil || len(list) != 0 {
 		t.Fatalf("still listed %+v %v", list, err)
 	}
-	// both slots are free again
-	if _, err = r.imp("quick", false, r.file(noReview)); err != nil {
-		t.Fatalf("the slot after both ended: %v", err)
-	}
 }
 
 // A decision on a parked file redoes it as on any other, without touching the task on screen.
 func TestAParkedFileCanStillBeDecided(t *testing.T) {
 	r := newParkRig(t)
 	old := r.waiting("quick", needsReview, "awaiting_review")
-	if _, err := r.imp("quick", true, r.file(noReview)); err != nil {
+	if _, err := r.imp("quick", r.file(noReview)); err != nil {
 		t.Fatal(err)
 	}
 	fs, err := r.e.Findings(r.ctx, old.Files[0].ID, 0, 50)
@@ -666,7 +644,7 @@ func TestEveryParkedTaskIsListedAfterARestart(t *testing.T) {
 			parked[b.Kind]++
 		}
 	}
-	if parked["quick"] != 3 { // the fourth holds the slot of its kind
+	if parked["quick"] != 4 || parked["batch"] != 1 { // a restart leaves all of them paused
 		t.Fatalf("parked %v", parked)
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -681,9 +659,9 @@ func TestEveryParkedTaskIsListedAfterARestart(t *testing.T) {
 	if err != nil || st.Files[0].State != "awaiting_review" || !st.Parked {
 		t.Fatalf("%+v %v", st, err)
 	}
-	// and a task that was waiting before the restart makes room again, paused
-	if _, err = r.imp("quick", true, r.file(noReview)); err != nil {
-		t.Fatalf("the holder paused by the restart (缺陷 3): %v", err)
+	// and an import goes beside what was waiting before the restart
+	if _, err = r.imp("quick", r.file(noReview)); err != nil {
+		t.Fatalf("beside the tasks paused by the restart (缺陷 3): %v", err)
 	}
 }
 
@@ -729,7 +707,7 @@ func TestAParkedTaskHoldsNothingWhileTheNextOneRuns(t *testing.T) {
 	if s := r.e.queue.State(); s.Running != 0 || s.Pending != 0 {
 		t.Fatalf("while only a parked-to-be task waits: %+v", s)
 	}
-	next, err := r.imp("quick", true, r.file(noReview))
+	next, err := r.imp("quick", r.file(noReview))
 	if err != nil {
 		t.Fatal(err)
 	}

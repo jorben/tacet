@@ -1,16 +1,15 @@
-// The home page: taking files, the single/batch slots, and the list of recent tasks.
+// The home page: taking files, making room on screen, and the list of recent tasks.
 import { keepDays } from "../domain/batch";
 import { extOf, parseCount } from "../domain/format";
 import { presetModelId } from "../domain/presets";
 import { createSingle } from "../domain/single";
 import type { BatchSummary, HistoryEntry, Single } from "../domain/types";
 import { getState, store } from "../store";
-import { liveHistory, slotBusy, slotSingle } from "../store/selectors";
+import { isWorking, liveHistory, screenSingle, unfinishedOnScreen } from "../store/selectors";
 import { closeModal, closePop, openModal, toast } from "../overlay/store";
 import { archiveBatch, leaveBatchFile, newBatch, parkBatch, resumeBatch } from "./batch";
-import { discardLiveTask, liveBatchSlotFree, reopenLiveSingle, savedBatchId, singleSlotFree } from "./live";
+import { discardLiveTask, reopenLiveSingle, savedBatchId, setAsideBatch, shelveScreenSingle } from "./live";
 import { needModel } from "./models";
-import { shelveLiveBatch, shelveSingle } from "./shelf";
 import { newSingle } from "./single";
 
 export interface IncomingFile {
@@ -26,27 +25,25 @@ export function takeFiles(files: IncomingFile[]): void {
   const modelId = presetModelId(s.presets, preset);
   if (files.length === 1) {
     const f = files[0]!;
-    const go = () => needSlot("single", () => newSingle(f.name, f.size, { preset, modelId }));
+    const go = () => makeRoom("single", () => newSingle(f.name, f.size, { preset, modelId }));
     if (needModel(preset, go, f.name, modelId)) go();
-  } else needSlot("batch", () => newBatch(files.map((f) => f.name)));
+  } else makeRoom("batch", () => newBatch(files.map((f) => f.name)));
 }
 
 /**
- * One single task and one batch on screen at a time. A task waiting for the person gives way without asking and
- * stays under “最近” (FR-28); one with work under way stays where it is. Only the batches of the demonstration,
- * which has no kernel to keep them, still ask.
+ * One single task and one batch on screen at a time. The one on screen gives way without asking and stays under
+ * “最近” (FR-28), where the kernel goes on with any work it has. Only the tasks of the demonstration, whose clock runs
+ * on the screen and which no kernel keeps, still wait or ask.
  */
-export function needSlot(kind: "single" | "batch", go: () => void): void {
-  if (kind === "single") { needSingleSlot(go); return; }
+export function makeRoom(kind: "single" | "batch", go: () => void): void {
+  if (kind === "single") { makeRoomForSingle(go); return; }
   const s = getState();
   if (s.batch?.live) {
-    if (s.batch.phase === "precheck") { toast("当前批次还未开始，请先开始或取消"); return; }
-    if (!liveBatchSlotFree()) return;
-    store.update((d) => { leaveBatchFile(d); shelveLiveBatch(d); });
+    store.update((d) => { leaveBatchFile(d); setAsideBatch(d); });
     go();
     return;
   }
-  if (!slotBusy(s, "batch")) {
+  if (!unfinishedOnScreen(s, "batch")) {
     if (s.batch) archiveBatch();
     go();
     return;
@@ -54,12 +51,12 @@ export function needSlot(kind: "single" | "batch", go: () => void): void {
   openModal({ type: "slotConflict", go });
 }
 
-function needSingleSlot(go: () => void): void {
-  const cur = slotSingle(getState());
-  if (cur && !singleSlotFree()) return;
+function makeRoomForSingle(go: () => void): void {
+  const cur = screenSingle(getState());
+  if (cur && !cur.live && isWorking(cur)) { toast("「" + cur.name + "」正在处理，请稍候"); return; }
   if (cur && cur.phase !== "done") {
-    store.update((d) => { leaveBatchFile(d); shelveSingle(d); });
-    toast("已保存到“最近”");
+    store.update((d) => { leaveBatchFile(d); shelveScreenSingle(d); });
+    toast(isWorking(cur) ? "上一份文件继续在后台处理，可在“最近”查看" : "已保存到“最近”");
   }
   go();
 }
@@ -78,7 +75,7 @@ export function parkAndContinue(go: () => void): void {
   go();
 }
 
-/** Back to the batch that holds the slot. */
+/** Back to the batch on screen. */
 export function viewSlotTask(): void {
   closeModal();
   store.update((d) => { d.view = "batch"; });
@@ -86,7 +83,7 @@ export function viewSlotTask(): void {
 
 /* ── Recent tasks ─────────────────────────────────────────────────────────── */
 
-/** Completed history is viewed separately so active tasks keep their slots and timers. */
+/** Completed history is viewed separately so active tasks keep their screens and timers. */
 export function openHistoryResult(entry: HistoryEntry): void {
   const live = entry.live === "batch";
   let data: Single | BatchSummary | null = live ? null : (entry.saved as Single | BatchSummary | undefined) ?? null;
@@ -120,7 +117,7 @@ export function openHistoryEntry(id: string): void {
   if (x.live) { store.update((d) => { d.view = x.live!; }); return; }
   if (x.park && savedBatchId(x.saved)) { openModal({ type: "resumeBatch", entryId: x.id }); return; }
   if (x.park) {
-    needSlot("single", () => store.update((d) => {
+    makeRoom("single", () => store.update((d) => {
       d.history = d.history.filter((h) => h.id !== x.id);
       d.single = x.saved as Single;
       d.undo = x.undo || [];
@@ -129,11 +126,11 @@ export function openHistoryEntry(id: string): void {
     return;
   }
   if (x.saved && x.k === "file") {
-    needSlot("single", () => store.update((d) => { d.single = x.saved as Single; d.undo = []; d.view = "single"; }));
+    makeRoom("single", () => store.update((d) => { d.single = x.saved as Single; d.undo = []; d.view = "single"; }));
     return;
   }
   if (x.st === "keep") { openModal({ type: "resumeBatch", entryId: x.id }); return; }
-  if (x.saved && x.k === "batch") { needSlot("batch", () => resumeBatch(x.id)); return; }
+  if (x.saved && x.k === "batch") { makeRoom("batch", () => resumeBatch(x.id)); return; }
   openModal({ type: "historyItem", entryId: x.id });
 }
 
@@ -142,7 +139,7 @@ export function resumeSavedBatch(entryId: string): void {
   closeModal();
   const x = getState().history.find((h) => h.id === entryId);
   if (x?.k === "file") { void reopenLiveSingle(entryId); return; }
-  needSlot("batch", () => { resumeBatch(entryId); toast("已恢复，继续处理"); });
+  makeRoom("batch", () => { resumeBatch(entryId); toast("已恢复，继续处理"); });
 }
 
 /** “停止并清理”. What the kernel keeps goes first: a task it would not give up stays listed. */

@@ -3,13 +3,13 @@ import { batchStatus, keepDays } from "../../domain/batch";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState } from "../../store";
-import { slotBusy } from "../../store/selectors";
+import { unfinishedOnScreen } from "../../store/selectors";
 import { Button, pushLeft } from "../../ui";
 
 /** The demonstration's batch is taken by an unfinished one: keep it for later, go back to it, or cancel. */
 export function SlotConflictDialog({ go }: { go: () => void }) {
   const state = useAppState((s) => s);
-  const cur = slotBusy(state, "batch");
+  const cur = unfinishedOnScreen(state, "batch");
   if (!cur) return null;
   const precheck = cur.phase === "precheck";
   return (

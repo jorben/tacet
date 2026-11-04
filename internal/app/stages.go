@@ -48,6 +48,9 @@ func (r runner) Claim(sched.JobView) kernel.ResourceClaim {
 	return kernel.ResourceClaim{MemoryBytes: 256 << 20, CPUSlots: 1, WorkerKind: "format", ScratchBytes: 64 << 20, CandidateBytes: 64 << 20, QueueBytes: 1 << 20}
 }
 func (r runner) Run(ctx sched.StageContext) sched.StageOutcome {
+	if r.e.stageStarted != nil {
+		r.e.stageStarted(ctx.Attempt().JobID, r.kind)
+	}
 	r.e.act.begin()
 	defer r.e.act.end()
 	bctx, exceeded := r.e.withDeadline(ctx, r.kind)
