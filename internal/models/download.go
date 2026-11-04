@@ -234,14 +234,21 @@ func (s *Service) fetchFile(ctx context.Context, fx *netgate.Fetcher, e Entry, f
 	return nil
 }
 
-// stamp is a cheap fingerprint of a directory's files (name, size, modification
-// time), used to decide whether a full re-hash is needed.
+// stamp is a cheap fingerprint of a directory's files (name, size, modification time). It
+// decides whether CheckBinding hashes the files again. A rewrite that keeps the size and
+// falls in the same tick of the file clock keeps the stamp too (1 ms measured on Linux, where
+// tmpfs is fast enough to hit it, #29), and a file the manifest does not list does not change
+// it, so loading never relies on it. A listed file that is not a regular file is errVerify,
+// never a stamp: an empty cache must not match it.
 func stamp(e Entry, dir string) (string, error) {
 	h := sha256.New()
 	for _, f := range e.Files {
 		info, err := os.Lstat(filepath.Join(dir, f.Name))
-		if err != nil || !info.Mode().IsRegular() {
+		if err != nil {
 			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", errVerify
 		}
 		fmt.Fprintf(h, "%s\x00%d\x00%d\n", f.Name, info.Size(), info.ModTime().UnixNano())
 	}
@@ -355,7 +362,7 @@ func (s *Service) prepare(ctx context.Context, e Entry) error {
 	if err := s.set(ctx, e, StatePreparing, ""); err != nil {
 		return ErrFailed
 	}
-	if _, err := s.checkFiles(e); err != nil {
+	if _, err := s.checkFiles(e, true); err != nil { // the files are loaded: hashed in full
 		s.set(ctx, e, StateError, CodeChanged)
 		return err
 	}
@@ -424,28 +431,32 @@ func (s *Service) Discard(ctx context.Context, key string) error {
 	return s.set(ctx, e, StatePending, "")
 }
 
-// checkFiles verifies the installed files against the manifest, re-hashing only when
-// the fingerprint changed since they were last hashed in full.
-func (s *Service) checkFiles(e Entry) (string, error) {
+// checkFiles verifies the installed files against the manifest. With full (loading,
+// architecture 8.3) they are hashed every time; otherwise only when the fingerprint
+// changed since they were last hashed in full, which misses a rewrite that keeps size and
+// modification time (stamp).
+func (s *Service) checkFiles(e Entry, full bool) (string, error) {
 	dir := s.installed(e)
 	st, err := stamp(e, dir)
-	if err != nil {
+	if err != nil && !errors.Is(err, errVerify) {
 		return "", ErrBindingMissing
 	}
 	s.mu.Lock()
 	known := s.verified[e.Key()]
 	s.mu.Unlock()
-	if known != st {
-		if err := verifyDir(e, dir); err != nil {
-			s.mu.Lock()
-			delete(s.verified, e.Key())
-			s.mu.Unlock()
-			return "", ErrBindingMismatch
-		}
-		s.mu.Lock()
-		s.verified[e.Key()] = st
-		s.mu.Unlock()
+	if err == nil && !full && known == st {
+		return dir, nil
 	}
+	// verifyDir also refuses the file stamp found not to be a regular one (errVerify)
+	if verifyDir(e, dir) != nil {
+		s.mu.Lock()
+		delete(s.verified, e.Key()) // a refusal is never undone by a stamp from before it
+		s.mu.Unlock()
+		return "", ErrBindingMismatch
+	}
+	s.mu.Lock()
+	s.verified[e.Key()] = st
+	s.mu.Unlock()
 	return dir, nil
 }
 
@@ -474,7 +485,7 @@ func (s *Service) CheckBinding(ctx context.Context, id, digest string) (Binding,
 		if st != StateInstalled && st != StateReady && st != StatePreparing && !(st == StateError && code == CodePrepare) {
 			return Binding{}, ErrBindingMissing
 		}
-		dir, err := s.checkFiles(e)
+		dir, err := s.checkFiles(e, false) // called often; the load hashes in full
 		if err != nil {
 			if errors.Is(err, ErrBindingMismatch) {
 				s.set(ctx, e, StateError, CodeChanged)
