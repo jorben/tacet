@@ -43,13 +43,13 @@ export async function createCategory(name: string, placeholder = defaultPlacehol
 /**
  * Asks to delete a user category. Categories are shared by every rule set, model and scheme: a rule that reports
  * it keeps it (the person is told which rule set), and so does a model that would be left with no label;
- * otherwise a dialog says what lets go of it and waits for a yes. `back` is the dialog to return to.
+ * otherwise a dialog lists the models that let go of it and waits for a yes. `back` is the dialog to return to.
  */
 export function deleteCategory(id: string, back?: ModalSpec): void {
   const s = getState();
   const c = s.categories.find((x) => x.id === id);
   if (!c || c.origin !== "custom") return;
-  const use = categoryUse(id, s.rulesets, s.models, s.presets);
+  const use = categoryUse(id, s.rulesets, s.models);
   if (use.rulesets.length) {
     toast("「" + c.name + "」正被规则组「" + use.rulesets[0] + "」的规则使用，不能删除");
     return;
@@ -62,7 +62,7 @@ export function deleteCategory(id: string, back?: ModalSpec): void {
   openModal({ type: "deleteCategory", id, back });
 }
 
-/** Deletes a user category the person confirmed; what refers to it lets go of it. Returns whether it is gone. */
+/** Deletes a user category the person confirmed; models and schemes that refer to it let go of it. Returns whether it is gone. */
 export async function removeCategory(id: string): Promise<boolean> {
   const e = liveEngine();
   if (!e) {

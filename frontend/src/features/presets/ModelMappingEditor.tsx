@@ -15,7 +15,7 @@ import { ConfigHeader, RefLinks } from "./ConfigHeader";
 import { CatalogNotice, GuideCard } from "./ConfigStates";
 import { ItemList } from "./ItemList";
 
-const MAPPING_HINT = "模型输出的每个标签计入一个类别，一个类别可关联多个标签，任一标签命中即算命中；至少保留一个标签关联到类别。方案按类别设置处理方式，改动对之后开始的任务生效。";
+const MAPPING_HINT = "模型输出的每个标签计入一个类别，一个类别可关联多个标签，任一标签命中即算命中；至少保留一个标签关联到类别。改动对之后开始的任务生效。";
 const NONE = "_none";
 
 /**
@@ -79,6 +79,7 @@ export function ModelMappingEditor() {
   const rows = listedCategories(catalog, Object.values(current));
   const unused = unmappedLabels(m);
   const using = presets.filter((p) => p.det === "model" && p.model === m.id);
+  const meta = [m.version && "v" + m.version, m.variant, m.languages].filter(Boolean).join(" · ");
   const pick = (anchor: HTMLElement, category: string) =>
     openMultiMenu(anchor, name(category) + " · 可多选标签", Object.keys(labels).sort().map((l) => ({
       k: l, l, s: current[l] ? name(current[l]!) : "未关联",
@@ -93,9 +94,8 @@ export function ModelMappingEditor() {
           badge={m.mapping ? "已自定义" : "默认映射"}
           badgePrimary={!!m.mapping}
           subtitle={<>
-            {[m.version && "v" + m.version, m.variant, m.languages].filter(Boolean).join(" · ")}
-            {" · "}
-            {using.length ? <>用于 <RefLinks items={using} onOpen={(id) => showInConfig({ tab: "scheme", id })} /></> : "未被方案使用"}
+            {meta}
+            {using.length > 0 && <>{meta && " · "}用于 <RefLinks items={using} onOpen={(id) => showInConfig({ tab: "scheme", id })} /></>}
           </>}
         >
           <Button variant="ghost" disabled={!m.mapping} onClick={() => void resetModelMapping(m.id)}>恢复默认</Button>

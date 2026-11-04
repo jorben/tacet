@@ -146,29 +146,26 @@ export function DetectionLossDialog({ action, lost, noRules, go, back }: { actio
 }
 
 /**
- * Deleting a user category. Categories are shared: the dialog lists the models whose labels stop counting as it
- * and the schemes whose setting for it is cleared. Tasks already started keep what they froze.
+ * Deleting a user category. Categories are shared: the dialog lists the models whose labels stop counting as it.
+ * Tasks already started keep what they froze.
  */
 export function DeleteCategoryDialog({ id, back }: { id: CategoryId; back?: ModalSpec }) {
   const s = useAppState((x) => x);
   const [busy, setBusy] = useState(false);
   const name = categoryName(s.categories, id);
-  const use = categoryUse(id, s.rulesets, s.models, s.presets);
+  const use = categoryUse(id, s.rulesets, s.models);
   return (
     <Modal className="loss-modal" initialFocus=".btn-g">
       <ModalHeader title={"删除类别「" + name + "」？"} subtitle="类别为全局共用，删除对所有规则组、模型与方案生效" />
       <ModalBody>
-        {use.models.length || use.presets.length ? (
+        {use.models.length ? (
           <ul className="loss-list">
             {use.models.map((m) => (
-              <li key={"m:" + m.name}>模型『{m.name}』中关联到它的标签 {m.labels.join("、")} 将变为未关联</li>
-            ))}
-            {use.presets.map((p) => (
-              <li key={"p:" + p}>方案『{p}』中对它的设置将被清除</li>
+              <li key={m.name}>模型『{m.name}』中关联到它的标签 {m.labels.join("、")} 将变为未关联</li>
             ))}
           </ul>
         ) : (
-          <div>没有模型或方案使用它。</div>
+          <div>没有模型使用它。</div>
         )}
         <div className="muted sm" style={{ marginTop: 10 }}>
           已开始的任务与历史结果保持原样。
