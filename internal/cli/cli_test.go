@@ -263,12 +263,25 @@ func TestARefusalIsReportedBeforeItsDraftIsDiscarded(t *testing.T) {
 
 // Discarding the draft waits for the kept start to be dropped; an interrupt ends that wait, and the run
 // still reports its refusal and cleans up. The interrupt comes during the wait: one that came before the
-// answer of Start would be an interrupted start, not a refused one.
+// answer of Start would be an interrupted start, not a refused one. Everything here is the in-memory fake, so
+// the limit does not measure speed: it only turns a wait that ignores the interrupt into a failure of this test.
 func TestAnInterruptEndsTheWaitOfARefusedStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	f := &fake{startErr: app.ErrNotReady, waitBlocks: true, onWait: cancel}
-	code, _, errOut := call(ctx, opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	args := []string{"run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir() + "/a.txt"}
+	var code int
+	var errOut string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		code, _, errOut = call(ctx, opener(f, nil), args...)
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run did not end on the interrupt")
+	}
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}

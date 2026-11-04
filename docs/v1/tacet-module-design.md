@@ -260,7 +260,7 @@ flowchart TB
 | 用例 | 编排 | 关键校验 / 结果 |
 | --- | --- | --- |
 | 导入 `Import` | 按文件数与用户选择决定走快捷路径或批次草稿（阈值 M0 冻结，FR-28）→ `jobs.CreateDraft` → 提交预检阶段；有进行中的网络活动时只登记选择（需求文档 3.4.1 节） | 已有未完成的快捷任务或批次时返回 `QUICK_TASK_ACTIVE` / `BATCH_ACTIVE`，由用户继续或取消原任务，不静默替换 |
-| 开始 `Start` | 快捷路径在预检通过后自动调用，批次由用户在预检页确认（处理模式、保留期限、发布授权方式）→ `snapshot.Freeze` → `models.CheckBinding` → 就绪则 `jobs.Confirm`，否则记为等待操作 | `CompatReport.Blocking` 非空时拒绝；`NeedsNarrowing` 须附用户确认；等待操作不创建检测任务，模型就绪后须用户明确继续 |
+| 开始 `Start` | 快捷路径在预检通过后自动调用，批次由用户在预检页确认（处理模式、保留期限、发布授权方式）→ `snapshot.Freeze` → `models.CheckBinding` → 就绪则 `jobs.Confirm`，否则记为等待操作 | `CompatReport.Blocking` 非空时拒绝；`NeedsNarrowing` 不拒绝开始，也不询问（只有编辑规则组内的规则会在保存前询问，修改映射直接保存，FR-18、5.2 节）；等待操作不创建检测任务，模型就绪后须用户明确继续 |
 | 提交决定 `CommitDecisions` | `review.Commit` → `jobs.OnDecisionsChanged(受影响任务)` | 物化后的成员数与界面展示的范围摘要不一致时返回 `SCOPE_CHANGED` |
 | 确认并导出 `ConfirmAndExport` | 同一提交区内 `review.Commit` + `publish.Grant`（绑定处置键，MD-16）→ `jobs.OnDecisionsChanged` | 快捷路径专用（FR-28、架构文档 6.1 节） |
 | 授权发布 `AuthorizePublish` | 按成员当前处置键调用 `publish.Grant`；部分结果另需授权 | 范围为“当前符合条件的成员”或复核摘要中的全部成员（BUX-12、BUX-15） |
