@@ -63,13 +63,15 @@ func (s *Service) end(key string) {
 // In error with installed files it is the "download again" the screens offer for files
 // that changed and after a failed preparation (requirements 3.4.1): a copy that still
 // matches is loaded again without the network, one that does not is replaced once the new
-// files verified (finish).
+// files verified (finish). Hashing the copy takes seconds at real sizes and the screens read
+// the state right after asking (#36), so the state says verifying before it starts. The
+// error's code stays with it: a restart in between puts the error back (Recover).
 func (s *Service) Download(ctx context.Context, key string) error {
 	e, err := s.entry(key)
 	if err != nil {
 		return err
 	}
-	st, _, err := s.stored(ctx, e)
+	st, code, err := s.stored(ctx, e)
 	if err != nil {
 		return ErrFailed
 	}
@@ -87,14 +89,21 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	defer s.end(key)
 
 	if st == StateError {
+		if err := s.set(ctx, e, StateVerifying, code); err != nil {
+			return ErrFailed
+		}
 		// finish would only throw the same bytes away, and a failed transfer would turn a usable
-		// copy into a network error.
-		if _, err := s.checkFiles(e, false); err == nil {
-			return s.prepare(ctx, e)
+		// copy into a network error. Hashed in full: the stamp misses a file the manifest does not
+		// list, and taking it for intact here would only refuse it in the load, a click later.
+		if _, err := s.checkFiles(e, true); err == nil {
+			if err := s.set(ctx, e, StatePreparing, ""); err != nil {
+				return ErrFailed
+			}
+			return s.load(ctx, e)
 		}
 	}
 	if err := s.transfer(dctx, e); err != nil {
-		return s.settle(ctx, e, j, err)
+		return s.settle(ctx, e, j, err, st, code)
 	}
 	if err := s.finish(ctx, e); err != nil {
 		return err
@@ -102,8 +111,8 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	return s.prepare(ctx, e)
 }
 
-// settle records how a transfer ended.
-func (s *Service) settle(ctx context.Context, e Entry, j *job, err error) error {
+// settle records how a transfer ended; was and code are the state the download found.
+func (s *Service) settle(ctx context.Context, e Entry, j *job, err error, was State, code string) error {
 	s.mu.Lock()
 	paused := j.paused
 	s.mu.Unlock()
@@ -123,7 +132,8 @@ func (s *Service) settle(ctx context.Context, e Entry, j *job, err error) error 
 	default:
 		var busy *netgate.BusyError
 		if errors.As(err, &busy) {
-			return err // processing is running: nothing was started, the state is as it was
+			s.set(ctx, e, was, code) // processing is running: nothing was started, the state goes back
+			return err
 		}
 		s.set(ctx, e, StateError, CodeNetwork)
 	}
@@ -354,7 +364,6 @@ func (s *Service) Prepare(ctx context.Context, key string) error {
 
 // prepare runs with the model's operation slot already held by the caller.
 func (s *Service) prepare(ctx context.Context, e Entry) error {
-	key, pctx := e.Key(), ctx
 	st, _, err := s.stored(ctx, e)
 	if err != nil {
 		return ErrFailed
@@ -374,7 +383,13 @@ func (s *Service) prepare(ctx context.Context, e Entry) error {
 		s.set(ctx, e, StateError, CodeChanged)
 		return err
 	}
-	if err := s.cfg.Prepare(pctx, s.installed(e), e); err != nil {
+	return s.load(ctx, e)
+}
+
+// load runs the session preparation on installed files the caller has just hashed in full.
+func (s *Service) load(ctx context.Context, e Entry) error {
+	key := e.Key()
+	if err := s.cfg.Prepare(ctx, s.installed(e), e); err != nil {
 		s.mu.Lock()
 		delete(s.ready, key)
 		s.mu.Unlock()
@@ -462,6 +477,9 @@ func (s *Service) checkFiles(e Entry, full bool) (string, error) {
 	s.mu.Unlock()
 	if err == nil && !full && known == st {
 		return dir, nil
+	}
+	if s.beforeHash != nil {
+		s.beforeHash()
 	}
 	// verifyDir also refuses the file stamp found not to be a regular one (errVerify)
 	if verifyDir(e, dir) != nil {

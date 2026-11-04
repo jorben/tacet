@@ -207,16 +207,41 @@ export class FakeEngine implements EngineService {
     return [...this.categoryList.map((c) => ({ ...c })), ...user];
   }
   modelFails: Error | null = null;
+  /** Builds whose files are in the installed folder. The listing does not say for a build in error (no dir). */
+  installedCopies = new Set<string>();
+  /** The kernel's background work waits for this; without it, it gets to the first state a moment after the call returned. */
+  modelGate: Promise<void> | null = null;
   /** A model, or the build part of the model whose accelerated build it is. */
-  private model(id: string) { return (this.modelList.find((m) => m.id === id) ?? this.modelList.find((m) => m.accel?.id === id)?.accel)! as { state: string; code: string; downloaded: number }; }
+  private model(id: string) { return (this.modelList.find((m) => m.id === id) ?? this.modelList.find((m) => m.accel?.id === id)?.accel)! as { state: string; code: string; downloaded: number; bytes: number }; }
+  private inBackground(work: () => void) {
+    if (this.modelGate) void this.modelGate.then(work);
+    else setTimeout(work, 0);
+  }
+  /** As the kernel: accepted at once, the state changes in the background. From an error it first checks the copy and keeps the code; a test moves it on. */
   async downloadModel(id: string) {
     this.calls.push("downloadModel:" + id);
     if (this.modelFails) throw this.modelFails;
-    Object.assign(this.model(id), { state: "downloading", code: "" });
+    const m = this.model(id);
+    this.inBackground(() => {
+      if (m.state === "error") m.state = "verifying";
+      else if (["pending", "paused"].includes(m.state)) Object.assign(m, { state: "downloading", code: "" });
+      // anything else the kernel refuses in the background, where nobody hears it
+    });
   }
   async pauseModel(id: string) { this.calls.push("pauseModel:" + id); Object.assign(this.model(id), { state: "paused" }); }
-  async discardModel(id: string) { this.calls.push("discardModel:" + id); Object.assign(this.model(id), { state: "pending", code: "", downloaded: 0 }); }
-  async prepareModel(id: string) { this.calls.push("prepareModel:" + id); Object.assign(this.model(id), { state: "preparing", code: "" }); }
+  /** As the kernel: a copy in error stays in error until something has checked it. */
+  async discardModel(id: string) {
+    this.calls.push("discardModel:" + id);
+    const m = this.model(id);
+    if (!this.installedCopies.has(id)) Object.assign(m, { state: "pending", code: "", downloaded: 0 });
+    else if (m.state === "error") m.downloaded = 0;
+    else Object.assign(m, { state: "installed", code: "", downloaded: m.bytes });
+  }
+  async prepareModel(id: string) {
+    this.calls.push("prepareModel:" + id);
+    const m = this.model(id);
+    this.inBackground(() => Object.assign(m, { state: "preparing", code: "" }));
+  }
   modelDirFails: Error | null = null;
   async openModelDirectory(id: string) { this.calls.push("openModelDirectory:" + id); if (this.modelDirFails) throw this.modelDirFails; }
   settingsFails: Error | null = null;

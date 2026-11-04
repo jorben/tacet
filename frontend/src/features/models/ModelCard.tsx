@@ -14,7 +14,7 @@ const TITLES: Record<Exclude<ModelPlugin["status"], "error">, string> = {
   missing: "此方案需要的模型尚未下载",
   downloading: "正在下载此方案需要的模型",
   paused: "模型下载已暂停",
-  verifying: "下载完成，正在校验",
+  verifying: "正在校验模型文件",
   loading: "正在准备本地识别",
   ready: "此方案需要的模型已就绪",
 };

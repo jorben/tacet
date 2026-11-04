@@ -5,7 +5,8 @@ import { copyPreset, newPreset, openPresetMoreMenu, newRuleset, saveRule, select
 import { presetCategories, presetHandles, presetTreatment } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
-import { downloadAccel, downloadModel } from "../actions/models";
+import { downloadAccel, downloadModel, pauseAccel } from "../actions/models";
+import { ModelCard } from "../features/models/ModelCard";
 import { exportLive, flushConfig, saveSettingsNow, importLive, loadConfig, openVersions, stopConfigSync } from "../actions/liveConfig";
 import { takePaths } from "../actions/live";
 import { runPresetTest, testErrorText } from "../actions/presetTest";
@@ -557,6 +558,7 @@ describe("方案与规则集的存储同步", () => {
     repository: "QuantumNous/astrlink-guard", accelerable: false, accelerated: false, ...over,
   });
   const PF = item("model_profile", "builtin-model-privacy-filter", "OpenAI Privacy Filter（固定版本）", { model_id: "privacy-filter-int8", manifest_digest: "sha256:bb", backend: "CPUExecutionProvider", adapter_floor: 0.2, calibrated: 0.5, label_map: { private_person: "person", private_email: "email" }, memory_bytes: 3 * 2 ** 30 });
+  const ACCEL = { id: "astrlink-guard-fp16", variant: "FP16", backend: "CoreMLExecutionProvider", state: "pending", code: "", bytes: 75451868, downloaded: 0, dir: "" };
   const P_PF = item("preset", "builtin-preset-privacy-filter", "办公外发（规则 + Privacy Filter）", { ruleset_id: "builtin-cn-office", scheme_id: "builtin-scheme-model", model_profile_id: "builtin-model-privacy-filter", mode: "guided", rules_only: false, min_confidence: 0.5, memory_bytes: 4 * 2 ** 30, dpi: 200, style: "solid", retention_days: 0 });
   const PF_RT = RT({ id: "privacy-filter-int8", build: "privacy-filter-int8", name: "OpenAI Privacy Filter", version: "7ffa9a0", languages: "英文为主", preset: "builtin-preset-privacy-filter", state: "pending", downloaded: 0, bytes: 1645000000, dir: "", minMemory: 16 * 2 ** 30, repository: "openai/privacy-filter" });
 
@@ -613,13 +615,211 @@ describe("方案与规则集的存储同步", () => {
     await loadConfig();
     expect(getState().models[0]).toMatchObject({ status: "error", error: "integrity" });
     act(() => downloadModel("astrlink-guard-int8"));
-    await waitFor(() => expect(fake.calls).toContain("downloadModel:astrlink-guard-int8"));
+    await waitFor(() => expect(fake.modelList[0]!.state).toBe("downloading"));
     expect(fake.calls.indexOf("discardModel:astrlink-guard-int8")).toBeLessThan(fake.calls.indexOf("downloadModel:astrlink-guard-int8"));
     fake.modelList[0]!.state = "paused";
     await loadConfig();
     fake.modelFails = new Error("MODEL_BUSY");
     act(() => downloadModel("astrlink-guard-int8"));
     await waitFor(() => expect(toastText()).toContain("请先完成或停止当前文档处理"));
+  });
+
+  describe("从模型卡开始下载：内核在后台接手，接手前读到的还是之前的状态", () => {
+    const ID = "astrlink-guard-int8";
+    const HALF = 19480651;
+    const pill = () => document.querySelector(".model-state")!.textContent;
+    const progress = () => document.querySelector<HTMLProgressElement>(".model-progress progress")?.value;
+    const kernel = () => fake.modelList[0]!;
+    const reads = () => fake.calls.filter((c) => c === "models").length;
+    const poll = (n = 1) => act(() => vi.advanceTimersByTimeAsync(700 * n));
+    const press = async (name: string) => {
+      const b = [...document.querySelectorAll<HTMLElement>(".model-actions button")].find((x) => x.textContent === name);
+      if (!b) throw new Error("no button " + name + " in: " + document.querySelector(".model-actions")?.textContent);
+      await act(async () => { b.click(); await vi.advanceTimersByTimeAsync(0); });
+    };
+    /** Shows the card of a model in this state; the kernel does not take up what it accepts until the function returned is called. */
+    const show = async (over: Partial<EngineModelRuntime>) => {
+      let takeUp!: () => void;
+      fake.modelGate = new Promise((r) => { takeUp = r; });
+      fake.modelList = [RT({ dir: "", ...over })];
+      await loadConfig();
+      render(<ModelCard manage modelId={ID} />);
+      return async () => { takeUp(); fake.modelGate = null; await poll(); };
+    };
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+    it("校验未通过后重新下载：依次显示校验、下载进度直至就绪，下载时可暂停", async () => {
+      fake.installedCopies.add(ID);
+      const takeUp = await show({ state: "error", code: "MODEL_FILES_CHANGED", downloaded: 0 });
+      expect(pill()).toBe("需处理");
+      await press("重新下载");
+      expect(fake.calls.indexOf("discardModel:" + ID)).toBeLessThan(fake.calls.indexOf("downloadModel:" + ID));
+      // discarding says nothing about the copy, and the kernel has not got to the download
+      expect(kernel()).toMatchObject({ state: "error", code: "MODEL_FILES_CHANGED" });
+      expect(pill()).toBe("校验中");
+      const n = reads();
+      await poll(2);
+      expect(pill()).toBe("校验中");
+      expect(reads()).toBeGreaterThan(n);
+      await takeUp();
+      expect(kernel()).toMatchObject({ state: "verifying", code: "MODEL_FILES_CHANGED" });
+      expect(pill()).toBe("校验中");
+      Object.assign(kernel(), { state: "downloading", code: "", downloaded: HALF });
+      await poll();
+      expect(pill()).toBe("下载中");
+      expect(progress()).toBe(50);
+      await press("暂停");
+      expect(fake.calls).toContain("pauseModel:" + ID);
+      expect(pill()).toBe("已暂停");
+      await press("继续下载");
+      expect(kernel().state).toBe("downloading");
+      await poll();
+      expect(pill()).toBe("下载中");
+      Object.assign(kernel(), { state: "verifying", downloaded: kernel().bytes });
+      await poll();
+      expect(pill()).toBe("校验中");
+      Object.assign(kernel(), { state: "preparing" });
+      await poll();
+      expect(pill()).toBe("准备中");
+      Object.assign(kernel(), { state: "ready" });
+      await poll();
+      expect(pill()).toBe("已就绪");
+      expect(toastText()).toContain("AstrLink Guard 已就绪");
+      const settled = reads();
+      await poll(5);
+      expect(reads()).toBe(settled);
+    });
+
+    it("试运行失败后重新下载：不丢弃，校验后直接进入准备", async () => {
+      fake.installedCopies.add(ID);
+      const takeUp = await show({ state: "error", code: "MODEL_PREPARE_FAILED", downloaded: 0 });
+      await press("重新下载");
+      expect(fake.calls).not.toContain("discardModel:" + ID);
+      expect(pill()).toBe("校验中");
+      await poll();
+      expect(pill()).toBe("校验中");
+      await takeUp();
+      expect(kernel().state).toBe("verifying");
+      Object.assign(kernel(), { state: "preparing", code: "" });
+      await poll();
+      expect(pill()).toBe("准备中");
+    });
+
+    it("重新准备：内核接手前同样不退回错误", async () => {
+      const takeUp = await show({ state: "error", code: "MODEL_PREPARE_FAILED", downloaded: 0 });
+      await press("重新准备");
+      expect(kernel().state).toBe("error");
+      expect(pill()).toBe("准备中");
+      await poll();
+      expect(pill()).toBe("准备中");
+      await takeUp();
+      expect(kernel().state).toBe("preparing");
+      expect(pill()).toBe("准备中");
+    });
+
+    it.each([
+      ["首次下载", { state: "pending", downloaded: 0 }, "下载模型", "下载中"],
+      ["暂停后继续", { state: "paused", downloaded: HALF }, "继续下载", "下载中"],
+      ["网络错误后继续", { state: "error", code: "MODEL_NETWORK", downloaded: HALF }, "继续下载", "校验中"],
+      // discarding a failed download with no copy leaves it pending for a moment: not the end of the start
+      ["校验失败且没有副本", { state: "error", code: "MODEL_VERIFY_FAILED", downloaded: 0 }, "重新下载", "校验中"],
+    ])("%s：内核接手前不退回，之后显示下载进度", async (_, over, action, first) => {
+      const takeUp = await show(over);
+      await press(action);
+      expect(pill()).toBe(first);
+      await poll(2);
+      expect(pill()).toBe(first);
+      expect(fake.calls.includes("discardModel:" + ID)).toBe(action === "重新下载");
+      await takeUp();
+      Object.assign(kernel(), { state: "downloading", code: "" });
+      await poll();
+      expect(pill()).toBe("下载中");
+      expect(progress()).toBe(over.downloaded ? 50 : 0);
+      await press("暂停");
+      expect(pill()).toBe("已暂停");
+    });
+
+    it("内核一直没有接手：等待有上限，之后如实显示并停止轮询", async () => {
+      fake.installedCopies.add(ID);
+      await show({ state: "error", code: "MODEL_FILES_CHANGED", downloaded: 0 });
+      await press("重新下载");
+      await poll(6); // 4.2 s
+      expect(pill()).toBe("校验中");
+      await poll(2);
+      expect(pill()).toBe("需处理");
+      const stopped = reads();
+      await poll(5);
+      expect(reads()).toBe(stopped);
+    });
+
+    it("内核很快报出另一种错误：立即显示，不等到上限", async () => {
+      const takeUp = await show({ state: "error", code: "MODEL_NETWORK", downloaded: HALF });
+      await press("继续下载");
+      expect(pill()).toBe("校验中");
+      Object.assign(kernel(), { code: "MODEL_DISK_SPACE" });
+      await poll();
+      expect(pill()).toBe("需处理");
+      expect(document.querySelector(".model-desc")!.textContent).toContain("可用空间不足");
+      await takeUp();
+    });
+
+    it("内核拒绝：不等待，说明原因并如实显示", async () => {
+      fake.installedCopies.add(ID);
+      await show({ state: "error", code: "MODEL_FILES_CHANGED", downloaded: 0 });
+      fake.modelFails = new Error("MODEL_BUSY");
+      await press("重新下载");
+      expect(toastText()).toContain("请先完成或停止当前文档处理");
+      expect(pill()).toBe("需处理");
+      const stopped = reads();
+      await poll(3);
+      expect(reads()).toBe(stopped);
+    });
+
+    it("等待期间重新载入配置：轮询不中断，内核接手后照常显示", async () => {
+      fake.installedCopies.add(ID);
+      const takeUp = await show({ state: "error", code: "MODEL_FILES_CHANGED", downloaded: 0 });
+      await press("重新下载");
+      await act(() => loadConfig());
+      await takeUp();
+      await poll();
+      expect(pill()).toBe("校验中");
+    });
+
+    it("同步停止后不再等待之前的开始", async () => {
+      fake.installedCopies.add(ID);
+      await show({ state: "error", code: "MODEL_FILES_CHANGED", downloaded: 0 });
+      await press("重新下载");
+      stopConfigSync();
+      await act(() => loadConfig());
+      const n = reads();
+      await poll(3);
+      expect(reads()).toBe(n);
+      expect(pill()).toBe("需处理");
+    });
+
+    it("任务里的模型卡：校验不一定在下载之后，标题不说“下载完成”", async () => {
+      fake.modelList = [RT({ dir: "", state: "verifying", code: "MODEL_FILES_CHANGED", downloaded: 0 })];
+      await loadConfig();
+      render(<ModelCard modelId={ID} />);
+      expect(document.querySelector(".model-title")!.textContent).toBe("正在校验模型文件");
+    });
+
+    it("GPU 版本：内核接手前同样不退回", async () => {
+      const takeUp = await show({ accelerable: true, accel: { ...ACCEL, state: "error", code: "MODEL_NETWORK", downloaded: ACCEL.bytes / 2 } });
+      const accel = () => getState().models[0]!.runtime!.accel!;
+      await act(async () => { downloadAccel(ID); await vi.advanceTimersByTimeAsync(0); });
+      expect(accel().status).toBe("verifying");
+      await poll();
+      expect(accel().status).toBe("verifying");
+      await takeUp();
+      Object.assign(kernel().accel!, { state: "downloading", code: "" });
+      await poll();
+      expect(accel()).toMatchObject({ status: "downloading", progress: 50 });
+      act(() => pauseAccel(ID));
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(fake.calls).toContain("pauseModel:" + ACCEL.id);
+    });
   });
 
   it("方案改用更大的模型时，内存预算随之提高", async () => {
@@ -634,8 +834,6 @@ describe("方案与规则集的存储同步", () => {
     await waitFor(() => expect(JSON.parse(fake.items.find((i) => i.id === copy.id)!.content).model_profile_id).toBe("builtin-model-privacy-filter"));
     expect(JSON.parse(fake.items.find((i) => i.id === copy.id)!.content).memory_bytes).toBeGreaterThanOrEqual(3 * 2 ** 30);
   });
-
-  const ACCEL = { id: "astrlink-guard-fp16", variant: "FP16", backend: "CoreMLExecutionProvider", state: "pending", code: "", bytes: 75451868, downloaded: 0, dir: "" };
 
   it("GPU 加速只是一项设置：随设置写回，不下载也不试运行；GPU 版本在模型卡里单独下载", async () => {
     fake.modelList = [RT({ accelerable: true, accel: { ...ACCEL } })];

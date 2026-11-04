@@ -514,6 +514,203 @@ func TestDownloadingAgainAfterAFailedLoadLoadsTheCopyWithoutTheNetwork(t *testin
 	}
 }
 
+// What the screens read while "download again" hashes the copy (#36): verifying, not the error they
+// just offered to repair, or they stop asking and never show the download. The hash runs once.
+func TestDownloadingAgainSaysVerifyingWhileItHashesTheCopy(t *testing.T) {
+	type seen struct {
+		state State
+		code  string
+	}
+	watch := func(r *rig) *[]seen {
+		var hashes []seen
+		r.svc.beforeHash = func() {
+			s := r.status()
+			hashes = append(hashes, seen{s.State, s.Code})
+		}
+		return &hashes
+	}
+	t.Run("files that changed", func(t *testing.T) {
+		r := newRig(t)
+		ctx := context.Background()
+		key := r.entry.Key()
+		if err := r.svc.Download(ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(r.root, "installed", key, "config.json"), []byte("tampered"), 0o600)
+		r.svc.CheckBinding(ctx, "test-model", r.entry.Digest)
+		if err := r.svc.Discard(ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		hashes := watch(r)
+		if err := r.svc.Download(ctx, key); err != nil {
+			t.Fatalf("download again: %v", err)
+		}
+		if s := r.status(); s.State != StateReady {
+			t.Fatalf("%+v", s)
+		}
+		// the second hash is the load's, of the new files
+		if want := []seen{{StateVerifying, CodeChanged}, {StatePreparing, ""}}; fmt.Sprint(*hashes) != fmt.Sprint(want) {
+			t.Fatalf("while hashing the state was %v, want %v", *hashes, want)
+		}
+	})
+	t.Run("a copy that still matches", func(t *testing.T) {
+		r := newRig(t)
+		ctx := context.Background()
+		r.prepare = func(context.Context, string, Entry) error { return errors.New("sample run failed") }
+		r.svc.Download(ctx, r.entry.Key())
+		var loading []seen
+		r.prepare = func(context.Context, string, Entry) error {
+			s := r.status()
+			loading = append(loading, seen{s.State, s.Code})
+			return nil
+		}
+		hashes := watch(r)
+		if err := r.svc.Download(ctx, r.entry.Key()); err != nil {
+			t.Fatalf("download again: %v", err)
+		}
+		if s := r.status(); s.State != StateReady {
+			t.Fatalf("%+v", s)
+		}
+		if want := []seen{{StatePreparing, ""}}; fmt.Sprint(loading) != fmt.Sprint(want) {
+			t.Fatalf("while loading the state was %v, want %v", loading, want)
+		}
+		if want := []seen{{StateVerifying, CodePrepare}}; fmt.Sprint(*hashes) != fmt.Sprint(want) {
+			t.Fatalf("while hashing the state was %v, want %v: the files are hashed once", *hashes, want)
+		}
+	})
+}
+
+// Processing can start during the hash: the transfer is then refused, nothing was started, and the
+// model must not stay "verifying" with nobody working on it.
+func TestARefusedTransferAfterTheCheckPutsTheErrorBack(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	key := r.entry.Key()
+	if err := r.svc.Download(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(r.root, "installed", key, "config.json"), []byte("tampered"), 0o600)
+	r.svc.CheckBinding(ctx, "test-model", r.entry.Digest)
+	var lease *netgate.Lease
+	r.svc.beforeHash = func() {
+		var err error
+		if lease, err = r.gate.Acquire(netgate.Processing); err != nil {
+			t.Error(err)
+		}
+		if s := r.status(); s.State != StateVerifying {
+			t.Errorf("before the refusal: %+v", s) // or the state below proves nothing
+		}
+	}
+	err := r.svc.Download(ctx, key)
+	r.svc.beforeHash = nil
+	var busy *netgate.BusyError
+	if !errors.As(err, &busy) {
+		t.Fatalf("%v", err)
+	}
+	if s := r.status(); s.State != StateError || s.Code != CodeChanged {
+		t.Fatalf("after the refusal: %+v", s)
+	}
+	lease.Release()
+	if err := r.svc.Download(ctx, key); err != nil {
+		t.Fatalf("download again after the processing: %v", err)
+	}
+	if s := r.status(); s.State != StateReady {
+		t.Fatalf("%+v", s)
+	}
+}
+
+// The stamp of a failed load's verification is still known: it matches when a file the manifest does
+// not list appeared, or when a rewrite kept size and time. The first click must repair, not the second.
+func TestAfterAFailedLoadTheFirstDownloadAgainRepairsWhatTheStampMisses(t *testing.T) {
+	for name, damage := range map[string]func(t *testing.T, dir string){
+		"a file the manifest does not list": func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, ".DS_Store"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a rewrite that keeps size and time": func(t *testing.T, dir string) {
+			path := filepath.Join(dir, "config.json")
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, bytes.Repeat([]byte("x"), int(info.Size())), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			ctx := context.Background()
+			key := r.entry.Key()
+			r.prepare = func(context.Context, string, Entry) error { return errors.New("sample run failed") }
+			r.svc.Download(ctx, key)
+			if s := r.status(); s.State != StateError || s.Code != CodePrepare {
+				t.Fatalf("%+v", s)
+			}
+			r.prepare = func(context.Context, string, Entry) error { return nil }
+			dir := filepath.Join(r.root, "installed", key)
+			damage(t, dir)
+			if err := r.svc.Download(ctx, key); err != nil {
+				t.Fatalf("the first click did not repair: %v (state %+v)", err, r.status())
+			}
+			if s := r.status(); s.State != StateReady {
+				t.Fatalf("%+v", s)
+			}
+			if err := verifyDir(r.entry, dir); err != nil {
+				t.Fatalf("the installed copy was not replaced: %v", err)
+			}
+		})
+	}
+}
+
+// The program can end during that hash. The check decided nothing, so the error it started from
+// comes back with its code and action: "paused" would offer to continue a download that never began.
+func TestARestartDuringTheCheckOfDownloadAgainKeepsTheError(t *testing.T) {
+	for _, code := range []string{CodeChanged, CodePrepare} {
+		t.Run(code, func(t *testing.T) {
+			r := newRig(t)
+			ctx := context.Background()
+			key := r.entry.Key()
+			if code == CodePrepare {
+				r.prepare = func(context.Context, string, Entry) error { return errors.New("sample run failed") }
+			}
+			r.svc.Download(ctx, key)
+			if code == CodeChanged {
+				os.WriteFile(filepath.Join(r.root, "installed", key, "config.json"), []byte("tampered"), 0o600)
+				r.svc.CheckBinding(ctx, "test-model", r.entry.Digest)
+			}
+			r.prepare = func(context.Context, string, Entry) error { return nil }
+			stop := errors.New("the program ended")
+			r.svc.beforeHash = func() { panic(stop) } // nothing after this point of the download runs
+			func() {
+				defer func() {
+					if v := recover(); v != stop {
+						t.Fatalf("the check did not run: %v", v)
+					}
+				}()
+				r.svc.Download(ctx, key)
+			}()
+			r.rebuild()
+			if err := r.svc.Recover(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if s := r.status(); s.State != StateError || s.Code != code {
+				t.Fatalf("after the restart: %+v", s)
+			}
+			if err := r.svc.Download(ctx, key); err != nil {
+				t.Fatalf("download again after the restart: %v", err)
+			}
+			if s := r.status(); s.State != StateReady {
+				t.Fatalf("%+v", s)
+			}
+		})
+	}
+}
+
 func TestNotEnoughDiskStopsBeforeAnyRequest(t *testing.T) {
 	r := newRig(t)
 	r.free = r.entry.Total() // no room for the reserve

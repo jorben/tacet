@@ -5,7 +5,7 @@ import {
   BUILTIN_MODEL_PRESET, BUILTIN_RULES_PRESET, modelFromItem, modelStateFromEngine, presetContents, presetFromItems, rulesetContent, rulesetFromItem, sameContent,
   schemeIdOf, schemeTreatments, versionLabel, type Model,
 } from "../domain/liveConfig";
-import type { Preset, Ruleset } from "../domain/types";
+import type { ModelPlugin, Preset, Ruleset } from "../domain/types";
 import { applyCategoryColors, type CategoryInfo } from "../domain/categories";
 import {
   pluginFromEngine, settingsFromEngine, settingsToEngine, exportRuleset, exportScheme, importPackage, packageCategories, remapPackageCategories, type Imported,
@@ -127,11 +127,34 @@ const PROBE_POLL_MS = 2000;
 /** The longest wait between reads while they keep failing. */
 const MODEL_RETRY_MAX_MS = 30000;
 const modelBusy = (st: string): boolean => st === "downloading" || st === "verifying" || st === "loading";
+/** How long a start the kernel accepted may go unseen before what the kernel still reports is believed. */
+const MODEL_START_MS = 5000;
+type BuildState = Pick<ModelPlugin, "status" | "progress" | "error">;
+/** Starts the kernel accepted and runs in the background: until it gets to them it still reports the state before them. */
+const starts = new Map<string, { from: Pick<BuildState, "status" | "error">; until: number }>();
+
+/** The kernel accepted a download or preparation of this build, which was in state `from`: reads keep what the screen shows until the state moves. */
+export function expectModelStart(id: string, from: Pick<BuildState, "status" | "error">): void {
+  starts.set(id, { from: { status: from.status, error: from.error ?? null }, until: Date.now() + MODEL_START_MS });
+}
+
+/** What to show for a read of a build: what is on screen while its start has not been taken up, else the read. */
+function afterStart(id: string, shown: BuildState, read: BuildState): BuildState {
+  const s = starts.get(id);
+  if (!s) return read;
+  // "missing" too: discarding a failed download leaves it pending, and no start ever leads there
+  if (read.status === "missing" || (read.status === s.from.status && read.error === s.from.error)) {
+    return { status: shown.status, progress: shown.progress, error: shown.error };
+  }
+  starts.delete(id);
+  return read;
+}
 
 /** Reads the download state of every model; while one is busy, again shortly. A model that became ready says so. */
 export async function refreshModels(): Promise<void> {
   const e = liveEngine();
   if (!e) return;
+  for (const [id, s] of starts) if (Date.now() >= s.until) starts.delete(id);
   const rts = await e.models().catch(() => null);
   if (!rts) {
     failedReads++;
@@ -145,8 +168,10 @@ export async function refreshModels(): Promise<void> {
       const rt = rts.find((r) => r.id === m.id);
       if (!rt) return;
       const next = modelStateFromEngine(rt);
+      Object.assign(next, afterStart(m.id, m, next));
       if (m.status !== "ready" && next.status === "ready" && modelBusy(m.status)) became.push(m.name);
       const a = m.runtime?.accel, na = next.runtime?.accel;
+      if (a && na) Object.assign(na, afterStart(a.id, a, na));
       if (a && na && a.status !== "ready" && na.status === "ready" && modelBusy(a.status)) became.push(m.name + " GPU 版本");
       Object.assign(m, next);
       if (rt.bytes) m.weightMiB = Math.round(rt.bytes / 2 ** 20);
@@ -161,7 +186,7 @@ export function watchModels(): void {
   clearTimeout(modelTimer);
   if (!loaded) return;
   const ms = getState().models;
-  const busy = ms.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""));
+  const busy = starts.size > 0 || ms.some((m) => modelBusy(m.status) || modelBusy(m.runtime?.accel?.status ?? ""));
   if (!busy && !ms.some((m) => !!m.runtime?.detecting)) {
     failedReads = 0; // the next round of polling starts at the normal interval, not where this one's failures left it
     return;
@@ -172,6 +197,7 @@ export function watchModels(): void {
 
 export function stopConfigSync(): void {
   clearTimeout(modelTimer);
+  starts.clear();
   failedReads = 0;
   unsubscribe?.();
   unsubscribe = null;
