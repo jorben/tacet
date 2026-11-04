@@ -131,17 +131,15 @@ export const labelsOfCategory = (map: Record<string, string>, category: string):
 
 /**
  * Who uses a user category, for deleting it. Rule sets whose rules report it keep it: it cannot be deleted
- * while they do. Models whose mapping sends labels to it and schemes that set a treatment for it let go of it:
- * those labels are no longer used and the setting is cleared. A model all of whose counted labels send to it
- * would count none, so it keeps the category too (`last`).
+ * while they do. Models whose mapping sends labels to it let go of it: those labels are no longer used. A model
+ * all of whose counted labels send to it would count none, so it keeps the category too (`last`).
  */
 export interface CategoryUse {
   rulesets: string[];
   models: { name: string; labels: string[]; last: boolean }[];
-  presets: string[];
 }
 
-export function categoryUse(id: string, rulesets: Pick<Ruleset, "name" | "rules">[], models: Pick<ModelPlugin, "name" | "labels" | "mapping">[], presets: Pick<Preset, "name" | "cats" | "builtin">[]): CategoryUse {
+export function categoryUse(id: string, rulesets: Pick<Ruleset, "name" | "rules">[], models: Pick<ModelPlugin, "name" | "labels" | "mapping">[]): CategoryUse {
   return {
     rulesets: rulesets.filter((r) => r.rules.some((x) => x.cat === id)).map((r) => r.name),
     models: models.flatMap((m) => {
@@ -149,7 +147,6 @@ export function categoryUse(id: string, rulesets: Pick<Ruleset, "name" | "rules"
       const labels = labelsOfCategory(map, id);
       return labels.length ? [{ name: m.name, labels, last: labels.length === Object.keys(map).length }] : [];
     }),
-    presets: presets.filter((p) => !p.builtin && (p.cats[id] === "mask" || p.cats[id] === "ph")).map((p) => p.name),
   };
 }
 

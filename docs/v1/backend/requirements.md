@@ -66,7 +66,7 @@
 | [FR-15](../tacet-requirements.md#L162) | policy, plan, snapshot | 表驱动验证阈值仅影响模型、优先级、重叠冲突、上下文边界与确定性计划 | partial: detect 把检测上下文（前后缀）中的命中丢弃、跨界命中裁回正文并按正文重基坐标，含真实模型的 emoji/组合字符/CRLF/全角/前后缀回归；DOCX 隐藏文字与修订以 visibility 单独上报而不混入可见正文。表头/相邻段落上下文的生成与保存、不进入公开报告未实现 |
 | [FR-16](../tacet-requirements.md#L163) | — | P1 后续增强 | 本目标范围外 |
 | [FR-17](../tacet-requirements.md#L164) | rules, detect, policy | 字段路径/表头匹配、精确数字、类型授权和结构不匹配例外 | partial: 仅 JSON/JSONL 精确数字部分的原型：format-json 的 scanner.py 严格流式扫描，数值按原词法保留、重复键不合并、码点到原始字节偏移含转义、仅替换被编辑字节区间；35 项测试（含变异验证）与 100 MiB 三种形状实测见 results/json-*-100mib.json。CSV 字节级扫描与单元格回写原型及公式注入防护（28 项测试，100 MiB 实测见 results/text-csv-100mib.json）亦已完成；仍未实现字段路径/表头匹配、类型授权、结构不匹配例外、CSV 列、插件 format.* 处理与 Go 侧策略均未实现。 |
-| [FR-18](../tacet-requirements.md#L165) | detect, rules, models, snapshot | 真实 AstrLink + 规则逐类别/语言评测；资源缺失拒绝；质量及映射回归 | partial: policy 对无动作类别生成例外；snapshot.Check 对每个启用类别要求检测来源，仅规则模式下依赖模型的类别列入 NeedsNarrowing 且不声称覆盖。用户确认记录与 UI 未实现 |
+| [FR-18](../tacet-requirements.md#L165) | detect, rules, models, snapshot | 真实 AstrLink + 规则逐类别/语言评测；资源缺失拒绝；质量及映射回归 | partial: policy 对无动作类别生成例外；snapshot.Check 对每个启用类别要求检测来源，仅规则模式下依赖模型的类别列入 NeedsNarrowing 且不声称覆盖；ResolvePreset 把没有来源的类别记入 detect.out_of_scope。界面编辑规则组内的规则（启停、编辑、删除）会让方案中已设为处理的类别失去来源时，保存前询问，取消不改（editRuleset）；模型标签映射改动不询问，回滚历史版本、在方案中移除规则组、切换检测方式或模型也不询问。询问结果不落确认记录，NeedsNarrowing 没有生产代码读取，out_of_scope 尚未在开始任务页、结果页或报告中展示 |
 | [FR-19](../tacet-requirements.md#L166) | config, snapshot, registry | 配置版本、冻结内容与分面摘要、并发冲突、历史回滚与不可静默替代 | partial: 快照保存解析后的完整配置内容而非引用（snapshot.Content）。配置对象 v{n} 版本、历史 5 个、回滚、导入冲突（config）未实现；【task-10 配置接线】屏幕上的方案/规则集经 Wails 命令（ConfigList/Create/Save/Copy/Delete/History/Rollback）读写内核存储：启动读出，之后每次改动防抖 350ms 写回；一个屏幕“方案”存为预设+方案两个对象，规则集一对一；内建对象只读不写（变异验证）；保存检查版本（冲突返回 VERSION_CONFLICT，屏幕提示并按存储重新载入）；规则编号/校验器/上下文词/cjk 边界等屏幕没有开关的设置随规则保留，读出再写回内容不变（测试）；预设可组合多个规则集（extra_ruleset_ids，合并后规则编号重复则拒绝开始，摘要随任一规则集变化）、规则可停用（disabled，不参与检测也不算检测来源，真实进程验证）；删除先删预设再删方案对象，被预设引用的对象拒绝删除（config.Repository.Delete）；历史版本与回滚来自存储；导入/导出为真实文件对话框读写（按名称引用规则集、不含模型与编号，名称冲突先改名不覆盖，格式/类型/缺规则集被拒绝）；开始任务时使用所选方案的存储编号并先写回未保存的改动。未做：预设回滚只恢复预设对象（规则集、置信度），各类别处理方式不随之回退；规则 kind “校验”只能保留不能新建；涂抹样式 12 种与存储的 4 种枚举未对应，预览与回写仍用固定样式；规则包（FR-46）、模型资源下载（models.Service）、插件管理、设置/更新页面仍是演示数据；【task-10 设置】应用偏好（关闭行为、主题、涂抹样式 12 种、资源档位、保留天数、自动检查更新）存入 config.Settings 并经 Settings/SaveSettings 读写：旧数据缺新字段时补默认值，“保留 0 天”与“从未选过”可区分，非法样式/档位/天数/关闭行为被拒绝（3 个变异均被抓住）；真实引擎测试关闭后重开仍保持；前端启动读出、每项改动防抖写回，被拒绝时提示并恢复（变异：保留天数固定、关闭行为固定、主题不保存均被抓住）。未做：保留天数与资源档位尚未驱动实际的保留期限与调度预算；涂抹样式只存不影响预览与回写 |
 | [FR-20](../tacet-requirements.md#L178) | policy, plan, snapshot | 表驱动验证阈值仅影响模型、优先级、重叠冲突、上下文边界与确定性计划 | 待实现 / 待验证 |
 | [FR-21](../tacet-requirements.md#L179) | review, exceptions, findings, query | 分组筛选、两阶段批量提交/撤销、范围变更、补充词表与部分结果授权 | 待实现 / 待验证 |
@@ -165,9 +165,9 @@
 
 基线文档变化后重新生成并复核新增/修改要求；摘要变化不代表已完成的新验收。
 
-- `tacet-requirements.md`: `3eb7d55bfc55d6f27f240ec172d659efac4eadcb26ca882ac0c999a222a03d36`
-- `tacet-architecture.md`: `84ea8af35177bae4f9136a0ca7c7c19dcc0fa83bcf31cb0a1b25a510871d34a7`
-- `tacet-module-design.md`: `4de55c00743c33a42f54da81f5c7d4f9bee3bcc9a71f66ac61203fd9d4534ce8`
+- `tacet-requirements.md`: `a13ef486eac9543a38d983b6153c2f754d886f6d1a775ece217d6d5b1c3793c1`
+- `tacet-architecture.md`: `532cb6d9ade671291bfd9e84e230022a0a40426a515ac824b4f6ef3dc08f33e7`
+- `tacet-module-design.md`: `317ada6dabad9d6b3afa149ea8621f0a2d77eafd8f048fb1c277931622022a50`
 
 ## 模块边界与实现盘点
 

@@ -64,7 +64,7 @@ describe("方案的规则组可多选，只列出有规则的规则组", () => {
 });
 
 describe("删除类别", () => {
-  it("被规则引用时不能删除；只被模型映射和方案使用时，确认后删除并列出受影响的模型和方案", async () => {
+  it("被规则引用时不能删除；只被模型映射和方案使用时，确认后删除，对话框只列受影响的模型", async () => {
     let id = "";
     await act(async () => { const got = await createCategory("项目代号"); id = "id" in got ? got.id : ""; });
     expect(id).toMatch(/^cfg_/);
@@ -88,13 +88,37 @@ describe("删除类别", () => {
     const text = $("#layer .modal")!.textContent!;
     expect(text).toContain("类别为全局共用");
     expect(text).toContain("模型『" + model().name + "』中关联到它的标签 private_address 将变为未关联");
-    expect(text).toContain("方案『办公外发 副本』中对它的设置将被清除");
+    // the premise: a scheme does set a treatment for it, and the dialog does not go through schemes
+    expect(getState().presets.find((p) => !p.builtin)!.cats[id]).toBe("ph");
+    expect(text).not.toContain("方案『");
+    expect(text).not.toContain("将被清除");
     expect(text).toContain("已开始的任务与历史结果保持原样");
     await act(async () => { await confirmDeleteCategory(id); });
     expect(fake.calls).toContain("configDelete:" + id);
     expect(fake.calls.lastIndexOf("categories")).toBeGreaterThan(fake.calls.indexOf("configDelete:" + id));
     expect(getState().categories.some((c) => c.id === id)).toBe(false);
     expect(toastText()).toBe("已删除类别「项目代号」");
+  });
+
+  it("只被方案使用时，对话框如实说没有模型使用，不声称方案也没用", async () => {
+    let id = "";
+    await act(async () => { const got = await createCategory("项目代号"); id = "id" in got ? got.id : ""; });
+    // a scheme sets it while the model has a label for it, and keeps the setting once the label is gone
+    await act(async () => { await setLabelCategory(model().id, "private_address", id); });
+    await waitFor(() => expect(effectiveLabels(model()).private_address).toBe(id));
+    selectPreset("builtin-preset-model");
+    act(() => copyPreset());
+    act(() => setCategoryTreatment(id, "ph"));
+    await act(async () => { await flushConfig(); });
+    await act(async () => { await setLabelCategory(model().id, "private_address", null); });
+    await waitFor(() => expect(effectiveLabels(model()).private_address).toBeUndefined());
+    expect(getState().presets.find((p) => !p.builtin)!.cats[id]).toBe("ph");
+    render(<OverlayHost />);
+    act(() => deleteCategory(id));
+    const text = $("#layer .modal")!.textContent!;
+    expect(text).toContain("没有模型使用它");
+    expect(text).not.toContain("方案使用它");
+    expect(text).not.toContain("方案『");
   });
 
   it("模型只关联了这个类别时不能删除", async () => {

@@ -210,9 +210,11 @@ func ResolvePreset(tx store.Tx, repo *config.Repository, presetID string, b Bind
 // narrowToSources leaves out of the run every category the scheme handles that nothing of the run
 // detects: no enabled rule of its rule sets reports it, and its model (when the preset detects with one)
 // maps no label to it. Such a category is listed as out of scope, not handled, instead of the start being
-// refused: the scheme keeps the person's setting for it, so it applies again once a source comes back,
-// and the screens ask before a change of rules or of a model's labels takes a category's source away
-// (requirements FR-18: narrowed with the person's confirmation, never reported as checked).
+// refused: the scheme keeps the person's setting for it, so it applies again once a source comes back.
+// Only editing the rules inside a rule set (switching, changing or deleting one) asks before it takes a
+// category's source away. Rolling back a version, removing a rule set from a scheme, switching its detection
+// or model and changing a model's mapping apply directly, so a category left out here may never have been
+// confirmed (requirements FR-18: out of scope, never reported as checked).
 func narrowToSources(c *Content, env Env) {
 	covered := map[string]bool{}
 	for category := range env.RuleCategories {

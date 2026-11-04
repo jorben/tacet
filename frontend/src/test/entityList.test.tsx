@@ -192,6 +192,44 @@ async function live() {
   setService({ ...mockService, engine: fake }); await act(async () => { await loadConfig(); }); return fake;
 }
 
+describe("模型页不说方案怎样", () => {
+  const sub = () => $(".preset-detail .phead-sub")!.textContent;
+  const setModel = (version: string, variant: string, languages: string, used: boolean) => store.update((d) => {
+    Object.assign(d.models[0]!, { version, variant, languages });
+    d.presets = used ? [{ ...d.presets[0]!, id: "X", name: "X", det: "model", model: d.models[0]!.id }] : [];
+  });
+
+  it("没有方案使用时只显示模型自身信息，不留分隔符", () => {
+    setModel("1", "int8", "中英", false); mount("model");
+    expect(sub()).toBe("v1 · int8 · 中英");
+  });
+  it("有方案使用时列出它们", () => {
+    setModel("1", "int8", "中英", true); mount("model");
+    expect(sub()).toBe("v1 · int8 · 中英 · 用于 X");
+  });
+  it("模型没有自身信息时也不留分隔符，头部仍是两行", () => {
+    setModel("", "", "", true); mount("model");
+    expect(sub()).toBe("用于 X");
+    cleanup();
+    setModel("", "", "", false); mount("model");
+    expect(sub()).toBe("");
+    expect($$(".preset-detail .phead .phead-sub")).toHaveLength(1);
+  });
+  it("映射说明不提方案，保留至少一个标签与生效时机；类别目录读取失败照常提示", () => {
+    mount("model");
+    const hint = $(".preset-detail .sec-help")!.getAttribute("aria-label");
+    expect(hint).toContain("至少保留一个标签关联到类别");
+    expect(hint).toContain("改动对之后开始的任务生效");
+    expect(hint).not.toContain("方案");
+    act(() => store.update((d) => { d.categoryStatus = "failed"; }));
+    expect($(".config-note.warn")).toHaveTextContent("类别目录读取失败");
+  });
+  it("规则页仍说规则组未被方案使用", () => {
+    demo(); store.update((d) => { d.presets = []; }); mount();
+    expect(sub()).toBe("未被方案使用");
+  });
+});
+
 describe("实体清单 · live 资源夹具 + FakeEngine", () => {
   it("办公文档规则：secret 5，phone/payment_card/date 各 2；其余各 1 条也有组头，目录顺序", async () => {
     await live(); mount();
