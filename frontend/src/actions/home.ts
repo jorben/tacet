@@ -115,7 +115,8 @@ export function openHistoryEntry(id: string): void {
   const s = getState();
   const x = liveHistory(s).find((h) => h.id === id);
   if (!x) return;
-  if (["done", "part"].includes(x.st) || x.stl.startsWith("已导出")) { openHistoryResult(x); return; }
+  // A parked task is not a result, whatever its status says about what it delivered so far.
+  if (!x.park && (["done", "part"].includes(x.st) || x.stl.startsWith("已导出"))) { openHistoryResult(x); return; }
   if (x.live) { store.update((d) => { d.view = x.live!; }); return; }
   if (x.park && savedBatchId(x.saved)) { openModal({ type: "resumeBatch", entryId: x.id }); return; }
   if (x.park) {

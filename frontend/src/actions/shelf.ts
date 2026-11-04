@@ -14,7 +14,7 @@ export function shelveSingle(d: Draft<AppState>): void {
   const s = d.single;
   if (!s) return;
   if (s.phase !== "done") {
-    d.history.unshift({ id: nextId("h"), k: "file", ext: s.ext, name: s.name, meta: s.pages.length + " 页", st: "warn", stl: "待确认", when: "刚刚", saved: plain(s), undo: plain(d.undo), park: true });
+    d.history.unshift({ id: nextId("h"), k: "file", ext: s.ext, name: s.name, meta: s.pages.length + " 页", st: "warn", stl: s.live?.locked ? "需要密码" : "待确认", when: "刚刚", saved: plain(s), undo: plain(d.undo), park: true });
   }
   d.single = null;
   d.undo = [];

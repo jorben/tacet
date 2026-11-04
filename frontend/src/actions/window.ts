@@ -7,7 +7,7 @@ import { slotBusy, unfinishedBatch } from "../store/selectors";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
-import { discardLiveTask, savedBatchId } from "./live";
+import { discardLiveTask, openDecisions, saveOpenDecisions, savedBatchId } from "./live";
 
 export function minimiseWindow(): void {
   void getService().minimiseWindow().catch(() => {});
@@ -42,11 +42,13 @@ export function requestQuit(): void {
   openModal({ type: "closeWindow" });
 }
 
-/** Keep unfinished work (paused, encrypted) and quit. */
+/** Keep unfinished work (paused, encrypted) and quit. Choices only this window holds go to the kernel first. */
 export function saveAndQuit(): void {
   closeModal();
   store.update((d) => { if (d.batch) d.batch.paused = true; });
-  quitApp();
+  const open = openDecisions(getState());
+  if (!open.length) { quitApp(); return; }
+  void saveOpenDecisions(open).then((saved) => { if (saved) quitApp(); });
 }
 
 /** Discard unfinished work and quit; exported files are not affected. */

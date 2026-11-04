@@ -29,7 +29,7 @@ const (
 )
 
 var commands = []struct{ name, summary string }{
-	{"preflight", "Check files without processing them"},
+	{"preflight", "Check files without processing them (a task that only waits for a person is parked to make room)"},
 	{"run", "Process a file list with an explicit policy and publish authorization"},
 	{"status", "Show batch status and the per-file report"},
 	{"list", "List the batches that are not finished, parked ones included"},
@@ -402,7 +402,8 @@ func (e *env) preflight(args []string) int {
 	if st, err = core.Preflight(e.ctx, st.ID); err != nil {
 		return e.fail(codeOf(err), "")
 	}
-	// a preflight leaves nothing behind: the draft is cancelled and cleaned
+	// a preflight leaves nothing of its own behind: the draft is cancelled and cleaned. A task it parked to make
+	// room stays parked (it was named above): it is still there, and only no longer holds the slot.
 	ok := true
 	for _, f := range st.Files {
 		if f.State != "preflighted" {

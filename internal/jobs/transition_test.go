@@ -146,6 +146,34 @@ func TestResourceBlockDoesNotCountAndRequeuesAtTheStage(t *testing.T) {
 	}
 }
 
+// A decision made while a file is stopped reaches what is published: without moving back, the retry would go on
+// from a candidate made from the old decisions (publish does not read them again).
+func TestADecisionUnderAStoppedFileIsWhatItsRetryPublishes(t *testing.T) {
+	R, U, X := kernel.StageResolve, kernel.StagePublish, kernel.StageExtractDetect
+	blocked := step(t, Snapshot{State: Blocked, Block: BlockTarget, Cursor: U}, Event{Kind: EvDecisionsChange})
+	if s := blocked.Snapshot; s.State != Blocked || s.Block != BlockTarget || s.Cursor != R || blocked.Dispatch != kernel.StageNone {
+		t.Fatalf("a decision released or forgot the block: %+v dispatch %q", s, blocked.Dispatch)
+	}
+	if s := step(t, blocked.Snapshot, Event{Kind: EvUnblock}).Snapshot; s.State != Queued || s.Cursor != R {
+		t.Fatalf("the retry after a decision: %+v", s)
+	}
+	failed := step(t, Snapshot{State: Failed, FailedStage: U}, Event{Kind: EvDecisionsChange})
+	if s := failed.Snapshot; s.State != Failed || s.FailedStage != R || failed.Dispatch != kernel.StageNone {
+		t.Fatalf("a decision released or left the failed file: %+v", s)
+	}
+	if s := step(t, failed.Snapshot, Event{Kind: EvReprocess}).Snapshot; s.State != Queued || s.Cursor != R {
+		t.Fatalf("the reprocess after a decision: %+v", s)
+	}
+	// without a decision a retry goes on where it stopped
+	if s := step(t, Snapshot{State: Blocked, Block: BlockTarget, Cursor: U}, Event{Kind: EvUnblock}).Snapshot; s.Cursor != U {
+		t.Fatalf("the retry without a decision: %+v", s)
+	}
+	// a file that failed before resolution is not moved past where it stopped
+	if s := step(t, Snapshot{State: Failed, FailedStage: X}, Event{Kind: EvDecisionsChange}).Snapshot; s.FailedStage != X {
+		t.Fatalf("moved forward: %+v", s)
+	}
+}
+
 func TestPauseDiscardsAbandonedAttemptAndRedoesStageOnResume(t *testing.T) {
 	X := kernel.StageExtractDetect
 	paused := step(t, Snapshot{State: ExtractingDetecting}, Event{Kind: EvPause}).Snapshot

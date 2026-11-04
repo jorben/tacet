@@ -53,7 +53,7 @@ export function fileStatus(f: EngineFile): FileStatus {
   }
 }
 
-const passwordWait = (f: EngineFile): boolean => f.state === "locked" || (f.state === "blocked" && (f.detail === "password_required" || f.detail === "PASSWORD_INCORRECT"));
+export const passwordWait = (f: EngineFile): boolean => f.state === "locked" || (f.state === "blocked" && (f.detail === "password_required" || f.detail === "PASSWORD_INCORRECT"));
 
 /** Exceptions of a file other than its strict-mode confirmation. */
 const reviewCount = (f: EngineFile): number => f.pending - (f.confirm ? 1 : 0);

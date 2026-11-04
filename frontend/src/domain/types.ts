@@ -128,6 +128,10 @@ export interface LiveSingle {
   /** Name and checksum of the published file once done. */
   output?: string;
   digest?: string;
+  /** The file waits for its password: the kernel lets the next task past it, even though nothing was read yet. */
+  locked?: boolean;
+  /** Choices went to the kernel when the task left the screen; going back on them has to reach the kernel too. */
+  sent?: boolean;
 }
 
 /* ── Models, presets, rule sets, plugins ──────────────────────────────────── */

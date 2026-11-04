@@ -15,6 +15,11 @@ export class FakeEngine implements EngineService {
   units: EngineUnit[] = [];
   afterManual: EngineUnit[] | null = null;
   decisions: { id: number; keep: boolean }[] | null = null;
+  /** Every decision call, and what the kernel keeps of them across a restart: documents read back with them. */
+  decisionLog: { job: string; ds: { id: number; keep: boolean }[] }[] = [];
+  private kernelDecisions = new Map<number, boolean>();
+  decideFails: Error | null = null;
+  decideGate: Promise<void> | null = null;
   published: { partial: boolean; dir?: string } | null = null;
   started: Parameters<EngineService["start"]>[0] | null = null;
   manual: { job: string; seq: number; start: number; end: number; category: string } | null = null;
@@ -151,13 +156,21 @@ export class FakeEngine implements EngineService {
     this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: "cancelled" })));
   }
   async clean(b?: string) { this.calls.push("clean"); if (b) this.cleaned.push(b); }
-  async retry() { this.calls.push("retry"); }
+  retried: [string, string[]][] = [];
+  /** As the kernel: a failed file runs again, a blocked one too unless it waits for a password or the original changed. */
+  async retry(b: string, only: string[] = []) {
+    this.calls.push("retry");
+    this.retried.push([b, only]);
+    this.setRows(b, this.rowsOf(b).map((r) => (r.state === "failed" || (r.state === "blocked" && !["password_required", "PASSWORD_INCORRECT", "INPUT_CHANGED"].includes(r.detail ?? ""))) ? { ...r, state: "queued" } : r));
+  }
   async unlock(job: string, password: string) {
     this.calls.push("unlock");
     this.unlocked.push([job, password]);
     if (this.unlockFails) throw this.unlockFails;
   }
-  async documentUnits(_job: string, after: number) { return this.units.filter((u) => u.seq > after); }
+  async documentUnits(_job: string, after: number) {
+    return this.units.filter((u) => u.seq > after).map((u) => ({ ...u, findings: (u.findings ?? []).map((f) => (this.kernelDecisions.has(f.id) ? { ...f, decision: this.kernelDecisions.get(f.id) ? "keep" : "redact" } : f)) }));
+  }
   async pagePreview(job: string, page: number, _dpi: number) {
     this.calls.push("preview:" + page);
     if (this.previewFails) throw this.previewFails;
@@ -252,9 +265,13 @@ export class FakeEngine implements EngineService {
     if (this.testFails) throw this.testFails;
     return this.testResult;
   }
-  async decide(_job: string, ds: { id: number; keep: boolean }[]) {
+  async decide(job: string, ds: { id: number; keep: boolean }[]) {
     this.calls.push("decide");
+    if (this.decideGate) await this.decideGate;
+    if (this.decideFails) throw this.decideFails;
     this.decisions = ds;
+    this.decisionLog.push({ job, ds });
+    ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));
     // the kernel redoes the file from resolution as soon as a decision is stored
     this.rows = this.rows.map((r) => (r.state === "awaiting_review" || r.state === "ready_to_publish" ? { ...r, state: "resolving", pending: 0 } : r));
   }

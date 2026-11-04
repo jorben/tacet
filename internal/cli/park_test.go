@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -37,6 +39,41 @@ func TestAParkedBatchIsNamedOnStandardError(t *testing.T) {
 	}
 	if strings.Contains(out, "b0007") {
 		t.Fatalf("the notice went to the report: %q", out)
+	}
+}
+
+// A preflight changes another task when it parks it, so it says so like a run does.
+func TestAPreflightNamesTheTaskItParked(t *testing.T) {
+	f := &fake{displaced: "b0007", status: app.BatchStatus{ID: "b0001"}}
+	_, _, errOut := call(context.Background(), opener(f, nil), "preflight", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if !strings.Contains(errOut, "batch b0007") {
+		t.Fatalf("err %q", errOut)
+	}
+}
+
+func TestTheHelpSaysAPreflightMayPark(t *testing.T) {
+	var help strings.Builder
+	usage(&help)
+	for _, line := range strings.Split(help.String(), "\n") {
+		if strings.HasPrefix(line, "  preflight") && !strings.Contains(line, "parked") {
+			t.Fatalf("a preflight changes the task it parks, the help does not say so: %q", line)
+		}
+	}
+}
+
+// The usage block of the README is what the command prints: what a command does to other tasks must not be left out.
+func TestTheReadmeShowsTheCommandsAsTheHelpDoes(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var help strings.Builder
+	usage(&help)
+	block := strings.SplitN(strings.SplitN(help.String(), "Commands:\n", 2)[1], "\n\n", 2)[0]
+	for _, line := range strings.Split(block, "\n") {
+		if !strings.Contains(string(readme), line) {
+			t.Errorf("the README does not show %q", line)
+		}
 	}
 }
 

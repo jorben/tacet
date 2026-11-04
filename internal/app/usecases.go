@@ -183,6 +183,11 @@ func (e *Engine) Import(ctx context.Context, r ImportRequest) (BatchStatus, erro
 	if err != nil {
 		return BatchStatus{}, mapErr(err)
 	}
+	if e.beforeMembers != nil {
+		if err = e.beforeMembers(); err != nil {
+			return BatchStatus{}, err
+		}
+	}
 	if err = e.createKeys(batch, ids...); err != nil {
 		return BatchStatus{}, err
 	}

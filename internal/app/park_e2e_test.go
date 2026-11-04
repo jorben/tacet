@@ -287,6 +287,127 @@ func TestAnImportThatFailsLeavesTheHolderHoldingTheSlot(t *testing.T) {
 	}
 }
 
+// What Import leaves when it stops after its first transaction (the keys, the members, an interrupt): the holder stays
+// parked and can be continued, and the empty draft does not keep the next import out.
+func TestAnImportThatStopsBeforeItsFilesDoesNotKeepTheSlot(t *testing.T) {
+	r := newParkRig(t)
+	old := r.waiting("quick", needsReview, "awaiting_review")
+	boom := errors.New("KEYS_FAILED")
+	r.e.beforeMembers = func() error { return boom }
+	if _, err := r.imp("quick", true, r.file(noReview)); !errors.Is(err, boom) {
+		t.Fatalf("import: %v", err)
+	}
+	r.e.beforeMembers = nil
+	now, err := r.e.Status(r.ctx, old.ID, 10)
+	if err != nil || !now.Parked || now.Files[0].State != "awaiting_review" {
+		t.Fatalf("the holder after the failed import: %+v %v", now, err)
+	}
+	next, err := r.imp("quick", true, r.file(noReview))
+	if err != nil {
+		t.Fatalf("the next import was kept out by the empty draft: %v", err)
+	}
+	if next.Displaced != "" {
+		t.Fatalf("the empty draft was reported as parked: %q", next.Displaced)
+	}
+	list, err := r.e.Unfinished(r.ctx)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("listed %+v %v, want the holder and the next one", list, err)
+	}
+}
+
+// A task blocked at publishing, continued after a restart: its document is there to review, and what it publishes
+// on the retry is what was decided since, not what was built before.
+func TestAChoiceMadeOnABlockedTaskIsWhatItsRetryPublishes(t *testing.T) {
+	r := newParkRig(t)
+	st := r.waiting("quick", noReview, "ready_to_publish")
+	job := st.Files[0].ID
+	finding := func() int64 {
+		t.Helper()
+		units, err := r.e.Document(r.ctx, job, 0, 100)
+		if err != nil || len(units) == 0 || len(units[0].Findings) == 0 {
+			t.Fatalf("the document of the task: %+v %v", units, err)
+		}
+		return units[0].Findings[0].ID
+	}
+	decide := func(keep bool) {
+		t.Helper()
+		if err := r.e.DecideFindings(r.ctx, job, []FindingDecision{{ID: finding(), Keep: keep}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the number stays in what was built first, then the name is taken: the file blocks with that candidate
+	decide(true)
+	var err error
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "ready_to_publish" {
+		t.Fatalf("after keeping: %+v %v", st, err)
+	}
+	taken := filepath.Join(r.out, st.ID+"-"+st.Files[0].Name+".txt")
+	if err = os.WriteFile(taken, []byte("somebody else's"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "blocked" || st.Files[0].Detail != "PUBLISH_NAME_CONFLICT" {
+		t.Fatalf("with the name taken: %+v %v", st, err)
+	}
+	r.e.Close()
+	r.e = openEngine(t, r.ws, r.key, true)
+	// a restart leaves every file paused; “继续” resumes it, and only then does it say what it waits for
+	if err = r.e.Resume(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Status(r.ctx, st.ID, 10); err != nil || st.Files[0].State != "blocked" || st.Files[0].Detail != "PUBLISH_NAME_CONFLICT" {
+		t.Fatalf("after the restart: %+v %v", st, err)
+	}
+	decide(false)
+	if st, err = r.e.Status(r.ctx, st.ID, 10); err != nil || st.Files[0].State != "blocked" {
+		t.Fatalf("a choice released the file: %+v %v", st, err)
+	}
+	if err = os.Remove(taken); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Retry(r.ctx, st.ID, []string{job}); err != nil {
+		t.Fatal(err)
+	}
+	st = waitCompleted(t, r.e, st.ID)
+	if got := outputOf(t, r.out, st); strings.Contains(got, "13812345678") {
+		t.Fatalf("the retry published what was built before the choice: %q", got)
+	}
+}
+
+// The screens leave a task's choices with the kernel when it goes to “最近”: they have to be there after a restart.
+func TestTheChoicesOnAParkedTaskSurviveARestart(t *testing.T) {
+	r := newParkRig(t)
+	st := r.waiting("quick", noReview, "ready_to_publish")
+	job := st.Files[0].ID
+	units, err := r.e.Document(r.ctx, job, 0, 100)
+	if err != nil || len(units) == 0 || len(units[0].Findings) == 0 {
+		t.Fatalf("the document: %+v %v", units, err)
+	}
+	id := units[0].Findings[0].ID
+	if units[0].Findings[0].Decision == "keep" {
+		t.Fatal("kept before anybody chose")
+	}
+	if _, err = r.imp("quick", true, r.file(noReview)); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.DecideFindings(r.ctx, job, []FindingDecision{{ID: id, Keep: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	r.e.Close()
+	r.e = openEngine(t, r.ws, r.key, true)
+	if units, err = r.e.Document(r.ctx, job, 0, 100); err != nil || len(units) == 0 || len(units[0].Findings) == 0 {
+		t.Fatalf("the document after the restart: %+v %v", units, err)
+	}
+	if got := units[0].Findings[0].Decision; got != "keep" {
+		t.Fatalf("the choice after the restart: %q", got)
+	}
+}
+
 func outputOf(t *testing.T, dir string, st BatchStatus) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, st.Files[0].Output))

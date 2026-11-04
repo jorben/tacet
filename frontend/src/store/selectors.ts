@@ -13,6 +13,9 @@ export function slotSingle(s: Pick<AppState, "single" | "behind">): Single | nul
   return s.single && s.single.from === "batch" ? s.behind?.single ?? null : s.single;
 }
 
+/** A saved task that can be continued, so its recovery data is what cleaning the workspace removes. */
+export const isRecoverable = (h: HistoryEntry): boolean => !!h.park || h.st === "keep";
+
 /** The running task of a kind, or null if the slot can be taken without losing work. */
 export function slotBusy(s: AppState, kind: "single"): Single | null;
 export function slotBusy(s: AppState, kind: "batch"): Batch | null;

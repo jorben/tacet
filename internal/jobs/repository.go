@@ -572,13 +572,19 @@ func (r *Repository) FinishBatch(tx store.Tx, batch string) error {
 }
 
 // ParkHolder parks the batch that holds kind's slot when nothing in it moves on
-// without a person, and returns its id; "" means the slot stays as it is (it is
-// free, or its holder is a draft or still has work under way) and CreateDraft
+// without a person, and returns its id; "" means no batch was parked (the slot
+// is free, or its holder is a draft or still has work under way) and CreateDraft
 // decides. A draft is never parked: its files have not been committed to a run.
+// A draft without members is finished instead, which frees the slot: it is what
+// an import leaves when it stops between creating the draft and adding the files,
+// nothing can be continued or listed from it. An import running at that moment
+// then fails at AddMember rather than this one being refused.
 // autoPublish says whether a batch publishes its ready files by itself, which
 // the app layer owns. The caller creates the next draft in this transaction, so
-// a failure leaves the holder as it was. Parking is permanent until the batch
-// finishes: continuing a parked batch does not take a slot back from its kind.
+// a failure there leaves the holder as it was; once that transaction has
+// committed the holder stays parked, whatever happens to the rest of the import.
+// Parking is permanent until the batch finishes: continuing a parked batch does
+// not take a slot back from its kind.
 func (r *Repository) ParkHolder(tx store.Tx, kind BatchKind, autoPublish func(batch string) (bool, error)) (string, error) {
 	t, scope, err := transaction(tx)
 	if err != nil {
@@ -594,7 +600,7 @@ func (r *Repository) ParkHolder(tx store.Tx, kind BatchKind, autoPublish func(ba
 		return "", err
 	}
 	if confirmed == 0 {
-		return "", nil
+		return "", r.finishEmptyDraft(tx, id)
 	}
 	auto, err := autoPublish(id)
 	if err != nil {
@@ -620,6 +626,22 @@ func (r *Repository) ParkHolder(tx store.Tx, kind BatchKind, autoPublish func(ba
 	}
 	tx.Emit(store.Event{Type: "BatchChanged", Subject: kernel.ArtifactRef{Kind: "batch", ID: id, Version: 2}})
 	return id, nil
+}
+
+func (r *Repository) finishEmptyDraft(tx store.Tx, id string) error {
+	page, err := r.Members(tx, id, -1, 1)
+	if err != nil || len(page) > 0 {
+		return err
+	}
+	_, scope, err := transaction(tx)
+	if err != nil {
+		return err
+	}
+	if _, err = scope.Exec("UPDATE jobs_batch SET finished=1 WHERE id=?", id); err != nil {
+		return err
+	}
+	tx.Emit(store.Event{Type: "BatchChanged", Subject: kernel.ArtifactRef{Kind: "batch", ID: id, Version: 2}})
+	return nil
 }
 
 // Parked reports whether a batch was parked.

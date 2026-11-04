@@ -5,7 +5,7 @@ import { batchStatus } from "../../domain/batch";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState, type AppState } from "../../store";
-import { slotBusy, unfinishedBatch } from "../../store/selectors";
+import { isRecoverable, slotBusy, unfinishedBatch } from "../../store/selectors";
 import { Button, ButtonLink, Icon, KeyValue, pushLeft } from "../../ui";
 
 const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "GitHub" } as const;
@@ -17,7 +17,7 @@ function unfinishedTasks(s: AppState, includeSaved: "parked" | "all"): string[] 
   const batch = unfinishedBatch(s);
   if (single) out.push(single.name + " · " + (single.phase === "review" ? "待确认" : "处理中"));
   if (batch) out.push(batch.title + " · " + batchStatus(batch)[1]);
-  s.history.filter((h) => (includeSaved === "all" ? h.park || h.st === "keep" : h.park)).forEach((h) => out.push(h.name + " · " + h.stl));
+  s.history.filter((h) => (includeSaved === "all" ? isRecoverable(h) : h.park)).forEach((h) => out.push(h.name + " · " + h.stl));
   return out;
 }
 
@@ -114,7 +114,7 @@ export function LicensesDialog() {
 
 export function CleanWorkspaceDialog() {
   const history = useAppState((s) => s.history);
-  const saved = history.filter((h) => h.st === "keep");
+  const saved = history.filter(isRecoverable);
   return (
     <Modal>
       <ModalHeader title="清理工作区" subtitle="删除中间数据与恢复数据，已导出的文件不受影响" />

@@ -192,6 +192,9 @@ type Engine struct {
 	// beforeDraft, in tests, runs inside Import's transaction between parking the slot's holder and creating
 	// the draft; an error it returns ends the transaction there.
 	beforeDraft func() error
+	// beforeMembers, in tests, runs in Import after its first transaction committed, in place of what can fail
+	// there (the keys of the files); an error it returns ends the import.
+	beforeMembers func() error
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step, with how many it reclaimed.
 	afterReap func(reaped int)
 	// beforeProbeCheck, in tests, runs just before the start-up probe checks the model's files (modelArgs); a slow one

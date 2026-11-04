@@ -191,6 +191,10 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 			// A decision changed under a later stage: redo from resolution.
 			s.Cursor = kernel.StageResolve
 			return to(s, Queued, kernel.StageNone), nil
+		case Blocked, Failed:
+			// The file stays stopped, but what it would go on with was made from the old decisions: a retry
+			// must not publish that.
+			return Transition(s, Event{Kind: EvInvalidate, Stage: kernel.StageResolve}, l)
 		}
 		return invalid()
 

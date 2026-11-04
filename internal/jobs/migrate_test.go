@@ -238,3 +238,49 @@ func TestAFailureAfterParkingLeavesTheHolderHoldingTheSlot(t *testing.T) {
 		t.Fatalf("events %d %v", events, err)
 	}
 }
+
+// An import that stops after creating its draft and before adding the files leaves a draft without members. Nothing
+// lists it or can finish it, so the next import that makes room takes the slot back.
+func TestADraftWithoutMembersGivesUpTheSlot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	raw := rawDB(t, path)
+	defer raw.Close()
+	db, err := openAt(t, raw, Module(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(nil, DefaultLimits())
+	waits := func(string) (bool, error) { return false, nil }
+	if err = inTxn(t, db, func(tx *store.Txn) error { return repo.CreateDraft(tx, "left", RegularBatch) }); err != nil {
+		t.Fatal(err)
+	}
+	if err = inTxn(t, db, func(tx *store.Txn) error {
+		got, err := repo.ParkHolder(tx, RegularBatch, waits)
+		if err != nil || got != "" {
+			t.Fatalf("parked %q %v", got, err)
+		}
+		return repo.CreateDraft(tx, "next", RegularBatch)
+	}); err != nil {
+		t.Fatalf("the draft without members kept the slot: %v", err)
+	}
+	var finished, parked int
+	if err = raw.QueryRow(`SELECT finished,parked FROM jobs_batch WHERE id='left'`).Scan(&finished, &parked); err != nil || finished != 1 || parked != 0 {
+		t.Fatalf("the draft: finished %d parked %d %v", finished, parked, err)
+	}
+	// an import still under way behind it finds out here, and adds nothing to a batch nobody sees
+	if err = inTxn(t, db, func(tx *store.Txn) error { return repo.AddMember(tx, "left", "j1", 0) }); !errors.Is(err, ErrJobRecord) {
+		t.Fatalf("a member joined the finished draft: %v", err)
+	}
+	// a draft with a member is somebody's work: it keeps the slot
+	if err = inTxn(t, db, func(tx *store.Txn) error { return repo.AddMember(tx, "next", "j2", 0) }); err != nil {
+		t.Fatal(err)
+	}
+	if err = inTxn(t, db, func(tx *store.Txn) error {
+		if got, err := repo.ParkHolder(tx, RegularBatch, waits); err != nil || got != "" {
+			t.Fatalf("parked %q %v", got, err)
+		}
+		return repo.CreateDraft(tx, "third", RegularBatch)
+	}); !errors.Is(err, ErrBatchActive) {
+		t.Fatalf("the draft with a member gave up the slot: %v", err)
+	}
+}
