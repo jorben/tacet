@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -17,11 +18,15 @@ type fake struct {
 	mu      sync.Mutex
 	status  app.BatchStatus
 	waitErr error
-	calls   []string
-	started app.StartRequest
+	// startErr is what Start answers; cancelErr is what Cancel answers.
+	startErr, cancelErr error
+	calls               []string
+	started             app.StartRequest
 	// statusDelay slows Status; waitDelay slows Wait: together they leave a status read in
 	// flight when the wait ends.
 	statusDelay, waitDelay time.Duration
+	// waitBlocks makes Wait end only when its context does.
+	waitBlocks bool
 }
 
 func (f *fake) rec(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
@@ -36,7 +41,7 @@ func (f *fake) Preflight(context.Context, string) (app.BatchStatus, error) {
 func (f *fake) Start(_ context.Context, r app.StartRequest) error {
 	f.rec("start")
 	f.started = r
-	return nil
+	return f.startErr
 }
 func (f *fake) Status(context.Context, string, int) (app.BatchStatus, error) {
 	time.Sleep(f.statusDelay)
@@ -44,6 +49,10 @@ func (f *fake) Status(context.Context, string, int) (app.BatchStatus, error) {
 }
 func (f *fake) Wait(ctx context.Context, _ string) (app.BatchStatus, error) {
 	f.rec("wait")
+	if f.waitBlocks {
+		<-ctx.Done()
+		return app.BatchStatus{}, ctx.Err()
+	}
 	time.Sleep(f.waitDelay)
 	if f.waitErr != nil {
 		return app.BatchStatus{}, f.waitErr
@@ -102,7 +111,7 @@ func (f *fake) Findings(context.Context, string, int64, int) ([]app.Finding, err
 func (f *fake) DecideFinding(context.Context, string, int64, bool) error            { return nil }
 func (f *fake) Pause(context.Context, string) error                                 { f.rec("pause"); return nil }
 func (f *fake) Resume(context.Context, string) error                                { f.rec("resume"); return nil }
-func (f *fake) Cancel(context.Context, string) error                                { f.rec("cancel"); return nil }
+func (f *fake) Cancel(context.Context, string) error                                { f.rec("cancel"); return f.cancelErr }
 func (f *fake) Retry(_ context.Context, _ string, j []string) error {
 	f.rec("retry:" + strings.Join(j, ","))
 	return nil
@@ -181,6 +190,76 @@ func TestInterruptPausesAndReturnsThree(t *testing.T) {
 	code, _, errOut := call(ctx, opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
 	if code != ExitInterrupted || !strings.Contains(strings.Join(f.calls, ","), "pause") || !strings.Contains(errOut, "tacet resume --batch b0001") {
 		t.Fatalf("code %d calls %v err %q", code, f.calls, errOut)
+	}
+}
+
+// This run was the only owner of its draft: a start the core refused must not leave it holding the batch
+// slot. The order matters: Resume carries out the kept start request, and only files already cancelled
+// guarantee that this cannot begin processing after the refusal has been reported.
+func TestARefusedStartIsReportedAndReleasesItsDraft(t *testing.T) {
+	refused := fmt.Errorf("%w: %w", app.ErrNotReady, app.ErrModelNotInstalled)
+	for _, tc := range []struct {
+		name  string
+		flags []string
+		kind  string
+	}{{"batch", nil, "tacet: NOT_READY\n"}, {"quick", []string{"--quick"}, "tacet: NOT_READY\n"}, {"json", []string{"--json"}, `"code":"NOT_READY"`}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fake{startErr: refused}
+			args := append([]string{"run", "--preset", "p", "--authorize", "--out", t.TempDir()}, tc.flags...)
+			code, _, errOut := call(context.Background(), opener(f, nil), append(args, t.TempDir()+"/a.txt")...)
+			if code != ExitUsage || !strings.Contains(errOut, tc.kind) {
+				t.Fatalf("code %d err %q", code, errOut)
+			}
+			if got := strings.Join(f.calls, ","); got != "import,start,cancel,resume,wait,clean,close" {
+				t.Fatalf("calls %s", got)
+			}
+		})
+	}
+}
+
+// When the files could not be cancelled, Resume could still begin them: nothing more is tried.
+func TestARefusedStartWhoseDraftCannotBeCancelledIsNotResumed(t *testing.T) {
+	f := &fake{startErr: app.ErrNotReady, cancelErr: errors.New("cancel failed")}
+	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got := strings.Join(f.calls, ","); got != "import,start,cancel,close" {
+		t.Fatalf("calls %s", got)
+	}
+}
+
+// Discarding the draft waits for the kept start to be dropped; an interrupt ends that wait, and the run
+// still reports its refusal and cleans up.
+func TestAnInterruptEndsTheWaitOfARefusedStart(t *testing.T) {
+	f := &fake{startErr: app.ErrNotReady, waitBlocks: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	args := []string{"run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir() + "/a.txt"}
+	done := make(chan int, 1)
+	go func() {
+		code, _, _ := call(ctx, opener(f, nil), args...)
+		done <- code
+	}()
+	select {
+	case code := <-done:
+		if got := strings.Join(f.calls, ","); code != ExitUsage || got != "import,start,cancel,resume,wait,clean,close" {
+			t.Fatalf("code %d calls %s", code, got)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run did not end on the interrupt")
+	}
+}
+
+// An interrupt while the start waits for the inspection is not a refusal: the draft stays, paused, for resume.
+func TestAnInterruptDuringStartPausesAndKeepsTheDraft(t *testing.T) {
+	f := &fake{startErr: context.Canceled}
+	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
+	if code != ExitInterrupted || !strings.Contains(errOut, "tacet resume --batch b0001") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got := strings.Join(f.calls, ","); got != "import,start,pause,close" {
+		t.Fatalf("calls %s", got)
 	}
 }
 

@@ -436,10 +436,26 @@ func (e *env) run(args []string) int {
 		if errors.Is(err, context.Canceled) {
 			return e.finish(core, st.ID, app.BatchStatus{}, err)
 		}
+		e.discard(core, st.ID)
 		return e.fail(codeOf(err), "")
 	}
 	res, err := e.follow(core, st.ID)
 	return e.finish(core, st.ID, res, err)
+}
+
+// discard gives up the draft of a run whose start the core refused. The core keeps such a draft, for a caller
+// that can start it again once the cause is gone (the desktop app); this command is over, so it must not go
+// on holding the batch slot.
+func (e *env) discard(core app.Core, batch string) {
+	bg := context.Background()
+	if core.Cancel(bg, batch) != nil {
+		return // files still in the draft are what Resume below could begin
+	}
+	// The refused start stays on record (run.Pending) and a later Wait would never end on it. Only Resume drops
+	// it: it carries the start out, which cancelled files refuse, and then drops it. Wait sees that happen.
+	core.Resume(bg, batch)
+	core.Wait(e.ctx, batch)
+	core.Clean(bg, batch)
 }
 
 func (e *env) status(args []string) int {
