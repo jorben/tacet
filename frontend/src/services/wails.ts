@@ -29,7 +29,7 @@ const engine: EngineService = {
   defaultOutputDir: () => G.DefaultOutputDir(),
   workspaceInfo: () => G.WorkspaceInfo(),
   openWorkspace: () => G.OpenWorkspace(),
-  importFiles: (a) => G.ImportFiles({ files: a.files, quick: a.quick, preset: a.preset ?? "", outputDir: a.outputDir ?? "" }) as Promise<EngineBatch>,
+  importFiles: (a) => G.ImportFiles({ files: a.files, quick: a.quick, preset: a.preset ?? "", outputDir: a.outputDir ?? "", parkWaiting: a.parkWaiting ?? false }) as Promise<EngineBatch>,
   async unfinished() { return ((await G.UnfinishedBatches()) ?? []) as EngineBatch[]; },
   preflight: (b) => G.Preflight(b) as Promise<EngineBatch>,
   start: (a) => G.Start({ batch: a.batch, preset: a.preset ?? "", outputDir: a.outputDir ?? "", authorize: a.authorize, allowPartial: a.allowPartial, mode: a.mode ?? "" }),

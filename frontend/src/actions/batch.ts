@@ -20,7 +20,7 @@ import { newSingle } from "./single";
 import { nextId, stopBatchTimer, timers } from "./timers";
 import { setContinuation } from "./pending";
 import {
-  cancelLiveBatch, chooseOutputFolder, flushLiveDecisions, openLiveFile, publishLiveBatch, resumeLiveBatch, runLiveBatch, setLiveOutput,
+  cancelLiveBatch, chooseOutputFolder, leaveLiveFile, openLiveFile, publishLiveBatch, resumeLiveBatch, runLiveBatch, setLiveOutput,
   stopLiveBatch, toggleLivePause,
 } from "./live";
 
@@ -392,19 +392,7 @@ function commitBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
 export function leaveBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
   const s = d.single;
   if (!s || s.from !== "batch") return null;
-  if (s.live) {
-    // the choices go to the kernel, which redoes the file; there is no local copy to keep
-    const { job } = s.live;
-    const findingOf = plain(s.live.findingOf);
-    const hits = plain(s.hits);
-    const changed = d.undo.length > 0;
-    const behind = d.behind;
-    d.single = behind ? behind.single : null;
-    d.undo = behind ? behind.undo : [];
-    d.behind = null;
-    if (changed) { queueMicrotask(() => flushLiveDecisions(job, hits, findingOf)); return "saved"; }
-    return null;
-  }
+  if (s.live) return leaveLiveFile(d);
   const r = commitBatchFile(d);
   const behind = d.behind;
   d.single = behind ? behind.single : null;

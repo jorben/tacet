@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,12 @@ func Module() store.Module {
 		// One in-stage checkpoint per job and stage: a reference to what the
 		// plugin saved, the committed sequence and what the run read.
 		`CREATE TABLE jobs_checkpoint(job TEXT NOT NULL REFERENCES jobs_job(id), stage TEXT NOT NULL, attempt TEXT NOT NULL, seq INTEGER NOT NULL, ref BLOB NOT NULL, reads BLOB NOT NULL, PRIMARY KEY(job,stage))`,
+	}}, {Version: 5, SQL: []string{
+		// A parked batch waits for a person and no longer holds its kind's slot (FR-28). Batches of an older
+		// database start unparked: they keep the slot until a new task of their kind parks them.
+		`ALTER TABLE jobs_batch ADD COLUMN parked INTEGER NOT NULL DEFAULT 0`,
+		`DROP INDEX jobs_one_active_kind`,
+		`CREATE UNIQUE INDEX jobs_one_active_kind ON jobs_batch(kind) WHERE finished=0 AND parked=0`,
 	}}}}
 
 }
@@ -88,8 +95,9 @@ func (r *Repository) notify(tx store.Tx, id string, stage kernel.StageKind) {
 	}
 }
 
-// CreateDraft permits one unfinished quick task and one unfinished regular
-// batch, enforced by SQLite as well as by the readable error (FR-28).
+// CreateDraft permits one unparked unfinished quick task and one unparked
+// unfinished regular batch, enforced by SQLite as well as by the readable error
+// (FR-28).
 func (r *Repository) CreateDraft(tx store.Tx, id string, kind BatchKind) error {
 	if id == "" || len(id) > 128 || (kind != QuickBatch && kind != RegularBatch) {
 		return ErrJobRecord
@@ -99,7 +107,7 @@ func (r *Repository) CreateDraft(tx store.Tx, id string, kind BatchKind) error {
 		return err
 	}
 	var count int
-	if err = t.QueryRow("SELECT COUNT(*) FROM jobs_batch WHERE kind=? AND finished=0", string(kind)).Scan(&count); err != nil {
+	if err = t.QueryRow("SELECT COUNT(*) FROM jobs_batch WHERE kind=? AND finished=0 AND parked=0", string(kind)).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
@@ -563,13 +571,101 @@ func (r *Repository) FinishBatch(tx store.Tx, batch string) error {
 	return nil
 }
 
-// UnfinishedBatch names a batch whose active-kind slot is still held.
+// ParkHolder parks the batch that holds kind's slot when nothing in it moves on
+// without a person, and returns its id; "" means no batch was parked (the slot
+// is free, or its holder is a draft or still has work under way) and CreateDraft
+// decides. A draft is never parked: its files have not been committed to a run.
+// A draft without members is finished instead, which frees the slot: it is what
+// an import leaves when it stops between creating the draft and adding the files,
+// nothing can be continued or listed from it. An import running at that moment
+// then fails at AddMember rather than this one being refused.
+// autoPublish says whether a batch publishes its ready files by itself, which
+// the app layer owns. The caller creates the next draft in this transaction, so
+// a failure there leaves the holder as it was; once that transaction has
+// committed the holder stays parked, whatever happens to the rest of the import.
+// Parking is permanent until the batch finishes: continuing a parked batch does
+// not take a slot back from its kind.
+func (r *Repository) ParkHolder(tx store.Tx, kind BatchKind, autoPublish func(batch string) (bool, error)) (string, error) {
+	t, scope, err := transaction(tx)
+	if err != nil {
+		return "", err
+	}
+	var id string
+	var confirmed int
+	err = t.QueryRow("SELECT id,confirmed FROM jobs_batch WHERE kind=? AND finished=0 AND parked=0", string(kind)).Scan(&id, &confirmed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if confirmed == 0 {
+		return "", r.finishEmptyDraft(tx, id)
+	}
+	auto, err := autoPublish(id)
+	if err != nil {
+		return "", err
+	}
+	for after := -1; ; {
+		page, err := r.Members(tx, id, after, 200)
+		if err != nil {
+			return "", err
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, job := range page {
+			if !job.Position.State.waitsForPerson(auto) {
+				return "", nil
+			}
+		}
+		after = page[len(page)-1].Ordinal
+	}
+	if _, err = scope.Exec("UPDATE jobs_batch SET parked=1 WHERE id=?", id); err != nil {
+		return "", err
+	}
+	tx.Emit(store.Event{Type: "BatchChanged", Subject: kernel.ArtifactRef{Kind: "batch", ID: id, Version: 2}})
+	return id, nil
+}
+
+func (r *Repository) finishEmptyDraft(tx store.Tx, id string) error {
+	page, err := r.Members(tx, id, -1, 1)
+	if err != nil || len(page) > 0 {
+		return err
+	}
+	_, scope, err := transaction(tx)
+	if err != nil {
+		return err
+	}
+	if _, err = scope.Exec("UPDATE jobs_batch SET finished=1 WHERE id=?", id); err != nil {
+		return err
+	}
+	tx.Emit(store.Event{Type: "BatchChanged", Subject: kernel.ArtifactRef{Kind: "batch", ID: id, Version: 2}})
+	return nil
+}
+
+// Parked reports whether a batch was parked.
+func (r *Repository) Parked(tx store.Tx, batch string) (bool, error) {
+	t, _, err := transaction(tx)
+	if err != nil {
+		return false, err
+	}
+	var parked bool
+	if err = t.QueryRow("SELECT parked FROM jobs_batch WHERE id=?", batch).Scan(&parked); err != nil {
+		return false, ErrJobRecord
+	}
+	return parked, nil
+}
+
+// UnfinishedBatch names a batch that is not finished. An unparked one holds its
+// kind's slot.
 type UnfinishedBatch struct {
 	ID   string
 	Kind BatchKind
 }
 
-// Unfinished lists the batches that are not finished: at most one of each kind.
+// Unfinished lists the batches that are not finished: at most one unparked batch
+// of each kind and any number of parked ones.
 func (r *Repository) Unfinished(tx store.Tx) ([]UnfinishedBatch, error) {
 	t, _, err := transaction(tx)
 	if err != nil {

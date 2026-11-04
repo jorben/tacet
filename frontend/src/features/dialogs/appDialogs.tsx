@@ -5,7 +5,7 @@ import { batchStatus } from "../../domain/batch";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState, type AppState } from "../../store";
-import { slotBusy } from "../../store/selectors";
+import { isRecoverable, slotBusy, unfinishedBatch } from "../../store/selectors";
 import { Button, ButtonLink, Icon, KeyValue, pushLeft } from "../../ui";
 
 const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "GitHub" } as const;
@@ -14,10 +14,10 @@ const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "Git
 function unfinishedTasks(s: AppState, includeSaved: "parked" | "all"): string[] {
   const out: string[] = [];
   const single = slotBusy(s, "single");
-  const batch = slotBusy(s, "batch");
+  const batch = unfinishedBatch(s);
   if (single) out.push(single.name + " · " + (single.phase === "review" ? "待确认" : "处理中"));
   if (batch) out.push(batch.title + " · " + batchStatus(batch)[1]);
-  s.history.filter((h) => (includeSaved === "all" ? h.park || h.st === "keep" : h.park)).forEach((h) => out.push(h.name + " · " + (includeSaved === "all" ? h.stl : "待确认")));
+  s.history.filter((h) => (includeSaved === "all" ? isRecoverable(h) : h.park)).forEach((h) => out.push(h.name + " · " + h.stl));
   return out;
 }
 
@@ -114,7 +114,7 @@ export function LicensesDialog() {
 
 export function CleanWorkspaceDialog() {
   const history = useAppState((s) => s.history);
-  const saved = history.filter((h) => h.st === "keep");
+  const saved = history.filter(isRecoverable);
   return (
     <Modal>
       <ModalHeader title="清理工作区" subtitle="删除中间数据与恢复数据，已导出的文件不受影响" />
@@ -146,7 +146,7 @@ export function CleanWorkspaceDialog() {
 /** Closing the window with unfinished work: keep it, or stop and clean up. */
 export function CloseWindowDialog() {
   const tasks = useAppState((s) => unfinishedTasks(s, "parked"), (a, b) => a.join("|") === b.join("|"));
-  const batchKeep = useAppState((s) => (s.batch ? slotBusy(s, "batch")?.keep : undefined));
+  const batchKeep = useAppState((s) => unfinishedBatch(s)?.keep);
   const settingsKeep = useAppState((s) => s.settings.keep);
   const days = batchKeep && batchKeep !== "0" ? batchKeep : settingsKeep !== "0" ? settingsKeep : "7";
   return (

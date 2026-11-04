@@ -13,6 +13,9 @@ export function slotSingle(s: Pick<AppState, "single" | "behind">): Single | nul
   return s.single && s.single.from === "batch" ? s.behind?.single ?? null : s.single;
 }
 
+/** A saved task that can be continued, so its recovery data is what cleaning the workspace removes. */
+export const isRecoverable = (h: HistoryEntry): boolean => !!h.park || h.st === "keep";
+
 /** The running task of a kind, or null if the slot can be taken without losing work. */
 export function slotBusy(s: AppState, kind: "single"): Single | null;
 export function slotBusy(s: AppState, kind: "batch"): Batch | null;
@@ -23,6 +26,11 @@ export function slotBusy(s: AppState, kind: "single" | "batch"): Single | Batch 
   }
   const b = s.batch;
   return b && !(["result", "manifest"].includes(b.phase) && isSettled(b)) ? b : null;
+}
+
+/** The batch on screen while something of it is open, even when nothing runs: it is not left without a word. */
+export function unfinishedBatch(s: AppState): Batch | null {
+  return slotBusy(s, "batch") ?? (s.batch && batchStatus(s.batch)[0] === "warn" ? s.batch : null);
 }
 
 /** The tasks that are still alive in their slot, followed by the saved ones. */

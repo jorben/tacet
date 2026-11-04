@@ -146,6 +146,82 @@ func TestResourceBlockDoesNotCountAndRequeuesAtTheStage(t *testing.T) {
 	}
 }
 
+// A decision made while a file is stopped reaches what is published: without moving back, the retry would go on
+// from a candidate made from the old decisions (publish does not read them again).
+func TestADecisionUnderAStoppedFileIsWhatItsRetryPublishes(t *testing.T) {
+	R, U, X := kernel.StageResolve, kernel.StagePublish, kernel.StageExtractDetect
+	blocked := step(t, Snapshot{State: Blocked, Block: BlockTarget, Cursor: U}, Event{Kind: EvDecisionsChange})
+	if s := blocked.Snapshot; s.State != Blocked || s.Block != BlockTarget || s.Cursor != R || blocked.Dispatch != kernel.StageNone {
+		t.Fatalf("a decision released or forgot the block: %+v dispatch %q", s, blocked.Dispatch)
+	}
+	if s := step(t, blocked.Snapshot, Event{Kind: EvUnblock}).Snapshot; s.State != Queued || s.Cursor != R {
+		t.Fatalf("the retry after a decision: %+v", s)
+	}
+	failed := step(t, Snapshot{State: Failed, FailedStage: U}, Event{Kind: EvDecisionsChange})
+	if s := failed.Snapshot; s.State != Failed || s.FailedStage != R || failed.Dispatch != kernel.StageNone {
+		t.Fatalf("a decision released or left the failed file: %+v", s)
+	}
+	if s := step(t, failed.Snapshot, Event{Kind: EvReprocess}).Snapshot; s.State != Queued || s.Cursor != R {
+		t.Fatalf("the reprocess after a decision: %+v", s)
+	}
+	// without a decision a retry goes on where it stopped
+	if s := step(t, Snapshot{State: Blocked, Block: BlockTarget, Cursor: U}, Event{Kind: EvUnblock}).Snapshot; s.Cursor != U {
+		t.Fatalf("the retry without a decision: %+v", s)
+	}
+	// a file that failed before resolution is not moved past where it stopped
+	if s := step(t, Snapshot{State: Failed, FailedStage: X}, Event{Kind: EvDecisionsChange}).Snapshot; s.FailedStage != X {
+		t.Fatalf("moved forward: %+v", s)
+	}
+}
+
+// The resume point of a stopped file only ever moves back: going forward would skip a stage that did not run.
+func TestADecisionDoesNotMoveAStoppedFilePastWhereItStopped(t *testing.T) {
+	R, X, E := kernel.StageResolve, kernel.StageExtractDetect, kernel.StageExport
+	for _, ev := range []Event{{Kind: EvDecisionsChange}, {Kind: EvInvalidate, Stage: R}} {
+		if s := step(t, Snapshot{State: Blocked, Block: BlockResource, Cursor: X}, ev).Snapshot; s.State != Blocked || s.Block != BlockResource || s.Cursor != X {
+			t.Fatalf("%s moved the resume point forward: %+v", ev.Kind, s)
+		}
+		if s := step(t, Snapshot{State: Blocked, Block: BlockResource, Cursor: E}, ev).Snapshot; s.Cursor != R {
+			t.Fatalf("%s left the resume point after what it changed: %+v", ev.Kind, s)
+		}
+	}
+}
+
+// A decision under a pause changes what the file goes back to, as it would have without the pause: it stays
+// paused, and the resume does not go on from what was made from the old decisions.
+func TestADecisionUnderAPauseIsWhatItsResumeGoesOnWith(t *testing.T) {
+	R, U := kernel.StageResolve, kernel.StagePublish
+	decided := func(s Snapshot) Snapshot {
+		t.Helper()
+		r := step(t, s, Event{Kind: EvDecisionsChange})
+		if r.Snapshot.State != Paused || r.Dispatch != kernel.StageNone {
+			t.Fatalf("a decision ended the pause of %+v: %+v dispatch %q", s, r.Snapshot, r.Dispatch)
+		}
+		return r.Snapshot
+	}
+	resumed := func(s Snapshot) Snapshot {
+		t.Helper()
+		return step(t, s, Event{Kind: EvResume}).Snapshot
+	}
+	for _, back := range []State{AwaitingReview, ReadyToPublish, Resolving, Exporting, Validating} {
+		if s := resumed(decided(Snapshot{State: Paused, Resume: back, Cursor: U})); s.State != Queued || s.Cursor != R {
+			t.Fatalf("paused from %s, then decided and resumed: %+v", back, s)
+		}
+	}
+	if s := resumed(decided(Snapshot{State: Paused, Resume: Blocked, Block: BlockTarget, Cursor: U})); s.State != Blocked || s.Block != BlockTarget || s.Cursor != R {
+		t.Fatalf("paused while blocked, then decided and resumed: %+v", s)
+	}
+	if s := resumed(decided(Snapshot{State: Paused, Resume: Failed, FailedStage: U})); s.State != Failed || s.FailedStage != R {
+		t.Fatalf("paused while failed, then decided and resumed: %+v", s)
+	}
+	// nothing was made yet that a decision could make stale: refused, so the caller's quiet apply leaves it alone
+	for _, back := range []State{Preflighting, Preflighted, Locked, ExtractingDetecting} {
+		if _, err := Transition(Snapshot{State: Paused, Resume: back}, Event{Kind: EvDecisionsChange}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("paused from %s: %v", back, err)
+		}
+	}
+}
+
 func TestPauseDiscardsAbandonedAttemptAndRedoesStageOnResume(t *testing.T) {
 	X := kernel.StageExtractDetect
 	paused := step(t, Snapshot{State: ExtractingDetecting}, Event{Kind: EvPause}).Snapshot

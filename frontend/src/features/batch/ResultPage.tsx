@@ -1,7 +1,7 @@
 import { goTo } from "../../actions/navigation";
 import { startReview } from "../../actions/review";
 import { revealOutput } from "../../actions/single";
-import { countFiles, exportedCount } from "../../domain/batch";
+import { countFiles, exportedCount, openFileCount } from "../../domain/batch";
 import { fmt } from "../../domain/format";
 import type { BatchSummary } from "../../domain/types";
 import { Button, Center, Icon, LinkButton, ResultCard } from "../../ui";
@@ -11,10 +11,11 @@ export function ResultPage({ batch: B, onManifest }: { batch: BatchSummary; onMa
   const c = countFiles(B.files);
   const out = exportedCount(c);
   const missing = B.n - out;
+  const open = openFileCount(B.files);
   const all = !missing && !c.partial;
   const stats = [
-    { value: fmt(c.done), label: "已导出" }, { value: fmt(c.partial), label: "部分结果" }, { value: fmt(c.held), label: "待你处理" },
-    { value: fmt(c.skip), label: "已跳过" }, { value: fmt(c.bad), label: "无法处理" },
+    { value: fmt(c.done), label: "已导出" }, { value: fmt(c.partial), label: "部分结果" }, { value: fmt(open), label: "待你处理" },
+    { value: fmt(c.skip), label: "已跳过" }, { value: fmt(c.bad + c.held - open), label: "无法处理" },
   ].filter((s, i) => s.value !== "0" || !i);
   return (
     <Center>
@@ -32,9 +33,9 @@ export function ResultPage({ batch: B, onManifest }: { batch: BatchSummary; onMa
           missing > 0 && (
             <div className="muted sm" style={{ margin: "-10px 0 22px" }}>
               未导出 {fmt(missing)} 份
-              {c.held ? (
+              {open ? (
                 <>
-                  ，其中 {fmt(c.held)} 份待你处理 <LinkButton onClick={() => startReview(null)}>去处理</LinkButton>
+                  ，其中 {fmt(open)} 份待你处理 <LinkButton onClick={() => startReview(null)}>去处理</LinkButton>
                 </>
               ) : (
                 "，原因见清单"

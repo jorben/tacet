@@ -5,18 +5,25 @@ import { getState, store } from "../store";
 import { closePop, toast } from "../overlay/store";
 import { needSlot } from "./home";
 import { openBatchFile, resumeBatch } from "./batch";
-import { openLiveGroup } from "./live";
+import { openLiveFile, openLiveGroup } from "./live";
 
-/** Opens the review at the first pending item, optionally of one group and/or one file. */
+/**
+ * Opens the review at the first pending item, optionally of one group and/or one file. The review screen is the
+ * demonstration's and its decisions reach nothing, so a batch of the kernel goes to the file or the dialog it waits for.
+ */
 export function enterBatchReview(gid?: string | null, fi?: number | null): void {
-  store.update((d) => { enterReview(d.batch!, gid, fi); });
   closePop();
+  if (getState().batch?.live) {
+    if (fi != null) void openLiveFile(fi);
+    else openLiveGroup(gid ?? null);
+    return;
+  }
+  store.update((d) => { enterReview(d.batch!, gid, fi); });
 }
 
 /** “开始复核” / “去处理”. From a history result the batch may first have to take back its slot. */
 export function startReview(gid?: string | null): void {
   const s = getState();
-  if (s.batch?.live && s.view !== "history") { openLiveGroup(gid ?? null); return; }
   if (s.view === "history") {
     const go = () => {
       store.update((d) => { d.view = "batch"; });

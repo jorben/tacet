@@ -4,9 +4,9 @@ import { getState, store } from "../store";
 import { closeModal, openModal, toast, type PopAnchor } from "../overlay/store";
 import { openKeepMenu } from "./batch";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
-import { slotBusy } from "../store/selectors";
+import { isRecoverable, slotBusy } from "../store/selectors";
 import { saveSettingsSoon } from "./liveConfig";
-import { isLive, liveEngine } from "./live";
+import { discardLiveTask, isLive, liveEngine, savedBatchId } from "./live";
 
 const systemTheme = (): "light" | "dark" => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
@@ -57,7 +57,7 @@ export function confirmUpdate(unfinished?: "drop" | "rerun"): void {
     const s = getState();
     if (slotBusy(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
     if (slotBusy(s, "batch")) { stopBatchTimer(); store.update((d) => { d.batch = null; }); }
-    store.update((d) => { d.history = d.history.filter((h) => !(h.park || h.st === "keep")); });
+    store.update((d) => { d.history = d.history.filter((h) => !isRecoverable(h)); });
   }
   store.update((d) => { d.update.status = "updating"; });
   setTimeout(() => {
@@ -78,8 +78,17 @@ export async function openWorkspaceDirectory(): Promise<void> {
   }
 }
 
+/** Removes what can be continued. A task of the kernel leaves the list once the kernel gave it up; one it refused stays, and the refusal is what is said. */
 export function cleanWorkspace(): void {
   closeModal();
-  store.update((d) => { d.history = d.history.filter((h) => h.st !== "keep"); });
-  toast("已清理 · 1.4 GiB");
+  const kept = getState().history.filter(isRecoverable);
+  const held = kept.filter((h) => savedBatchId(h.saved));
+  const drop = (ids: string[]) => store.update((d) => { d.history = d.history.filter((h) => !ids.includes(h.id)); });
+  drop(kept.filter((h) => !held.includes(h)).map((h) => h.id));
+  if (!held.length) { toast("已清理 · 1.4 GiB"); return; }
+  void Promise.all(held.map(async (h) => {
+    const gone = await discardLiveTask(savedBatchId(h.saved)!);
+    if (gone) drop([h.id]);
+    return gone;
+  })).then((gone) => { if (gone.every(Boolean)) toast("已清理 " + held.length + " 个任务"); });
 }

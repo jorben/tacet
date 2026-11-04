@@ -264,6 +264,8 @@ type ImportArgs struct {
 	Quick     bool     `json:"quick"`
 	Preset    string   `json:"preset"`
 	OutputDir string   `json:"outputDir"`
+	// ParkWaiting parks a task of this kind that only waits for the person, instead of refusing the import.
+	ParkWaiting bool `json:"parkWaiting"`
 }
 
 // StartArgs confirm a prepared batch.
@@ -295,7 +297,7 @@ func (s *Service) ImportFiles(a ImportArgs) (app.BatchStatus, error) {
 	if a.Quick {
 		kind = "quick"
 	}
-	st, err := core.Import(context.Background(), app.ImportRequest{Files: a.Files, Kind: kind, Preset: a.Preset, OutputDir: out})
+	st, err := core.Import(context.Background(), app.ImportRequest{Files: a.Files, Kind: kind, Preset: a.Preset, OutputDir: out, ParkWaiting: a.ParkWaiting})
 	return st, publicError(err)
 }
 
@@ -474,7 +476,8 @@ func Shutdown(svc *Service) error { return svc.close() }
 // (Shutdown) takes the short order (architecture 6.2). Not bound: the frontend cannot call it.
 func SystemEnding(svc *Service) { svc.ending.Store(true) }
 
-// UnfinishedBatches lists what a restart left behind, so the window can offer to continue it.
+// UnfinishedBatches lists the batches that are not finished, parked ones included, so the window can offer
+// to continue them.
 func (s *Service) UnfinishedBatches() ([]app.BatchStatus, error) {
 	core, err := s.engine()
 	if err != nil {

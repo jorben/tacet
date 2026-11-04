@@ -392,3 +392,77 @@ func TestCLIUnlockReadsPasswordsOnATerminalOnly(t *testing.T) {
 		t.Fatalf("unlock = %d\n%s", code, out)
 	}
 }
+
+// C1, C2, C4: a run with a file left to review does not stop the next one; the batch it leaves is still there.
+func TestCLIARunWaitingForReviewDoesNotStopTheNextRun(t *testing.T) {
+	r := newRig(t)
+	review := r.file("r.txt", "证件 110101199003074519 与 110101199003074518\n")
+	plain := r.file("p.txt", "电话 13812345678\n")
+	if code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, review); code != ExitIncomplete {
+		t.Fatalf("first run = %d\n%s\n%s", code, out, errOut)
+	}
+	code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, plain)
+	if code != ExitOK || !strings.Contains(out, "batch b0002 created") {
+		t.Fatalf("second run = %d\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "b0001") || !strings.Contains(errOut, "parked") {
+		t.Fatalf("the second run did not name the parked batch: %q", errOut)
+	}
+	code, out, _ = r.cli(context.Background(), "status", "--batch", "b0001")
+	if code != ExitIncomplete || !strings.Contains(out, "parked") {
+		t.Fatalf("status = %d\n%s", code, out)
+	}
+	// every later process can find it
+	code, out, _ = r.cli(context.Background(), "list")
+	if code != ExitOK || !strings.Contains(out, "b0001") || !strings.Contains(out, "parked") || strings.Contains(out, "b0002") {
+		t.Fatalf("list = %d\n%s", code, out)
+	}
+	code, _, errOut = r.cli(context.Background(), "clean", "--batch", "b0001")
+	if code != ExitUsage || !strings.Contains(errOut, "--discard") {
+		t.Fatalf("clean of a parked batch = %d\n%s", code, errOut)
+	}
+	code, out, errOut = r.cli(context.Background(), "clean", "--discard", "--batch", "b0001")
+	if code != ExitOK {
+		t.Fatalf("clean --discard = %d\n%s\n%s", code, out, errOut)
+	}
+	if code, out, _ = r.cli(context.Background(), "list"); code != ExitOK || strings.Contains(out, "b0001") {
+		t.Fatalf("list after discard = %d\n%s", code, out)
+	}
+	// b0002 keeps its own data until it is cleaned; once it is, nothing of b0001 may be left either
+	if code, out, errOut = r.cli(context.Background(), "clean", "--batch", "b0002"); code != ExitOK {
+		t.Fatalf("clean b0002 = %d\n%s\n%s", code, out, errOut)
+	}
+	if kept, _ := os.ReadDir(filepath.Join(r.ws, "resources")); len(kept) != 0 {
+		t.Fatalf("the discarded batch left %d resource(s)", len(kept))
+	}
+}
+
+// Several in a row: none is lost and none has to be dealt with first.
+func TestCLIParkedBatchesAddUp(t *testing.T) {
+	r := newRig(t)
+	review := r.file("r.txt", "证件 110101199003074519 与 110101199003074518\n")
+	for i := range 3 {
+		if code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, review); code != ExitIncomplete {
+			t.Fatalf("run %d = %d\n%s\n%s", i, code, out, errOut)
+		}
+	}
+	_, out, _ := r.cli(context.Background(), "list")
+	for _, id := range []string{"b0001", "b0002", "b0003"} {
+		if !strings.Contains(out, id) {
+			t.Fatalf("%s is not listed:\n%s", id, out)
+		}
+	}
+}
+
+// C3 with the real engine: the stream stays one JSON object per line.
+func TestCLIJSONReportsTheParkedBatchAsAnEvent(t *testing.T) {
+	r := newRig(t)
+	review := r.file("r.txt", "证件 110101199003074519 与 110101199003074518\n")
+	if code, out, errOut := r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, review); code != ExitIncomplete {
+		t.Fatalf("first run = %d\n%s\n%s", code, out, errOut)
+	}
+	code, out, errOut := r.cli(context.Background(), "run", "--json", "--preset", preset, "--authorize", "--out", r.out, r.file("p.txt", "电话 13812345678\n"))
+	if code != ExitOK || !strings.Contains(out, `{"data":{"batch":"b0001"},"event":"parked"}`) {
+		t.Fatalf("run = %d\n%s\n%s", code, out, errOut)
+	}
+}
