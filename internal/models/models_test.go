@@ -360,20 +360,157 @@ func TestBytesThatDoNotMatchTheManifestAreNeverRegisteredAndStagingIsCleared(t *
 
 func TestAFailedRedownloadNeverReplacesAnInstalledModel(t *testing.T) {
 	r := newRig(t)
-	if err := r.svc.Download(context.Background(), r.entry.Key()); err != nil {
+	ctx := context.Background()
+	key := r.entry.Key()
+	if err := r.svc.Download(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(r.root, "installed", r.entry.Key())
+	dir := filepath.Join(r.root, "installed", key)
 	// the installed copy is damaged, so a download is offered, and it fails verification
 	os.WriteFile(filepath.Join(dir, "config.json"), []byte("tampered"), 0o600)
-	if _, err := r.svc.CheckBinding(context.Background(), "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
+	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
 		t.Fatalf("%v", err)
 	}
 	if s := r.status(); s.State != StateError || s.Code != CodeChanged {
 		t.Fatalf("%+v", s)
 	}
-	if err := r.svc.Download(context.Background(), r.entry.Key()); !errors.Is(err, ErrNotDownloadable) {
-		t.Fatalf("installed files exist: download is not the repair, got %v", err)
+	r.srv.mu.Lock()
+	r.srv.corrupt = "model.onnx"
+	r.srv.mu.Unlock()
+	if err := r.svc.Discard(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.svc.Download(ctx, key); err == nil {
+		t.Fatal("a download that failed verification succeeded")
+	}
+	if s := r.status(); s.State != StateError || s.Code != CodeVerify {
+		t.Fatalf("the download again did not run: %+v", s)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "config.json")); string(got) != "tampered" {
+		t.Fatal("the installed copy was replaced by files that did not verify")
+	}
+	if _, err := os.Stat(filepath.Join(r.root, "staging", key)); err == nil {
+		t.Fatal("files that did not verify were kept")
+	}
+	// the installed copy still does not match: discarding again must not show it as installed
+	if err := r.svc.Discard(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if s := r.status(); s.State != StateError || s.Code != CodeVerify {
+		t.Fatalf("%+v", s)
+	}
+}
+
+// For files that changed, the screens offer "download again" (requirements 3.4.1): Discard, then
+// Download. Until new files verified the model is never shown as installed; then they replace the copy.
+func TestDownloadingAgainRepairsInstalledFilesThatChanged(t *testing.T) {
+	for name, damage := range map[string]func(dir string){
+		"a listed file rewritten":           func(dir string) { os.WriteFile(filepath.Join(dir, "config.json"), []byte("tampered"), 0o600) },
+		"a file the manifest does not list": func(dir string) { os.WriteFile(filepath.Join(dir, ".DS_Store"), []byte("x"), 0o600) },
+		"a listed file removed":             func(dir string) { os.Remove(filepath.Join(dir, "config.json")) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			ctx := context.Background()
+			key := r.entry.Key()
+			if err := r.svc.Download(ctx, key); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(r.root, "installed", key)
+			damage(dir)
+			r.svc.SessionLost(ctx, key)
+			if err := r.svc.Prepare(ctx, key); err == nil {
+				t.Fatal("changed files were loaded")
+			}
+			if s := r.status(); s.State != StateError || s.Code != CodeChanged {
+				t.Fatalf("%+v", s)
+			}
+			if err := r.svc.Discard(ctx, key); err != nil {
+				t.Fatal(err)
+			}
+			if s := r.status(); s.State != StateError || s.Code != CodeChanged {
+				t.Fatalf("after the discard, files that do not match are shown as %+v", s)
+			}
+			if err := r.svc.Download(ctx, key); err != nil {
+				t.Fatalf("download again: %v", err)
+			}
+			if s := r.status(); s.State != StateReady {
+				t.Fatalf("%+v", s)
+			}
+			if err := verifyDir(r.entry, dir); err != nil {
+				t.Fatalf("the installed copy was not replaced: %v", err)
+			}
+			if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// The new state a repair can stop in: its transfer was cut. The damaged copy stays until new files
+// verified, nothing is bound to it, and "continue" resumes.
+func TestARepairThatIsCutOffKeepsTheCopyAndResumes(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	key := r.entry.Key()
+	if err := r.svc.Download(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(r.root, "installed", key)
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte("tampered"), 0o600)
+	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("%v", err)
+	}
+	if err := r.svc.Discard(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	r.srv.cutAt, r.srv.cuts = 10000, 1
+	if err := r.svc.Download(ctx, key); err == nil {
+		t.Fatal("a cut transfer reported success")
+	}
+	if s := r.status(); s.State != StateError || s.Code != CodeNetwork {
+		t.Fatalf("%+v", s)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "config.json")); string(got) != "tampered" {
+		t.Fatal("the copy was replaced before new files verified")
+	}
+	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMissing) {
+		t.Fatalf("%v", err)
+	}
+	if err := r.svc.Download(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.srv.ranges) == 0 {
+		t.Fatal("the transfer started over instead of resuming")
+	}
+	if s := r.status(); s.State != StateReady {
+		t.Fatalf("%+v", s)
+	}
+	if err := verifyDir(r.entry, dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// After a failed load the screens offer "重新准备" and "重新下载" (requirements 3.4.1). A copy that still
+// matches is loaded again without the network: downloading would bring the same bytes, and offline it
+// would turn a usable model into a network error.
+func TestDownloadingAgainAfterAFailedLoadLoadsTheCopyWithoutTheNetwork(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	key := r.entry.Key()
+	r.prepare = func(context.Context, string, Entry) error { return errors.New("sample run failed") }
+	r.svc.Download(ctx, key)
+	if s := r.status(); s.State != StateError || s.Code != CodePrepare {
+		t.Fatalf("%+v", s)
+	}
+	r.prepare = func(context.Context, string, Entry) error { return nil }
+	r.srv.Close()
+	n := len(r.prepared)
+	if err := r.svc.Download(ctx, key); err != nil {
+		t.Fatalf("download again: %v", err)
+	}
+	if s := r.status(); s.State != StateReady || len(r.prepared) != n+1 {
+		t.Fatalf("%+v, loaded %d times", s, len(r.prepared)-n)
 	}
 }
 
@@ -621,13 +758,14 @@ func TestCheckBindingTrustsAnUnchangedStampAndTheLoadDoesNot(t *testing.T) {
 	}
 }
 
-// What the load refused stays refused when the error is cleared: the stamp of the files from before
-// the rewrite (which kept size and modification time) must not let CheckBinding skip the hash.
+// What the load refused stays refused: the stamp from before the rewrite (which kept size and
+// modification time) must not make "download again" take the files for intact and load them again.
 func TestARefusedLoadIsNotUndoneByTheCachedStamp(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	r.svc.Download(ctx, r.entry.Key())
-	path := filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx")
+	dir := filepath.Join(r.root, "installed", r.entry.Key())
+	path := filepath.Join(dir, "model.onnx")
 	before, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -641,11 +779,11 @@ func TestARefusedLoadIsNotUndoneByTheCachedStamp(t *testing.T) {
 	if err := r.svc.Discard(ctx, r.entry.Key()); err != nil {
 		t.Fatal(err)
 	}
-	if s := r.status(); s.State != StateInstalled {
-		t.Fatalf("%+v", s)
-	}
-	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
+	if err := r.svc.Download(ctx, r.entry.Key()); err != nil {
 		t.Fatalf("the refused files were taken from the cache: %v", err)
+	}
+	if err := verifyDir(r.entry, dir); err != nil {
+		t.Fatalf("the refused files were not replaced: %v", err)
 	}
 }
 
