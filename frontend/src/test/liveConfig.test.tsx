@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { OverlayHost } from "../features/shell/OverlayHost";
 import { copyPreset, newPreset, openPresetMoreMenu, newRuleset, saveRule, selectPreset, selectRuleset, setCategoryRulesOn, setCategoryTreatment, setDetection, rollback } from "../actions/presets";
-import { presetCategories, presetTreatment } from "../domain/presets";
+import { presetCategories, presetHandles, presetTreatment } from "../domain/presets";
 import { installSamplePlugin, togglePlugin } from "../actions/plugins";
 import { checkForUpdate, setSetting, setThemePref } from "../actions/settings";
 import { downloadAccel, downloadModel } from "../actions/models";
@@ -11,7 +11,6 @@ import { takePaths } from "../actions/live";
 import { runPresetTest, testErrorText } from "../actions/presetTest";
 import { createCategory } from "../actions/categories";
 import { resetModelMapping, setLabelCategory } from "../actions/modelMapping";
-import { unhandledCategories } from "../features/presets/ModelMappingEditor";
 import { overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -109,7 +108,7 @@ describe("方案与规则集的存储同步", () => {
     // what the first write stored by default is what the screen now holds
     expect(actions()).toMatchObject({ phone: "mask", person: "mask" });
     expect(presetTreatment(p(), "phone")).toBe("mask");
-    expect(unhandledCategories(p(), getState().models[0]!.categories!)).toEqual([]);
+    expect(getState().models[0]!.categories!.filter((c) => !presetHandles(p(), c))).toEqual([]);
     // an edit of another category keeps phone masked in storage
     act(() => setCategoryTreatment("person", "ph"));
     await waitFor(() => expect(actions().person).toBe("placeholder"));
@@ -467,22 +466,18 @@ describe("方案与规则集的存储同步", () => {
     expect(imported.rules.map((r) => r.cat)).toEqual([made.id, client.id]);
   });
 
-  it("模型映射：首次改动新建映射对象，再改保存新版本，恢复默认删除；内建方案对新类别为关闭并给出提示", async () => {
+  it("模型映射：首次改动新建映射对象，再改保存新版本，恢复默认删除；内建方案对新类别为关闭", async () => {
     const model = () => getState().models[0]!;
     expect(model().labels).toEqual({ private_person: "person", private_address: "address", phone: "phone", email: "email" });
     await setLabelCategory(model().id, "private_person", "organization");
-    const confirm = overlayStore.get().modal;
-    expect(confirm?.type).toBe("detectionLoss");
-    if (confirm?.type === "detectionLoss") confirm.go();
-    await waitFor(() => expect(fake.calls).toContain("configCreate:model_mapping"));
+    expect(fake.calls).toContain("configCreate:model_mapping");
     const stored = fake.items.find((i) => i.kind === "model_mapping")!;
     expect(stored.name).toBe("astrlink-guard-int8");
     expect(JSON.parse(stored.content)).toEqual({ model_id: "astrlink-guard-int8", label_map: { private_person: "organization", private_address: "address", phone: "phone", email: "email" } });
     expect(model().categories).toEqual(["address", "email", "organization", "phone"]);
-    // the read-only office scheme stores no action for it: off, and the models tab says so
+    // the read-only office scheme stores no action for it: off
     const office = getState().presets.find((p) => p.builtin)!;
     expect(office.cats.organization).toBe("off");
-    expect(unhandledCategories(office, model().categories!)).toEqual(["organization"]);
     await setLabelCategory(model().id, "email", null);
     expect(fake.calls).toContain("configSave:" + stored.id);
     expect(JSON.parse(fake.items.find((i) => i.id === stored.id)!.content).label_map).not.toHaveProperty("email");

@@ -422,8 +422,6 @@ describe("规则", () => {
     // Move a label into another entity from the label's own menu.
     press("标签 private_person", '.mapping-row[data-category="person"]');
     await act(async () => { pick("公司名"); });
-    expect($(".loss-modal")!.textContent).toContain("办公外发");
-    await act(async () => { press("仍要保存映射", ".loss-modal"); });
     const astr = () => getState().models.find((m) => m.id === "astr")!;
     expect(astr().mapping?.map.private_person).toBe("organization");
     expect(row("person").querySelector('[data-tip="默认值：private_person"]')).toBeTruthy();
@@ -434,7 +432,6 @@ describe("规则", () => {
     press("地址 关联的标签", '.mapping-row[data-category="address"]');
     pick("private_address");
     await act(async () => { press("完成", "#layer .pop"); });
-    await act(async () => { press("仍要保存映射", ".loss-modal"); });
     expect(astr().mapping?.map).not.toHaveProperty("private_address");
     expect($(".unmapped-labels")!.textContent).toContain("private_address");
     expect(astr().categories).toContain("organization");
@@ -449,7 +446,6 @@ describe("规则", () => {
     // back to the default
     press("模型", "[role=tablist]");
     await act(async () => { press("恢复默认"); });
-    if ($(".loss-modal")) await act(async () => { press("仍要保存映射", ".loss-modal"); });
     expect(astr().mapping).toBeUndefined();
     expect(astr().categories).toContain("person");
     expect(win()).toContain("默认映射");

@@ -215,7 +215,7 @@ export function copyRuleset(): void {
 }
 
 /** The confirmation that lists what a change would cost; cancelling closes it, or returns to `back`. */
-export function confirmLoss(action: string, loss: DetectionLoss, go: () => void, back?: ModalSpec): void {
+function confirmLoss(action: string, loss: DetectionLoss, go: () => void, back?: ModalSpec): void {
   openModal({
     type: "detectionLoss", action,
     lost: loss.categories.map((x) => ({ preset: x.preset.name, categories: x.categories })),

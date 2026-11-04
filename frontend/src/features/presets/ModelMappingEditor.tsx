@@ -6,8 +6,7 @@ import { selectModel, showInConfig } from "../../actions/presets";
 import { NewCategoryForm } from "../dialogs/NewCategoryForm";
 import { byCatalogOrder, categoryName, listedCategories } from "../../domain/categories";
 import { effectiveLabels, labelsOfCategory, unmappedLabels } from "../../domain/liveConfig";
-import { presetTreatment } from "../../domain/presets";
-import type { ModelPlugin, Preset } from "../../domain/types";
+import type { ModelPlugin } from "../../domain/types";
 import { openMenu, openMultiMenu } from "../../overlay/store";
 import { getState, useAppState } from "../../store";
 import { Button, Icon, IconButton, List, SectionTitle, SelectButton, Tag, tip } from "../../ui";
@@ -18,11 +17,6 @@ import { ItemList } from "./ItemList";
 
 const MAPPING_HINT = "模型输出的每个标签计入一个类别，一个类别可关联多个标签，任一标签命中即算命中；至少保留一个标签关联到类别。方案按类别设置处理方式，改动对之后开始的任务生效。";
 const NONE = "_none";
-
-/** The categories a model now produces that a scheme using it does not handle: what it finds there is dropped. */
-export function unhandledCategories(p: Preset, categories: string[]): string[] {
-  return categories.filter((c) => !["mask", "ph"].includes(presetTreatment(p, c)));
-}
 
 /**
  * The one menu for a single label, wherever it is shown (in a category's row or among the unused labels): the
@@ -85,7 +79,6 @@ export function ModelMappingEditor() {
   const rows = listedCategories(catalog, Object.values(current));
   const unused = unmappedLabels(m);
   const using = presets.filter((p) => p.det === "model" && p.model === m.id);
-  const gaps = using.map((p) => [p, unhandledCategories(p, m.categories ?? [])] as const).filter(([, c]) => c.length);
   const pick = (anchor: HTMLElement, category: string) =>
     openMultiMenu(anchor, name(category) + " · 可多选标签", Object.keys(labels).sort().map((l) => ({
       k: l, l, s: current[l] ? name(current[l]!) : "未关联",
@@ -108,16 +101,6 @@ export function ModelMappingEditor() {
           <Button variant="ghost" disabled={!m.mapping} onClick={() => void resetModelMapping(m.id)}>恢复默认</Button>
         </ConfigHeader>
         <CatalogNotice />
-        {gaps.length > 0 && (
-          <div className="mapping-warn" role="note">
-            {gaps.map(([p, cats]) => (
-              <div key={p.id} className="mapping-warn-line">
-                <span>「{p.name}」没有为 {cats.map(name).join("、")} 设置处理方式，模型的这些命中不会被处理{p.builtin ? "（内建方案只读，复制后可设置）" : ""}。</span>
-                <button type="button" className="ref-link" onClick={() => showInConfig({ tab: "scheme", id: p.id })}>去方案设置</button>
-              </div>
-            ))}
-          </div>
-        )}
         <SectionTitle first>
           标签映射
           <span className="sec-help" tabIndex={0} aria-label={MAPPING_HINT} {...tip(MAPPING_HINT, { wrap: true })}><Icon name="info" size={13} /></span>
