@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,6 +154,104 @@ func TestCLIPreflightLeavesNothingAndFlagsUnsupported(t *testing.T) {
 	// nothing was left to block the next real run
 	if code, out, errOut = r.cli(context.Background(), "run", "--preset", preset, "--authorize", "--out", r.out, good); code != ExitOK {
 		t.Fatalf("run after preflight = %d\n%s\n%s", code, out, errOut)
+	}
+}
+
+// A run the core refuses (here: the preset's model is not installed) is over. It says so, and the next run,
+// of the same kind, starts: the draft does not keep the slot, and no start request is left to wait for.
+func TestCLIARefusedRunLeavesNothingBehind(t *testing.T) {
+	t.Setenv("TACET_PREINSTALLED_MODELS", "")
+	for _, tc := range []struct {
+		name  string
+		flags []string
+	}{{"batch", nil}, {"quick", []string{"--quick"}}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			good := r.file("g.txt", "电话 13812345678\n")
+			run := func(preset string) (int, string, string) {
+				args := append([]string{"run", "--preset", preset, "--authorize", "--out", r.out}, tc.flags...)
+				return r.cli(context.Background(), append(args, good)...)
+			}
+			code, out, errOut := run(app.ModelPresetID)
+			if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
+				t.Fatalf("refused run = %d\n%s\n%s", code, out, errOut)
+			}
+			r.expectNothingLeft("b0001")
+			if code, out, errOut = run(preset); code != ExitOK {
+				t.Fatalf("run after the refused one = %d\n%s\n%s", code, out, errOut)
+			}
+		})
+	}
+}
+
+// expectNothingLeft checks the state a refused run must not leave, through a later process's view of the
+// workspace: no batch holding a slot, no data of its files, no start request kept for it.
+func (r *rig) expectNothingLeft(batch string) {
+	r.t.Helper()
+	core, err := r.opener(context.Background(), r.ws)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer core.Close()
+	left, err := core.Unfinished(context.Background())
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if len(left) != 0 {
+		r.t.Errorf("a batch still holds its slot: %+v", left)
+	}
+	if kept, _ := os.ReadDir(filepath.Join(r.ws, "resources")); len(kept) != 0 {
+		r.t.Errorf("the inspection left %d resource(s) of the files", len(kept))
+	}
+	// A kept start request cannot be read from here, but Wait does not return while one is there. Nothing else
+	// of this batch is running, so the wait takes a few reads, or never ends: the deadline only tells them apart.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err = core.Wait(ctx, batch); errors.Is(err, context.DeadlineExceeded) {
+		r.t.Errorf("a wait for the batch does not end: its start request (run.Pending) was left")
+	}
+}
+
+// discard relies on this: with its files cancelled, a draft whose kept start could go through (this preset
+// needs no model, as when a model was installed just after the refusal) drops that start and begins nothing.
+func TestACancelledDraftIsNotBegunByTheStartItKept(t *testing.T) {
+	r := newRig(t)
+	bg := context.Background()
+	core, err := r.opener(bg, r.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	st, err := core.Import(bg, app.ImportRequest{Kind: "batch", Files: []string{r.file("g.txt", "电话 13812345678\n")}, OutputDir: r.out, Preset: preset})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// like a refused start, this one reaches the core with the inspection over
+	if _, err = core.Preflight(bg, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	ended, end := context.WithCancel(bg)
+	end() // the call ends, the request stays on record
+	if err = core.Start(ended, app.StartRequest{Batch: st.ID, Preset: preset, OutputDir: r.out, Authorize: true}); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if err = core.Cancel(bg, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = core.Resume(bg, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(bg, 30*time.Second)
+	defer cancel()
+	res, err := core.Wait(ctx, st.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Started || res.Files[0].State != "cancelled" {
+		t.Fatalf("the draft began: %+v", res)
+	}
+	if delivered, _ := os.ReadDir(r.out); len(delivered) != 0 {
+		t.Fatalf("delivered %v", delivered)
 	}
 }
 
