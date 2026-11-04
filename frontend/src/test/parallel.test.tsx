@@ -277,7 +277,8 @@ describe("批次在“最近”继续", () => {
     await fake.emitFor("b0002", rows("failed"));
     await fake.emitFor("b0002", rows("completed"));
     open();
-    await waitFor(() => expect(batch().files[299]!.st).toBe("done"));
+    await waitFor(() => expect(batch().files[0]!.st).toBe("done"));
+    expect(batch().files[299]!.st).toBe("done");
   });
 
   it("全部在等人：读出文件，条目说明待处理，继续时是这些文件", async () => {

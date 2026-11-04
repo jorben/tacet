@@ -132,9 +132,10 @@ export class FakeEngine implements EngineService {
   }
   async files(b: string, offset: number, limit: number) {
     this.calls.push("files:" + offset);
+    const rows = this.rowsOf(b); // the answer is what the kernel had when it was asked
     const gate = this.filesGate;
     if (gate) { this.filesGate = null; await gate; }
-    return this.rowsOf(b).slice(offset, offset + limit);
+    return rows.slice(offset, offset + limit);
   }
   publishedBatch = "";
   async publish(b: string, partial: boolean, dir?: string) {
