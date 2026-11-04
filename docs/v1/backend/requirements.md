@@ -167,7 +167,7 @@
 
 - `tacet-requirements.md`: `ace9a042a5519664a083a501c02430186d3ee0c20d91f0ff1d1f70c6fae9970c`
 - `tacet-architecture.md`: `3e775e49145626cb60c4036c072f6ea5cab906220213ecb8657b7579cb64732f`
-- `tacet-module-design.md`: `ee32a0b5ea4deea95fb003a4ddb38690007036c82b5fe55511fefd8e2e1cff1d`
+- `tacet-module-design.md`: `bf5b371d6789d1573626dbd3125fd5bafd202fd0a657c2024eac6aafbb8c7e98`
 
 ## 模块边界与实现盘点
 
