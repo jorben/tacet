@@ -123,7 +123,7 @@
   },
   "FR-18": {
    "status": "partial",
-   "evidence": "policy 对无动作类别生成例外；snapshot.Check 对每个启用类别要求检测来源，仅规则模式下依赖模型的类别列入 NeedsNarrowing 且不声称覆盖。用户确认记录与 UI 未实现"
+   "evidence": "policy 对无动作类别生成例外；snapshot.Check 对每个启用类别要求检测来源，仅规则模式下依赖模型的类别列入 NeedsNarrowing 且不声称覆盖；ResolvePreset 把没有来源的类别记入 detect.out_of_scope。界面编辑规则组内的规则（启停、编辑、删除）会让方案中已设为处理的类别失去来源时，保存前询问，取消不改（editRuleset）；模型标签映射改动不询问，回滚历史版本、在方案中移除规则组、切换检测方式或模型也不询问。询问结果不落确认记录，NeedsNarrowing 没有生产代码读取，out_of_scope 尚未在开始任务页、结果页或报告中展示"
   },
   "INV-01": {
    "status": "partial",
