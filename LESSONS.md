@@ -233,6 +233,11 @@
   - 单文件的选择只在导出时才发给内核，“已保存到‘最近’”重启后就没了。上一版测试还写着 `expect(fake.decisions).toBeNull()`，把缺口固定成了预期；
   - 重启后继续一个导出时受阻的单文件，`syncSingle` 按“处理前受阻”取消并清理。修的时候又查出两层：“可重试导出”的提示从来不成立（`exportLiveSingle` 不调 `retry`，`Publish` 只推进 `ready_to_publish`）；只补 `retry` 还会出隐私问题（`blocked` 上的决定变更是无效迁移，重试直接发布按旧决定做出的候选）。真实内核上复现：先保留、受阻、再改成涂抹，旧代码重试后发布的是 `"电话 13812345678\n"`。
 - 验证：`internal/app` 的端到端测试带 `darwin` 标签，Linux 上开不了工作区。这次在临时目录里给 `platform` 补了不提交的 Linux 垫片（flock、renameat2、文件密钥），去掉标签后 12 个停放测试和整个 `internal/app` 都能跑（只有依赖进程回收的 2 个测试因垫片失败）。修复前后都用真实内核跑过，状态机测试和 fake 给不出上面那个隐私问题，也给不出“重启后是 `paused`，继续之后才是 `blocked`”。
+- 同一天的 fix/model-redownload-repair 是同一条规则，所以“出现”不加 1。文件校验未通过时，界面只给“重新下载”，实际执行 `Discard` 再 `Download`。5bd694f 起，已安装目录还在时 `Download` 返回 `MODEL_NOT_DOWNLOADABLE`，`TestAFailedRedownloadNeverReplacesAnInstalledModel` 把这个拒绝固定成预期（注释写着 download is not the repair），没人问拒绝之后用户怎么办：
+  - `DownloadModel` 是 `go e.catalog.Download(...)`，拒绝不会到界面；`Discard` 已把状态改成 `installed`，文件其实是坏的，而前端把 `installed` 映射成“已就绪”（这一步是读代码得出的，没有在界面上跑过）。目录里多一个 `.DS_Store`，就只能手动删文件才能恢复。
+  - 前端的 `FakeEngine.discardModel` 恒回到 `pending`，测试碰不到这条路。
+  - 只去掉拒绝还不够：加载失败后点“重新下载”，副本完好也会再下一遍，下完被 `finish` 扔掉；断网时“加载失败”还会变成“网络错误”。
+  - 修复：`Discard` 不改错误态；`Download` 在副本仍匹配时不联网，直接重新加载；不匹配时下载，通过校验才替换。旧 `download.go` 上 5 个测试都失败（`the download again did not run`、`after the discard, files that do not match are shown as`、`download again: MODEL_NOT_DOWNLOADABLE` 等），4 个变异逐个放回都有测试失败。只在服务层验证：`internal/app` 里模型相关的端到端测试依赖本地模型资源，本机和 CI 上都不运行。
 - 规则：
   - 动作会让用户相信某件事（“可继续”“已清理”），测试就断言内核状态，并接着做用户下一步会做的事（再开一批、再重启一次）；
   - 测试从用户点的那个入口进去（列表条目、页面按钮），不要直接调入口背后的函数；

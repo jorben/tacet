@@ -60,6 +60,10 @@ func (s *Service) end(key string) {
 // verification of every file, atomic registration, and the session preparation. It
 // returns when the model is ready, paused (ErrPaused) or failed (the error state
 // carries the code). The network is only ever used because the caller asked.
+// In error with installed files it is the "download again" the screens offer for files
+// that changed and after a failed preparation (requirements 3.4.1): a copy that still
+// matches is loaded again without the network, one that does not is replaced once the new
+// files verified (finish).
 func (s *Service) Download(ctx context.Context, key string) error {
 	e, err := s.entry(key)
 	if err != nil {
@@ -74,9 +78,6 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	default:
 		return ErrNotDownloadable
 	}
-	if _, err := os.Stat(s.installed(e)); err == nil && st == StateError {
-		return ErrNotDownloadable // installed files exist: re-prepare or discard, not download
-	}
 	dctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	j, err := s.begin(key, cancel)
@@ -85,6 +86,13 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	}
 	defer s.end(key)
 
+	if st == StateError {
+		// finish would only throw the same bytes away, and a failed transfer would turn a usable
+		// copy into a network error.
+		if _, err := s.checkFiles(e, false); err == nil {
+			return s.prepare(ctx, e)
+		}
+	}
 	if err := s.transfer(dctx, e); err != nil {
 		return s.settle(ctx, e, j, err)
 	}
@@ -407,9 +415,10 @@ func (s *Service) SessionLost(ctx context.Context, key string) error {
 	return s.set(ctx, e, StateInstalled, "")
 }
 
-// Discard clears the partial download (the "download again" action) of a model that is
-// not installed; transfer data is bound to one version and entity and is never reused
-// after this.
+// Discard clears the partial download (the first step of "download again"); transfer
+// data is bound to one version and entity and is never reused after this. It says nothing
+// about installed files: a model in error stays in error until a download or a preparation
+// has checked them, so damaged files are never shown as installed.
 func (s *Service) Discard(ctx context.Context, key string) error {
 	e, err := s.entry(key)
 	if err != nil {
@@ -426,6 +435,13 @@ func (s *Service) Discard(ctx context.Context, key string) error {
 	}
 	s.setEntity(ctx, e, "", "")
 	if _, err := os.Stat(s.installed(e)); err == nil {
+		st, _, err := s.stored(ctx, e)
+		if err != nil {
+			return ErrFailed
+		}
+		if st == StateError {
+			return nil
+		}
 		return s.set(ctx, e, StateInstalled, "")
 	}
 	return s.set(ctx, e, StatePending, "")
