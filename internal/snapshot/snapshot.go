@@ -7,10 +7,11 @@ type Issue struct {
 }
 
 // CompatReport is the result of checking a run preset before freezing.
-// Blocking issues refuse the start. NeedsNarrowing issues name what the run cannot
-// claim to cover, such as the model-dependent categories of a rules-only preset; they
-// do not refuse the start and nothing asks about them here. Only editing the rules
-// inside a rule set asks first; a change of a model's mapping saves directly (FR-18).
+// Blocking issues refuse the start. NeedsNarrowing issues name what is out of the run's
+// scope (model_dependent_category: the model-dependent categories of a rules-only preset)
+// or does not qualify for unattended processing (unattended_*); they do not refuse the
+// start and nothing asks about them here. Only editing the rules inside a rule set asks
+// first; a change of a model's mapping saves directly (FR-18).
 type CompatReport struct {
 	Blocking       []Issue
 	NeedsNarrowing []Issue

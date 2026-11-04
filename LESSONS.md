@@ -41,6 +41,7 @@
   - 加 `-race`、上新平台或换 runner 时，先找出离上限最近的测试，在本机 `-race` 下看各测试的耗时。
   - 其他测试里还有约 80 处 `context.WithTimeout(context.Background(), …)`；在本机 `-race` 下，它们离各自的上限都还很远，所以这次没有改。
 - PR #5 第三轮审查（2026-11-03）：`TestAProbeStoppedBeforeItsWorkerStartsStartsNone` 断言关闭不超过 2 秒，这是经验值，不是需求规定的时限。改成和旧代码的行为对比：旧代码等整个探测，最多 3 秒，测试把探测卡到 Reap 之后，所以旧代码的关闭必然不少于 3 秒；关闭达到 3 秒才报错。
+- PR #24 的审查（2026-11-04）：`TestAnInterruptEndsTheWaitOfARefusedStart` 改写时去掉了 20 秒保护。把 `discard` 里的 `Wait` 换成不响应中断的 context，旧测试只能等 `go test -timeout`（CI 上是 30 分钟）panic，同包后面的测试不再运行；恢复保护后，它在 20 秒报 `the run did not end on the interrupt`，后面的测试照常运行。这不算违反上面的规则：规则管的是给真实流程设的上限，这里被等的只有内存里的 fake，runner 变慢也不会误报。所以“出现”不加 1。
 - 出现：2 次（2026-11-02、2026-11-03）
 
 **一个修复由几处改动组成时，逐处撤回，确认每一处都有测试失败；哪一处撤回后都没有测试失败，就补一个会失败的测试，补不出来就删掉它。**
@@ -108,7 +109,7 @@
   - 写“X 改动会询问”这类范围结论之前，列出能造成同一后果的每个入口，逐个核对它是否真的走到那段代码，文档按入口写，不按“某类改动”概括；
   - 删除或改变一个行为时，用它的旧说法（这里是“确认”“询问”“confirmation”“ask”）搜索 `docs/v1`（含 `backend/evidence.json`）和相关代码的注释，逐处改掉或说明为什么保留；
   - `tools/backend_trace.py --check` 通过只说明清单是最新的，不说明文档内容和实现一致。
-- 同一天 PR #22 的审查又查出代码注释里的旧说法：`detachCategory` 的调用处说界面会说明方案的变化（弹窗只逐项列模型），`CompatReport` 和 `Startable` 说 `NeedsNarrowing` 要用户确认（生产代码不读它）。修复在 fix/cli-resume-error-and-comments；`tacet-module-design.md:263` 的同类说法还没改。
+- 同一天 PR #22 的审查又查出代码注释里的旧说法：`detachCategory` 的调用处说界面会说明方案的变化（弹窗只逐项列模型），`CompatReport` 和 `Startable` 说 `NeedsNarrowing` 要用户确认（生产代码不读它）。修复在 fix/cli-resume-error-and-comments；`tacet-module-design.md:263` 的同类说法在 PR #24 的审查（2026-11-04）指出后，由 fix/pr24-followup-comments-test 改掉。
 - 出现：1 次（2026-11-04）
 
 ## CI 耗时
