@@ -130,7 +130,8 @@ export interface LiveSingle {
   digest?: string;
   /** The file waits for its password: the kernel lets the next task past it, even though nothing was read yet. */
   locked?: boolean;
-  /** Choices went to the kernel when the task left the screen; going back on them has to reach the kernel too. */
+  /** The kernel may hold other choices than the screen although nothing is left to undo (they went to it when the
+   *  task left the screen, or a withdrawn selection emptied the undo list): leaving has to send them again. */
   sent?: boolean;
 }
 

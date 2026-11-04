@@ -681,6 +681,27 @@ func (e *Engine) DecideFinding(ctx context.Context, job string, finding int64, k
 	if _, err := e.revs.DecideItem(ctx, review.ItemRequest{Request: fmt.Sprintf("d%d", n), Batch: batch, Job: job, Finding: finding, Keep: keep}); err != nil {
 		return err
 	}
+	return e.decisionsChanged(ctx, job)
+}
+
+// decisionsChanged redoes a file from resolution after its decisions changed. The authorization of a quick task
+// was given for what the person saw when exporting and is taken back (architecture 6.1, INV-04): exporting again
+// gives a new one. That of a batch is stated up front for files still to come, and stays.
+func (e *Engine) decisionsChanged(ctx context.Context, job string) error {
+	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		m, err := getMember(tx, job)
+		if err != nil {
+			return err
+		}
+		run, err := getRun(tx, m.Batch)
+		if err != nil || run.Kind != "quick" {
+			return err
+		}
+		run.Grant = false
+		return putRun(tx, run)
+	}); err != nil {
+		return err
+	}
 	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
 }
 
@@ -1038,7 +1059,7 @@ func (e *Engine) DecideFindings(ctx context.Context, job string, ds []FindingDec
 			return err
 		}
 	}
-	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
+	return e.decisionsChanged(ctx, job)
 }
 
 // utf16ToRune converts a UTF-16 offset of text into a rune offset (-1 when it
@@ -1106,7 +1127,7 @@ func (e *Engine) AddManual(ctx context.Context, job string, seq, start, end int,
 	if err != nil {
 		return 0, err
 	}
-	return id, e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
+	return id, e.decisionsChanged(ctx, job)
 }
 
 // Unfinished lists the batches that are not finished, parked ones included, as a status each.
@@ -1277,5 +1298,5 @@ func (e *Engine) WithdrawManual(ctx context.Context, job string, finding int64) 
 		}
 		return err
 	}
-	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
+	return e.decisionsChanged(ctx, job)
 }

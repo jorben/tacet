@@ -378,10 +378,22 @@ export function returnToBatch(): void {
   reportLeftBatchFile(left, "batch");
 }
 
-/** From a batch file: open the review of that file's remaining exceptions. */
+/** The next low-confidence hit not looked at yet, or else the next hit, from where the person is. */
+function focusNextPending(s: Single): void {
+  const ordered = orderedHitIds(s);
+  if (!ordered.length) { toast("这份文件没有可定位的待处理项，可直接确认或返回批次"); return; }
+  const from = ordered.indexOf(s.focus) + 1;
+  const ahead = [...ordered.slice(from), ...ordered.slice(0, from)];
+  focusHit(ahead.find((i) => s.hits[i]!.low && !s.hits[i]!.seen) ?? ahead[0]!);
+}
+
+/** From a batch file: go to that file's remaining exceptions. A file of the kernel is that very document, and its
+ *  choices are on this screen only until it is left: it stays open. */
 export function reviewBatchFileExceptions(): void {
-  const fi = getState().single!.bfi!;
+  const s = getState().single!;
+  const fi = s.bfi!;
   closePop();
+  if (s.live) { focusNextPending(s); return; }
   let left: ReturnType<typeof leaveBatchFile> = null;
   store.update((d) => { left = leaveBatchFile(d); d.view = "batch"; });
   enterBatchReview(null, fi);

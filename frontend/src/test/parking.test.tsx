@@ -1,12 +1,12 @@
 // A task waiting for the person gives way to the next one and stays under “最近”; nothing asks first (FR-28).
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
-import { cancelBatch, openBatchFile, resumeBatch, startBatch, togglePause } from "../actions/batch";
+import { cancelBatch, openBatchFile, publishValidated, resumeBatch, startBatch, togglePause } from "../actions/batch";
 import { discardSavedTask, needSlot, openHistoryEntry, openHistoryResult, resumeSavedBatch } from "../actions/home";
 import { startReview } from "../actions/review";
-import { restoreUnfinished, startLive, stopLiveBatch, takePaths } from "../actions/live";
+import { confirmLiveBatchFile, restoreUnfinished, retryLive, startLive, stopLiveBatch, takePaths, withdrawLiveManual } from "../actions/live";
 import { cleanWorkspace } from "../actions/settings";
-import { exportSingle, returnToBatch, reviewBatchFileExceptions } from "../actions/single";
+import { exportSingle, focusHit, returnToBatch, reviewBatchFileExceptions, setHitState } from "../actions/single";
 import { requestQuit, saveAndQuit, stopAndQuit } from "../actions/window";
 import { createSingle } from "../domain/single";
 import type { Batch, Single } from "../domain/types";
@@ -15,7 +15,7 @@ import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
 import { FakeEngine, rasterPage, unit } from "./liveFake";
-import { buttons, mountApp, win } from "./helpers";
+import { button, buttons, mountApp, win } from "./helpers";
 
 beforeAll(mountApp);
 
@@ -926,5 +926,398 @@ describe("单文件等密码", () => {
     takePaths(["/d/b.txt"]);
     expect(imports()).toEqual([]);
     expect(toastText()).toContain("正在处理");
+  });
+});
+
+describe("决定写给内核的时序", () => {
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+  const choose = (i: number, state: "keep" | "redact") => act(() => { focusHit(i); setHitState(state); });
+  /** What the document shows for a hit: a kept one is not masked. */
+  const shown = (i: number) => (document.getElementById("h" + i)?.className ?? "").includes("keep") ? "keep" : "redact";
+  const quitting = () => {
+    const q = { n: 0 };
+    setService({ ...mockService, engine: fake, host: "darwin", quitApp: async () => { q.n++; } } as never);
+    return q;
+  };
+  const gate = () => {
+    let open = () => {};
+    fake.decideGate = new Promise((r) => { open = r; });
+    return () => open();
+  };
+  const twoHits = () => { fake.units = [unit(1, "电话 13812345678 备用 13900001111", [{ id: 31, start: 3, end: 14 }, { id: 32, start: 18, end: 29, low: true }])]; };
+  const inBatchFile = async (...states: [string, object?][]) => {
+    await runningBatch(...(states.length ? states : [["awaiting_review", { pending: 1 }], ["completed"]] as [string, object?][]));
+    twoHits();
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+  };
+  const clickPending = () => act(() => button("还有 1 处待你处理").click());
+
+  it("批次文件改成保留后点“还有 N 处待你处理”：屏幕和之后发给内核的都是新值", async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
+    fake.units = [unit(1, "电话 13812345678 备用 13900001111 手机 13700002222", [{ id: 31, start: 3, end: 14 }, { id: 32, start: 18, end: 29 }, { id: 33, start: 33, end: 44, low: true }])];
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    choose(0, "keep");
+    clickPending();
+    await settle();
+    expect(single().from).toBe("batch");
+    expect(single().hits[0]!.state).toBe("keep");
+    expect(shown(0)).toBe("keep");
+    expect(single().focus).toBe(2); // it takes the person to what still waits, past what does not
+    choose(2, "keep");
+    act(() => returnToBatch());
+    await waitFor(() => expect(fake.decisionLog.length).toBeGreaterThan(0));
+    expect(fake.decisionLog.at(-1)!.ds).toEqual([{ id: 31, keep: true }, { id: 32, keep: false }, { id: 33, keep: true }]);
+    expect(fake.decisionLog.flatMap((x) => x.ds).filter((d) => d.id === 31 && !d.keep)).toEqual([]);
+  });
+
+  it("反方向：内核存着保留，改成涂抹后点同一入口：不会被改回保留", async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
+    await fake.decide("j1", [{ id: 31, keep: true }]);
+    fake.rows = rowsOf(["awaiting_review", { pending: 1 }], ["completed"]);
+    await fake.emitBatch();
+    fake.decisionLog = [];
+    twoHits();
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    expect(single().hits[0]!.state).toBe("keep"); // the choice the kernel holds is what opened
+    expect(shown(0)).toBe("keep");
+    choose(0, "redact");
+    clickPending();
+    await settle();
+    expect(single().hits[0]!.state).toBe("redact");
+    expect(shown(0)).toBe("redact");
+    act(() => returnToBatch());
+    await waitFor(() => expect(fake.decisionLog.length).toBeGreaterThan(0));
+    expect(fake.decisionLog.at(-1)!.ds[0]).toEqual({ id: 31, keep: false });
+  });
+
+  it("没有可定位的候选项：留在文件上并说明（对照）", async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
+    fake.units = [unit(1, "没有候选", [])];
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    clickPending();
+    expect(single().from).toBe("batch");
+    expect(toastText()).toContain("没有可定位");
+    expect(fake.decisionLog).toEqual([]);
+  });
+
+  it("离开批次文件后马上再打开同一份：等写入落地再读", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    openBatchFile(0);
+    await settle();
+    expect(getState().single).toBeNull(); // not read while the write is on its way
+    open();
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    expect(single().hits[0]!.state).toBe("keep");
+  });
+
+  it("等写入时批次已离开屏幕：文件不再打开，也不报错", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    openBatchFile(0);
+    act(() => store.update((d) => { d.batch = null; d.view = "home"; }));
+    open();
+    await settle();
+    expect(getState().single).toBeNull();
+    expect(toastText()).toBe("已保存修改"); // nothing else to report
+  });
+
+  it("严格方式确认时写入还在路上：批量导出同样等它", async () => {
+    await inBatchFile(["awaiting_review", { pending: 1, confirm: true }], ["completed"]);
+    choose(0, "keep");
+    const open = gate();
+    void confirmLiveBatchFile();
+    publishValidated();
+    await settle();
+    expect(fake.published).toBeNull();
+    open();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(fake.confirmed).toEqual(["j1"]);
+  });
+
+  /** A task whose first write to the kernel is still on its way, opened again and changed back to “redact”. */
+  const changedBackWhileWriting = async () => {
+    await reviewing();
+    choose(0, "keep");
+    const open = gate();
+    takePaths(["/d/b.txt"]);
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    await waitFor(() => expect(fake.calls).toContain("decide"));
+    fake.decideGate = null; // only the first write is slow
+    await waitFor(() => expect(fake.begunCount()).toBe(2));
+    await fake.emit("ready_to_publish");
+    await waitFor(() => expect(single().phase).toBe("review"));
+    act(() => resumeSavedBatch(entryOf("b0001")!.id));
+    await waitFor(() => expect(single().name).toBe("a.txt"));
+    choose(0, "redact");
+    return open;
+  };
+
+  it("同一份文件连续两次写入：后发的不被先发的盖掉", async () => {
+    const open = await changedBackWhileWriting();
+    takePaths(["/d/c.txt"]);
+    await waitFor(() => expect(single().name).toBe("c.txt"));
+    await settle();
+    open();
+    await waitFor(() => expect(fake.decisionLog).toHaveLength(2));
+    expect(fake.decisionLog.map((x) => x.ds[0]!.keep)).toEqual([true, false]);
+  });
+
+  it("写入还在路上时点导出：先落地，再发布，发布的是最后的选择", async () => {
+    const open = await changedBackWhileWriting();
+    exportSingle();
+    await settle();
+    expect(fake.published).toBeNull();
+    open();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(fake.decisionLog.map((x) => x.ds[0]!.keep)).toEqual([true, false]);
+  });
+
+  it("写入还在路上时批量导出：等它落地", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    publishValidated();
+    await settle();
+    expect(fake.published).toBeNull();
+    open();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(fake.decisionLog[0]!.ds[0]).toEqual({ id: 31, keep: true });
+  });
+
+  it("路上的写入失败了：批量导出不发布旧选择，并说明", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    fake.decideFails = new Error("NOT_FOUND");
+    publishValidated();
+    open();
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    expect(fake.published).toBeNull();
+  });
+
+  it("写入还在路上时重新处理：等它落地", async () => {
+    await inBatchFile(["awaiting_review", { pending: 1 }], ["failed", { detail: "EXPORT_FAILED" }]);
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    void retryLive();
+    await settle();
+    expect(fake.retried).toEqual([]);
+    open();
+    await waitFor(() => expect(fake.retried).toHaveLength(1));
+  });
+
+  it("写入还在路上时停止批次：等它落地再取消", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    act(() => returnToBatch());
+    void stopLiveBatch(false);
+    await settle();
+    expect(fake.cancelled).toEqual([]);
+    open();
+    await waitFor(() => expect(fake.cancelled).toEqual(["b0001"]));
+  });
+
+  it("写入还在路上时“停止并清理”退出：等它落地再取消", async () => {
+    await inBatchFile();
+    choose(0, "keep");
+    const open = gate();
+    const quit = quitting();
+    act(() => stopAndQuit());
+    await settle();
+    expect(fake.cancelled).toEqual([]);
+    open();
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect(fake.cancelled).toEqual(["b0001"]);
+  });
+
+  it("写入还在路上时“保存并退出”：等它落地再退出", async () => {
+    await reviewing();
+    choose(0, "keep");
+    const open = gate();
+    takePaths(["/d/b.txt"]);
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    const quit = quitting();
+    act(() => saveAndQuit());
+    await settle();
+    expect(quit.n).toBe(0);
+    open();
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect(fake.decisionLog[0]).toEqual({ job: "j1", ds: [{ id: 11, keep: true }] });
+  });
+
+  it("路上的写入失败了：“保存并退出”不退出并说明，再点一次才退", async () => {
+    await reviewing();
+    choose(0, "keep");
+    const open = gate();
+    takePaths(["/d/b.txt"]);
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    fake.decideFails = new Error("NOT_FOUND");
+    const quit = quitting();
+    act(() => saveAndQuit());
+    open();
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    expect(quit.n).toBe(0);
+    act(() => saveAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+  });
+
+  it("撤销手动涂抹后离开：之前的选择仍交给内核", async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
+    await fake.decide("j1", [{ id: 31, keep: true }]);
+    fake.rows = rowsOf(["awaiting_review", { pending: 1 }], ["completed"]);
+    await fake.emitBatch();
+    fake.decisionLog = [];
+    twoHits();
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    choose(0, "redact");
+    await act(async () => { await withdrawLiveManual(12); });
+    expect(getState().undo).toEqual([]);
+    expect(single().hits[0]!.state).toBe("redact");
+    act(() => returnToBatch());
+    await waitFor(() => expect(fake.decisionLog.at(-1)?.ds[0]).toEqual({ id: 31, keep: false }));
+  });
+});
+
+describe("读文档失败：内核没说任务结束，就不销毁", () => {
+  const stopped = (parked: boolean) => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "blocked", { detail: "PUBLISH_NAME_CONFLICT", format: "txt" })];
+    fake.unfinishedList = [{ id: "b0001", kind: "quick", phase: "running", total: 1, counts: {}, delivered: 0, exit_code: 2, started: true, parked, files: fake.rows }];
+  };
+  const keptUnderRecent = async (word: string) => {
+    await waitFor(() => expect(toastText()).toContain(word));
+    expect(toastText()).toContain("最近");
+    expect(fake.cancelled).toEqual([]);
+    expect(fake.cleaned).toEqual([]);
+    expect(getState().single).toBeNull();
+    expect(getState().view).toBe("home");
+    expect(entryOf("b0001")).toMatchObject({ park: true });
+  };
+  const continuesToReview = async () => {
+    act(() => resumeSavedBatch(entryOf("b0001")!.id));
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    expect(single().hits).toHaveLength(1);
+    expect(entryOf("b0001")).toBeUndefined();
+  };
+
+  it("重启后继续受阻的任务，读取报错：任务留在“最近”，再继续能读出来", async () => {
+    stopped(true);
+    await restoreUnfinished();
+    fake.documentFails = new Error("STORE_FAILED");
+    act(() => resumeSavedBatch(entryOf("b0001")!.id));
+    await keptUnderRecent("STORE_FAILED");
+    expect(toastText()).not.toContain("同名");
+    await continuesToReview();
+  });
+
+  it("第一次读成功、后面读取报错（待复核）：同样不销毁", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
+    takePaths(["/d/a.txt"]);
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    fake.documentFails = new Error("STORE_FAILED");
+    await fake.emit("awaiting_review", { pending: 1 });
+    await keptUnderRecent("STORE_FAILED");
+    await continuesToReview();
+  });
+
+  it("重启后恢复占名额的任务，恢复报错：同样不销毁", async () => {
+    stopped(false);
+    fake.resumeFails = new Error("STORE_FAILED");
+    await restoreUnfinished();
+    await keptUnderRecent("STORE_FAILED");
+    fake.resumeFails = null;
+    await continuesToReview();
+  });
+});
+
+describe("“保存并退出”与暂停标记", () => {
+  const onBatchFile = async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["ready_to_publish"]);
+    fake.units = [unit(1, "x", [{ id: 31, start: 0, end: 1 }])];
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    act(() => { focusHit(0); setHitState("keep"); });
+  };
+  const quitting = () => {
+    const q = { n: 0 };
+    setService({ ...mockService, engine: fake, host: "darwin", quitApp: async () => { q.n++; } } as never);
+    return q;
+  };
+
+  it("内核拒绝决定：窗口不关，批次也不显示成已暂停", async () => {
+    await onBatchFile();
+    fake.decideFails = new Error("NOT_FOUND");
+    const quit = quitting();
+    act(() => saveAndQuit());
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    expect(quit.n).toBe(0);
+    expect(batch().paused).toBe(false);
+  });
+
+  it("决定保存成功：标记暂停，再退出（对照）", async () => {
+    await onBatchFile();
+    const quit = quitting();
+    act(() => saveAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect(batch().paused).toBe(true);
+  });
+});
+
+describe("迟到的状态和批次事件不串到别的任务上", () => {
+  it("第一次同步就是等密码：弹窗随旧任务离开，新任务自己的弹窗能打开", async () => {
+    fake.rows = [fake.row(0, "blocked", { detail: "password_required" })];
+    takePaths(["/d/a.pdf"]);
+    await waitFor(() => expect(overlayStore.get().modal).toMatchObject({ type: "livePassword", targets: [{ name: "a.pdf" }] }));
+    expect(single().live!.job).toBe("j1");
+    fake.nextRows = [fake.row(0, "blocked", { detail: "password_required" })];
+    takePaths(["/d/b.pdf"]);
+    await waitFor(() => expect(single().name).toBe("b.pdf"));
+    await waitFor(() => expect(overlayStore.get().modal).toMatchObject({ type: "livePassword", targets: [{ name: "b.pdf" }] }));
+    expect(entryOf("b0001")).toMatchObject({ park: true, stl: "需要密码" });
+  });
+
+  it("旧任务的状态晚到：不会写到屏幕上的新任务", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 11, start: 3, end: 14 }])];
+    let open = () => {};
+    fake.statusGate = new Promise((r) => { open = r; });
+    takePaths(["/d/a.txt"]);
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    await fake.emit("awaiting_review", { pending: 1 });
+    await waitFor(() => expect(single().phase).toBe("review"));
+    fake.statusGate = null;
+    takePaths(["/d/b.txt"]);
+    await waitFor(() => expect(single().name).toBe("b.txt"));
+    await waitFor(() => expect(fake.begunCount()).toBe(2));
+    open();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(single().name).toBe("b.txt");
+    expect(single().phase).toBe("processing");
+    expect(single().hits).toEqual([]);
+  });
+
+  it("开着批次的第二份文件，第一份已跳过：批次事件不会取消整个批次", async () => {
+    await runningBatch(["skipped"], ["awaiting_review", { pending: 1 }]);
+    fake.units = [unit(1, "x", [{ id: 31, start: 0, end: 1 }])];
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    await fake.emitBatch();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fake.cancelled).toEqual([]);
+    expect(fake.cleaned).toEqual([]);
+    expect(single()?.from).toBe("batch");
   });
 });

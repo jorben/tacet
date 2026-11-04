@@ -15,6 +15,7 @@ import type { EngineBatch, EngineFile, EnginePagePreview, EngineService } from "
 import type { ManualSelection } from "../domain/single";
 import { getState, store, type AppState } from "../store";
 import { slotSingle } from "../store/selectors";
+import { allDecisionsSettled, decisionsSettled, sendDecisions } from "./decisions";
 import { shelveLiveBatch, shelveSingle } from "./shelf";
 import { nextId, nextRunId } from "./timers";
 import { flushConfig, loadConfig, presetEngineId, refreshModels } from "./liveConfig";
@@ -113,13 +114,13 @@ export function leaveLiveFile(d: Draft<AppState>): "saved" | null {
   const { job } = s.live;
   const findingOf = plain(s.live.findingOf);
   const hits = plain(s.hits);
-  const changed = d.undo.length > 0;
+  const changed = d.undo.length > 0 || !!s.live.sent;
   const behind = d.behind;
   d.single = behind ? behind.single : null;
   d.undo = behind ? behind.undo : [];
   d.behind = null;
   if (!changed) return null;
-  queueMicrotask(() => flushLiveDecisions(job, hits, findingOf));
+  flushLiveDecisions(job, hits, findingOf);
   return "saved";
 }
 
@@ -138,15 +139,20 @@ export function openDecisions(s: AppState): OpenDecisions[] {
 
 /** Hands choices to the kernel before the window goes away. False, having said so, if the kernel did not take them. */
 export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean> {
-  const e = liveEngine();
-  if (!e) return true;
-  try {
-    await Promise.all(open.map((o) => e.decide(o.job, decisionsOf(o.hits, { findingOf: o.findingOf }))));
-    return true;
-  } catch (err) {
-    toast("你的选择未能保存，窗口未关闭：" + errorText(err));
-    return false;
-  }
+  // these go last, and a write still on its way from a task that left the screen is waited for with them
+  open.forEach((o) => { void sendDecisions(o.job, decisionsOf(o.hits, { findingOf: o.findingOf })).catch(() => {}); });
+  const failure = await allDecisionsSettled();
+  if (failure === undefined) return true;
+  toast("你的选择未能保存，窗口未关闭：" + errorText(failure));
+  return false;
+}
+
+/** Before acting on what a batch holds: the choices on their way must be there. False, having said so, if one was refused. */
+async function decisionsLanded(): Promise<boolean> {
+  const failure = await allDecisionsSettled();
+  if (failure === undefined) return true;
+  toast("你的选择未能保存，请检查后再试：" + errorText(failure));
+  return false;
 }
 
 /** The single task of the slot leaves the screen for “最近”. A file of the batch that is open is closed first.
@@ -156,7 +162,7 @@ function shelveSlotSingle(d: Draft<AppState>): void {
   const open = openDecisionsOf(d.single as Single | null, d.undo);
   if (open) {
     d.single!.live!.sent = true;
-    queueMicrotask(() => flushLiveDecisions(open.job, open.hits, open.findingOf));
+    flushLiveDecisions(open.job, open.hits, open.findingOf);
   }
   shelveSingle(d);
 }
@@ -217,6 +223,14 @@ async function startLiveSingle(path: string): Promise<void> {
   }
 }
 
+/** Reading the task failed, which does not say it ended: the kernel keeps it and its choices. It waits under “最近”,
+ *  and continuing reads it again. */
+function shelveUnread(runId: number, err: unknown): void {
+  if (getState().single?.runId !== runId) return;
+  store.update((d) => { shelveSingle(d); d.view = "home"; });
+  toast(errorText(err) + " · 已保存到“最近”，可稍后继续");
+}
+
 /** The task ended before review: say why, give the quick slot back and leave. */
 async function abandonSingle(runId: number, why: string): Promise<void> {
   const s = getState().single;
@@ -233,10 +247,12 @@ let loading = false;
 async function syncSingle(st: EngineBatch): Promise<void> {
   const f = st.files?.[0];
   const s = getState().single;
-  if (!f || !s?.live) return;
+  // Answers to a call can come after the screen moved on to another task. A file opened from a batch is not this
+  // task either: the batch's events are about its other files too, and its first file says nothing about this one.
+  if (!f || !s?.live || s.live.batch !== st.id || s.from === "batch") return;
   const runId = s.runId;
   const locked = passwordWait(f);
-  if (locked !== !!s.live.locked) store.update((d) => { if (d.single?.runId === runId) d.single.live!.locked = locked; });
+  if (locked !== !!s.live.locked || f.id !== s.live.job) store.update((d) => { if (d.single?.runId === runId) { d.single.live!.locked = locked; d.single.live!.job = f.id; } });
   if (locked) {
     if (!isModalOpen("livePassword")) openModal({ type: "livePassword", targets: [{ job: f.id, name: s.name }] });
     return;
@@ -257,7 +273,7 @@ async function syncSingle(st: EngineBatch): Promise<void> {
       return;
     }
     const [stage, sp] = PROGRESS[f.state] ?? [0, 50];
-    store.update((d) => { if (d.single?.runId === runId) { d.single.stage = stage; d.single.sp = sp; d.single.live!.job = f.id; } });
+    store.update((d) => { if (d.single?.runId === runId) { d.single.stage = stage; d.single.sp = sp; } });
     return;
   }
   if (s.phase === "exporting") {
@@ -285,7 +301,13 @@ async function reviewStopped(runId: number, f: EngineFile): Promise<void> {
   if (loading) return;
   loading = true;
   try {
-    const read = await liveEngine()!.documentUnits(f.id, 0, 1).then((units) => units.length > 0, () => false);
+    let read: boolean;
+    try {
+      read = (await liveEngine()!.documentUnits(f.id, 0, 1)).length > 0;
+    } catch (err) {
+      shelveUnread(runId, err);
+      return;
+    }
     if (!read) { await abandonSingle(runId, (reasonLabel(f.detail) ?? "文件无法处理") + " · " + getState().single?.name); return; }
     await showReview(runId, f.id);
     if (getState().single?.runId === runId) toast(stoppedText(f, "处理未完成"));
@@ -371,7 +393,7 @@ async function showReview(runId: number, job: string): Promise<void> {
     });
     if (truncated) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
   } catch (err) {
-    await abandonSingle(runId, errorText(err));
+    shelveUnread(runId, err);
   }
 }
 
@@ -401,8 +423,7 @@ export async function exportLiveSingle(): Promise<void> {
   closePop();
   store.update((d) => { if (d.single?.runId === runId) { d.single.phase = "exporting"; d.single.stage = 0; d.single.sp = 30; } });
   try {
-    const ds = decisionsOf(s.hits, s.live);
-    if (ds.length) await e.decide(job, ds);
+    await sendDecisions(job, decisionsOf(s.hits, s.live));
     await e.publish(batch, false, out);
     await e.retry(batch, [job]); // a file that stopped goes again; one that did not is left as it is
     await syncSingle(await e.status(batch, 10));
@@ -468,7 +489,8 @@ export async function withdrawLiveManual(finding: number): Promise<boolean> {
       if (!x || x.runId !== runId) return;
       const doc = buildLiveDocument(units, x.ext, { findingOf: plain(x.live!.findingOf), hits: plain(x.hits) });
       Object.assign(x, { pages: doc.pages, hits: doc.hits });
-      x.live = { ...x.live!, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated };
+      // nothing is left to undo, but the choices made before the selection still have to reach the kernel
+      x.live = { ...x.live!, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, sent: true };
       d.undo = [];
     });
     return true;
@@ -480,10 +502,7 @@ export async function withdrawLiveManual(finding: number): Promise<boolean> {
 
 /** Decisions of a file opened from a batch are written to the kernel when the person leaves it. */
 export function flushLiveDecisions(job: string, hits: Single["hits"], findingOf: number[]): void {
-  const e = liveEngine();
-  if (!e) return;
-  const ds = decisionsOf(hits, { findingOf });
-  if (ds.length) void e.decide(job, ds).catch((err) => toast(errorText(err)));
+  void sendDecisions(job, decisionsOf(hits, { findingOf })).catch((err) => toast(errorText(err)));
 }
 
 /** “跳过此文件”: the file is left out of the batch and not exported. False when the kernel refused. */
@@ -532,7 +551,7 @@ export async function confirmLiveBatchFile(): Promise<void> {
     d.view = "batch";
   });
   try {
-    if (ds.length) await e.decide(job, ds);
+    await sendDecisions(job, ds);
     await e.confirm(job);
     toast("已确认 · 该文件将导出");
   } catch (err) { toast(errorText(err)); }
@@ -686,6 +705,7 @@ export async function publishLiveBatch(): Promise<void> {
   const b = getState().batch;
   if (!b?.live?.id) return;
   closeModal();
+  if (!(await decisionsLanded())) return; // it would publish what was built from the choices before them
   try {
     await e.publish(b.live.id, b.imgAct === "keep", b.live.outputDir);
     toast("已开始导出");
@@ -710,6 +730,7 @@ export async function stopLiveBatch(keep: boolean): Promise<void> {
   const b = getState().batch;
   if (!b?.live?.id) return;
   const id = b.live.id;
+  await allDecisionsSettled();
   try {
     if (keep) {
       await e.pause(id);
@@ -779,6 +800,7 @@ export async function reopenLiveSingle(entryId: string): Promise<void> {
 export async function discardLiveTask(batch: string): Promise<boolean> {
   const e = liveEngine();
   if (!e) return false;
+  await allDecisionsSettled(); // a write that lands after the data went has nothing to write to
   try {
     await e.cancel(batch);
     await cleanWhenStopped(batch);
@@ -800,6 +822,7 @@ export async function retryLive(fi?: number): Promise<void> {
   const e = liveEngine()!;
   const b = getState().batch;
   if (!b?.live?.id) return;
+  if (!(await decisionsLanded())) return; // it would go on from what was built from the choices before them
   try {
     const only = fi == null ? [] : [b.live.jobs[fi]!];
     await e.retry(b.live.id, only);
@@ -811,6 +834,7 @@ export async function openLiveFile(fi: number): Promise<void> {
   const s = getState();
   const b = s.batch!;
   const f = b.files[fi]!;
+  const batchId = b.live!.id;
   const job = b.live!.jobs[fi]!;
   closeModal();
   if (f.g.includes(GROUP_PASSWORD)) { openModal({ type: "livePassword", targets: [{ job, name: f.name }] }); return; }
@@ -820,15 +844,17 @@ export async function openLiveFile(fi: number): Promise<void> {
   if (!(f.g.includes(GROUP_REVIEW) || f.g.includes(GROUP_STRICT) || f.st === "ready")) { toast("尚未检测完成"); return; }
   const runId = nextRunId();
   try {
+    await decisionsSettled(job); // what the document says comes from the kernel: the last choices must be there first
     const { units, truncated } = await loadUnits(job);
     const doc = buildLiveDocument(units, f.ext);
     const raster = f.ext === "pdf" ? await openRaster(job) : null;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
     store.update((d) => {
+      if (d.batch?.live?.id !== batchId) return;
       if (d.single && d.single.from !== "batch" && !d.behind) d.behind = { single: plain(d.single), undo: plain(d.undo) };
-      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch!.preset, modelId: null }, {
-        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch!.out, pages: doc.pages, hits: doc.hits, imgs: [],
-        live: { batch: d.batch!.live!.id, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc },
+      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch.preset, modelId: null }, {
+        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch.out, pages: doc.pages, hits: doc.hits, imgs: [],
+        live: { batch: batchId, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc },
       });
       d.undo = [];
       d.view = "single";
@@ -932,7 +958,7 @@ async function restoreQuick(b: EngineBatch): Promise<void> {
     toast("已恢复上次未完成的文件"); // first: what the file reports next is what the person should read
     await syncSingle(await e.status(b.id, 10));
   } catch (err) {
-    await abandonSingle(runId, errorText(err));
+    shelveUnread(runId, err);
   }
 }
 

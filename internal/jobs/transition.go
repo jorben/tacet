@@ -195,6 +195,18 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 			// The file stays stopped, but what it would go on with was made from the old decisions: a retry
 			// must not publish that.
 			return Transition(s, Event{Kind: EvInvalidate, Stage: kernel.StageResolve}, l)
+		case Paused:
+			// A write can land just after a pause. It changes what the file goes back to, as it would have
+			// without the pause; left alone, the resume would go on from the old decisions. The pause stays.
+			back := s
+			back.State, back.Resume = s.Resume, ""
+			r, err := Transition(back, e, l)
+			if err != nil {
+				return Result{}, err
+			}
+			r.Snapshot.State, r.Snapshot.Resume = Paused, r.Snapshot.State
+			r.Dispatch = kernel.StageNone
+			return r, nil
 		}
 		return invalid()
 
@@ -280,8 +292,11 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 			return r, nil
 		case Blocked:
 			// A password, input or resource block is not cleared by a changed
-			// configuration; only the resume point moves back.
-			s.Cursor = e.Stage
+			// configuration; only the resume point moves, and only back: going
+			// forward would skip a stage that did not run.
+			if stageRank[e.Stage] < stageRank[s.Cursor] {
+				s.Cursor = e.Stage
+			}
 			return Result{Snapshot: s}, nil
 		case Failed:
 			// Reprocessing starts at the failed stage; it must not start after

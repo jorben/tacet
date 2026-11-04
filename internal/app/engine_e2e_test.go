@@ -222,6 +222,16 @@ func TestReviewDecisionsLetTheFileContinue(t *testing.T) {
 	if st, err = e.Wait(ctx, st.ID); err != nil {
 		t.Fatal(err)
 	}
+	// the decisions took back the authorization of this quick task (architecture 6.1): it waits for the export
+	if st.ExitCode != 2 || st.Files[0].State != "ready_to_publish" {
+		t.Fatalf("%+v", st)
+	}
+	if err = e.Publish(ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = e.Wait(ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
 	if st.ExitCode != 0 || st.Files[0].State != "completed" {
 		t.Fatalf("%+v", st)
 	}

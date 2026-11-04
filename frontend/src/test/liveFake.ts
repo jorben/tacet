@@ -20,6 +20,10 @@ export class FakeEngine implements EngineService {
   private kernelDecisions = new Map<number, boolean>();
   decideFails: Error | null = null;
   decideGate: Promise<void> | null = null;
+  /** The next read of a document fails, once, as a store that is briefly unavailable. */
+  documentFails: Error | null = null;
+  /** The answer to a status call is late, as the real call is while the kernel is busy. */
+  statusGate: Promise<void> | null = null;
   published: { partial: boolean; dir?: string } | null = null;
   started: Parameters<EngineService["start"]>[0] | null = null;
   manual: { job: string; seq: number; start: number; end: number; category: string } | null = null;
@@ -123,7 +127,10 @@ export class FakeEngine implements EngineService {
     if (this.startFails) throw this.startFails;
     this.begun.set(a.batch, a.authorize);
   }
-  async status(b?: string) { return b ? this.statusOf(b) : this.batch(); }
+  async status(b?: string) {
+    if (this.statusGate) await this.statusGate;
+    return b ? this.statusOf(b) : this.batch();
+  }
   async files(b: string, offset: number, limit: number) {
     this.calls.push("files:" + offset);
     return this.rowsOf(b).slice(offset, offset + limit);
@@ -169,6 +176,7 @@ export class FakeEngine implements EngineService {
     if (this.unlockFails) throw this.unlockFails;
   }
   async documentUnits(_job: string, after: number) {
+    if (this.documentFails) { const err = this.documentFails; this.documentFails = null; throw err; }
     return this.units.filter((u) => u.seq > after).map((u) => ({ ...u, findings: (u.findings ?? []).map((f) => (this.kernelDecisions.has(f.id) ? { ...f, decision: this.kernelDecisions.get(f.id) ? "keep" : "redact" } : f)) }));
   }
   async pagePreview(job: string, page: number, _dpi: number) {

@@ -367,12 +367,164 @@ func TestAChoiceMadeOnABlockedTaskIsWhatItsRetryPublishes(t *testing.T) {
 	if err = os.Remove(taken); err != nil {
 		t.Fatal(err)
 	}
+	// exporting again, as the screen does: the decision took back the authorization of the first export
+	if err = r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
 	if err = r.e.Retry(r.ctx, st.ID, []string{job}); err != nil {
 		t.Fatal(err)
 	}
 	st = waitCompleted(t, r.e, st.ID)
 	if got := outputOf(t, r.out, st); strings.Contains(got, "13812345678") {
 		t.Fatalf("the retry published what was built before the choice: %q", got)
+	}
+}
+
+// The authorization of a single-file task covers what the person saw when exporting. A file sent back to review
+// and decided again waits for another export; keeping the old one would publish a choice nobody exported.
+func TestADecisionTakesBackTheExportOfAQuickTask(t *testing.T) {
+	r := newParkRig(t)
+	st := r.waiting("quick", needsReview, "awaiting_review")
+	job := st.Files[0].ID
+	if err := r.e.Publish(r.ctx, st.ID, false, ""); err != nil { // authorized, and the file is under review: what validation sending it back leaves
+		t.Fatal(err)
+	}
+	if st, _ = r.e.Status(r.ctx, st.ID, 10); !st.Authorized {
+		t.Fatalf("the precondition: the export did not authorize: %+v", st)
+	}
+	fs, err := r.e.Findings(r.ctx, job, 0, 50)
+	if err != nil || len(fs) == 0 {
+		t.Fatal(fs, err)
+	}
+	ds := make([]FindingDecision, len(fs))
+	for i, f := range fs {
+		ds[i] = FindingDecision{ID: f.ID}
+	}
+	if err = r.e.DecideFindings(r.ctx, job, ds); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "ready_to_publish" || st.Authorized {
+		t.Fatalf("published on the old export: %+v %v", st, err)
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(r.out, "*.txt")); len(leftovers) != 0 {
+		t.Fatalf("delivered without another export: %v", leftovers)
+	}
+	// it is still waiting for a person, so it gives way
+	if _, err = r.imp("quick", true, r.file(noReview)); err != nil {
+		t.Fatalf("the next task: %v", err)
+	}
+	if err = r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st = waitCompleted(t, r.e, st.ID); strings.Contains(outputOf(t, r.out, st), "110101199003074519") {
+		t.Fatalf("the choice was not what the export published: %+v", st)
+	}
+}
+
+// A selection made by hand, or taken back, changes what is published as a decision does.
+func TestAManualSelectionTakesBackTheExportOfAQuickTask(t *testing.T) {
+	r := newParkRig(t)
+	st := r.waiting("quick", needsReview, "awaiting_review")
+	job := st.Files[0].ID
+	exported := func(step string) {
+		t.Helper()
+		if err := r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
+			t.Fatal(err)
+		}
+		now, err := r.e.Status(r.ctx, st.ID, 10)
+		if err != nil || !now.Authorized {
+			t.Fatalf("before %s the export did not authorize: %+v %v", step, now, err)
+		}
+	}
+	taken := func(step string) {
+		t.Helper()
+		if now, err := r.e.Status(r.ctx, st.ID, 10); err != nil || now.Authorized {
+			t.Fatalf("%s left the export standing: %+v %v", step, now, err)
+		}
+	}
+	units, err := r.e.Document(r.ctx, job, 0, 100)
+	if err != nil || len(units) == 0 {
+		t.Fatal(units, err)
+	}
+	exported("the selection")
+	manual, err := r.e.AddManual(r.ctx, job, units[0].Seq, 0, 2, "person")
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken("the selection")
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	exported("the withdrawal")
+	if err = r.e.WithdrawManual(r.ctx, job, manual); err != nil {
+		t.Fatal(err)
+	}
+	taken("the withdrawal")
+}
+
+// A batch states its authorization up front for files yet to come: a decision does not take it back (control).
+func TestADecisionDoesNotTakeBackTheAuthorizationOfABatch(t *testing.T) {
+	r := newParkRig(t)
+	st, err := r.imp("batch", true, r.file(needsReview))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Start(r.ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "awaiting_review" {
+		t.Fatalf("%+v %v", st, err)
+	}
+	fs, err := r.e.Findings(r.ctx, st.Files[0].ID, 0, 50)
+	if err != nil || len(fs) == 0 {
+		t.Fatal(fs, err)
+	}
+	ds := make([]FindingDecision, len(fs))
+	for i, f := range fs {
+		ds[i] = FindingDecision{ID: f.ID}
+	}
+	if err = r.e.DecideFindings(r.ctx, st.Files[0].ID, ds); err != nil {
+		t.Fatal(err)
+	}
+	waitCompleted(t, r.e, st.ID)
+}
+
+// A write of choices can land just after a pause. The resume must not go on from what was built before them.
+func TestAChoiceMadeUnderAPauseIsWhatItsResumePublishes(t *testing.T) {
+	r := newParkRig(t)
+	st := r.waiting("quick", noReview, "ready_to_publish")
+	job := st.Files[0].ID
+	decide := func(keep bool) {
+		t.Helper()
+		units, err := r.e.Document(r.ctx, job, 0, 100)
+		if err != nil || len(units) == 0 || len(units[0].Findings) == 0 {
+			t.Fatalf("the document of the task: %+v %v", units, err)
+		}
+		if err = r.e.DecideFindings(r.ctx, job, []FindingDecision{{ID: units[0].Findings[0].ID, Keep: keep}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	decide(true)
+	var err error
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != "ready_to_publish" {
+		t.Fatalf("after keeping: %+v %v", st, err)
+	}
+	if err = r.e.Pause(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	decide(false)
+	if err = r.e.Resume(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Publish(r.ctx, st.ID, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	st = waitCompleted(t, r.e, st.ID)
+	if got := outputOf(t, r.out, st); strings.Contains(got, "13812345678") {
+		t.Fatalf("the resume published what was built before the choice: %q", got)
 	}
 }
 

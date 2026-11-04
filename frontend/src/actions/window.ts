@@ -45,10 +45,11 @@ export function requestQuit(): void {
 /** Keep unfinished work (paused, encrypted) and quit. Choices only this window holds go to the kernel first. */
 export function saveAndQuit(): void {
   closeModal();
-  store.update((d) => { if (d.batch) d.batch.paused = true; });
-  const open = openDecisions(getState());
-  if (!open.length) { quitApp(); return; }
-  void saveOpenDecisions(open).then((saved) => { if (saved) quitApp(); });
+  void saveOpenDecisions(openDecisions(getState())).then((saved) => {
+    if (!saved) return; // the window stays, and nothing was paused: the batch goes on as the screen says
+    store.update((d) => { if (d.batch) d.batch.paused = true; });
+    quitApp();
+  });
 }
 
 /** Discard unfinished work and quit; exported files are not affected. */

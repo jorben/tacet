@@ -418,6 +418,7 @@ type Session interface {
 | `failed` | 重新处理（首次） | 失败阶段的起点 | 沿用原快照（FR-07） |
 | `failed` | 跳过 / 重新处理后再次失败 | `skipped` / `unprocessable` | 终止 |
 | 非终止状态 | 暂停 / 取消 | `paused` / `cancelling` → `cancelled` | 记录恢复阶段 |
+| `paused` | 相关决定提交（可能晚于暂停落地） | 仍为 `paused` | 恢复点按未暂停时的规则变化，恢复后不沿用旧决定做出的结果 |
 | 非终止状态 | `lineage` 判定上游已变 | 最早失效阶段的 `queued` | 已发布成员另生成新交付版本 |
 | 非终止状态 | 输入已变化 | `blocked`（输入变化） | FR-08 |
 
