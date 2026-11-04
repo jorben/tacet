@@ -55,5 +55,4 @@
 .fchip:hover{background:var(--hover);color:var(--ink)}
 .fchip[aria-pressed=true]{background:var(--ink);color:var(--win)}
 .more{text-align:center;padding:12px;font-size:12px;color:var(--muted)}
-
-
+.file-opening{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:5;padding:6px 14px;border-radius:999px;background:var(--ink);color:var(--win);font-size:12px;box-shadow:var(--pop);pointer-events:none}

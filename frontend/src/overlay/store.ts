@@ -61,6 +61,9 @@ export interface SampleRow {
   value: string;
 }
 
+/** A file of a batch whose last choices the kernel refused. */
+export interface UnsavedTarget { job: string; name: string; reason: string }
+
 export type ModalSpec =
   | { type: "recent" }
   | { type: "historyItem"; entryId: string }
@@ -72,6 +75,7 @@ export type ModalSpec =
   | { type: "exportReady" }
   | { type: "livePassword"; targets: { job: string; name: string }[] }
   | { type: "liveBlocked"; targets: { job: string; name: string; reason: string }[] }
+  | { type: "unsavedDecisions"; targets: UnsavedTarget[] }
   /**
    * `index` is the rule's index in the rule set (null adds one). A new rule reports `category` unless the person
    * picks another ("other" without one); an existing rule shows its own. `draft` reopens the editor as it was left.

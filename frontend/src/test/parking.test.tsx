@@ -10,7 +10,7 @@ import { exportSingle, focusHit, returnToBatch, reviewBatchFileExceptions, setHi
 import { requestQuit, saveAndQuit, stopAndQuit } from "../actions/window";
 import { createSingle } from "../domain/single";
 import type { Batch, Single } from "../domain/types";
-import { closeModal, openModal, overlayStore } from "../overlay/store";
+import { closeModal, dismissToast, openModal, overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
@@ -1179,7 +1179,7 @@ describe("决定写给内核的时序", () => {
     expect(fake.decisionLog[0]).toEqual({ job: "j1", ds: [{ id: 11, keep: true }] });
   });
 
-  it("路上的写入失败了：“保存并退出”不退出并说明，再点一次才退", async () => {
+  it("路上的写入失败了：“保存并退出”不退出并说明；再点会重发，内核收下才退", async () => {
     await reviewing();
     choose(0, "keep");
     const open = gate();
@@ -1191,8 +1191,15 @@ describe("决定写给内核的时序", () => {
     open();
     await waitFor(() => expect(toastText()).toContain("未能保存"));
     expect(quit.n).toBe(0);
+    // 仍被拒绝：这份选择只有窗口里有，退出就没了。此时的出路是“停止并清理”，见 decisionWrites.test.tsx
+    act(() => dismissToast());
+    act(() => saveAndQuit());
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    expect(quit.n).toBe(0);
+    fake.decideFails = null;
     act(() => saveAndQuit());
     await waitFor(() => expect(quit.n).toBe(1));
+    expect(fake.decisionLog).toEqual([{ job: "j1", ds: [{ id: 11, keep: true }] }]);
   });
 
   it("撤销手动涂抹后离开：之前的选择仍交给内核", async () => {
