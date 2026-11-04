@@ -130,6 +130,6 @@ func Check(c Content, env Env) CompatReport {
 	return r
 }
 
-// Startable is true when nothing blocks the start. Narrowing issues still need
-// the user's confirmation before Freeze; the caller records that confirmation.
+// Startable is true when nothing blocks the start. Narrowing issues do not block
+// it, and no confirmation of them is asked for or recorded (see CompatReport).
 func (r CompatReport) Startable() bool { return len(r.Blocking) == 0 }
