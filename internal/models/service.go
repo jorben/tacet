@@ -86,7 +86,7 @@ type Service struct {
 	mu       sync.Mutex
 	active   map[string]*job
 	ready    map[string]bool
-	verified map[string]string // key -> stamp of the files last hashed in full
+	verified map[string]string // key -> stamp of the files last hashed in full; CheckBinding skips the hash when it matches
 }
 
 func New(cfg Config) (*Service, error) {

@@ -516,7 +516,17 @@ func TestPrepareRefusesWhatIsNotInstalledAndFilesThatChanged(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	r.svc.Download(context.Background(), r.entry.Key())
-	os.WriteFile(filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx"), bytes.Repeat([]byte("z"), len(payloads["model.onnx"])), 0o600)
+	path := filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, bytes.Repeat([]byte("z"), len(payloads["model.onnx"])), 0o600)
+	// Same size and, as a coarse clock gives when the rewrite falls in the tick of the download
+	// (1 ms on Linux tmpfs, #29), the same modification time.
+	if err := os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
 	r.svc.SessionLost(context.Background(), r.entry.Key())
 	n := len(r.prepared)
 	if err := r.svc.Prepare(context.Background(), r.entry.Key()); !errors.Is(err, ErrBindingMismatch) {
@@ -587,6 +597,80 @@ func TestACachedVerificationIsRedoneWhenAFileChangesWithoutChangingSize(t *testi
 	os.Chtimes(path, later, later)
 	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
 		t.Fatalf("%v", err)
+	}
+}
+
+// CheckBinding runs on every start and preset test, so it trusts an unchanged stamp instead of hashing
+// gigabytes each time; the load does not trust it.
+func TestCheckBindingTrustsAnUnchangedStampAndTheLoadDoesNot(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.svc.Download(ctx, r.entry.Key())
+	path := filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, bytes.Repeat([]byte("z"), len(payloads["model.onnx"])), 0o600)
+	os.Chtimes(path, before.ModTime(), before.ModTime())
+	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); err != nil {
+		t.Fatalf("CheckBinding hashed although the stamp did not change: %v", err)
+	}
+	if err := r.svc.Prepare(ctx, r.entry.Key()); !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("%v", err)
+	}
+}
+
+// What the load refused stays refused when the error is cleared: the stamp of the files from before
+// the rewrite (which kept size and modification time) must not let CheckBinding skip the hash.
+func TestARefusedLoadIsNotUndoneByTheCachedStamp(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.svc.Download(ctx, r.entry.Key())
+	path := filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, bytes.Repeat([]byte("z"), len(payloads["model.onnx"])), 0o600)
+	os.Chtimes(path, before.ModTime(), before.ModTime())
+	r.svc.SessionLost(ctx, r.entry.Key())
+	if err := r.svc.Prepare(ctx, r.entry.Key()); !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("%v", err)
+	}
+	if err := r.svc.Discard(ctx, r.entry.Key()); err != nil {
+		t.Fatal(err)
+	}
+	if s := r.status(); s.State != StateInstalled {
+		t.Fatalf("%+v", s)
+	}
+	if _, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("the refused files were taken from the cache: %v", err)
+	}
+}
+
+// A file of the package replaced by a link to one outside the folder is refused, also by a new
+// process whose cache of verified files is empty.
+func TestAFileReplacedByALinkIsRefusedAfterARestart(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.svc.Download(ctx, r.entry.Key())
+	path := filepath.Join(r.root, "installed", r.entry.Key(), "model.onnx")
+	outside := filepath.Join(t.TempDir(), "model.onnx")
+	os.WriteFile(outside, bytes.Repeat([]byte("z"), len(payloads["model.onnx"])), 0o600)
+	os.Remove(path)
+	if err := os.Symlink(outside, path); err != nil {
+		t.Fatal(err)
+	}
+	r.rebuild()
+	if err := r.svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := r.svc.CheckBinding(ctx, "test-model", r.entry.Digest); !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("a link was taken for the model file: %+v %v", b, err)
+	}
+	if s := r.status(); s.State != StateError || s.Code != CodeChanged {
+		t.Fatalf("%+v", s)
 	}
 }
 
