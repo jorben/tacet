@@ -17,6 +17,8 @@ import { ItemList } from "./ItemList";
 
 const MAPPING_HINT = "模型输出的每个标签计入一个类别，一个类别可关联多个标签，任一标签命中即算命中；至少保留一个标签关联到类别。改动对之后开始的任务生效。";
 const NONE = "_none";
+/** Labels shown beside a category's chevron; the rest collapse into “+N”. */
+const MAX_CHIPS = 3;
 
 /**
  * The one menu for a single label, wherever it is shown (in a category's row or among the unused labels): the
@@ -119,11 +121,14 @@ export function ModelMappingEditor() {
                 category={category}
                 className="mapping-row"
                 tags={modified ? <Tag {...tip("默认值：" + (defaults.join("、") || "未设置"), { align: "start" })}>已修改</Tag> : undefined}
-                sub={<span className="mapping-labels">{chosen.length
-                  ? chosen.map((l) => <button key={l} type="button" className="tag mono label-chip" aria-label={"标签 " + l} onClick={(e) => openLabelMenu(e.currentTarget, m, l)}>{l}</button>)
-                  : <span className="muted sm">未设置</span>}</span>}
               >
-                <SelectButton className={declared ? undefined : "sel-off"} disabled={!declared} aria-label={name(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>选择标签</SelectButton>
+                <span className="mapping-labels">
+                  {chosen.length
+                    ? chosen.slice(0, MAX_CHIPS).map((l) => <button key={l} type="button" className="tag mono label-chip" aria-label={"标签 " + l} onClick={(e) => openLabelMenu(e.currentTarget, m, l)}>{l}</button>)
+                    : <span className="muted sm">未设置</span>}
+                  {chosen.length > MAX_CHIPS && <span className="tag mono" aria-label={"另有 " + (chosen.length - MAX_CHIPS) + " 个标签"} {...tip(chosen.slice(MAX_CHIPS).join("、"), { align: "end" })}>+{chosen.length - MAX_CHIPS}</span>}
+                </span>
+                <SelectButton className={declared ? undefined : "sel-off"} disabled={!declared} aria-label={name(category) + " 关联的标签"} onClick={(e) => pick(e.currentTarget, category)}>{null}</SelectButton>
                 {catalog.find((c) => c.id === category)?.origin === "custom" && (
                   <IconButton icon="trash" size={15} label={"删除类别 " + name(category)} tooltip="删除类别（全局共用）" tooltipAlign="end" onClick={() => deleteCategory(category)} />
                 )}

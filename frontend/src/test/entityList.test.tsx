@@ -274,6 +274,16 @@ describe("实体清单 · live 资源夹具 + FakeEngine", () => {
     act(() => store.update((d) => { d.models[0]!.mapping = { map: { ...privacy.label_map, private_person: "unknown" } }; }));
     expect($$(".mapping-row").at(-1)).toBe(mapping("unknown")); expect(mapping("unknown")).toHaveTextContent("unknown未登记类别"); expect(mapping("unknown")).toHaveTextContent("private_person");
   });
+  it("类别行的标签在下拉箭头左侧依次显示，超过 3 个的折成 +N；下拉按钮只有箭头没有文案", async () => {
+    await live(); mount("model");
+    await act(async () => { await setCategoryLabels(getState().models[0]!.id, "person", Object.keys(privacy.label_map).slice(0, 5)); await flushConfig(); });
+    const row = mapping("person");
+    expect(row.querySelector(".cat-sub")).toBeNull();
+    expect(row.querySelectorAll(".rv .label-chip")).toHaveLength(3);
+    expect(row.querySelector(".rv .mapping-labels")).toHaveTextContent("+2");
+    const sel = row.querySelector<HTMLElement>(".rv button.sel")!;
+    expect(sel.textContent).toBe(""); expect(sel).toHaveAttribute("aria-label", "人名 关联的标签");
+  });
   it("取消标签直接写入，未关联可再分配；恢复默认删除映射和已修改", async () => {
     const fake = await live(); mount("model"); choose("person"); pick("private_person"); await finish();
     expect(effectiveLabels(getState().models[0]!)).not.toHaveProperty("private_person"); expect($(".unmapped-labels")).toHaveTextContent("private_person");
