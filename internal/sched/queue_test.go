@@ -354,6 +354,24 @@ func TestQueueAStageSubmittedLaterDoesNotTakeAnotherBatchsTurn(t *testing.T) {
 	}
 }
 
+// A batch that arrives while others take turns joins the end of the round: arriving does not put it ahead of them.
+func TestQueueANewBatchJoinsTheEndOfTheRound(t *testing.T) {
+	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect})
+	for _, id := range []string{"a1", "a2"} {
+		submit(t, q, inGroup("a", id, kernel.StageExtractDetect, kernel.Background))
+	}
+	for _, id := range []string{"b1", "b2"} {
+		submit(t, q, inGroup("b", id, kernel.StageExtractDetect, kernel.Background))
+	}
+	if got := fmt.Sprint(takeOrder(t, q, 2)); got != "[a1 b1]" {
+		t.Fatalf("first round %s", got)
+	}
+	submit(t, q, inGroup("c", "c1", kernel.StageExtractDetect, kernel.Background))
+	if got := fmt.Sprint(takeOrder(t, q, 3)); got != "[a2 b2 c1]" {
+		t.Fatalf("next round %s", got)
+	}
+}
+
 // Priority comes before turns: however many batches wait and however long, the interactive stage is next.
 func TestQueueInteractiveWorkGoesAheadOfEveryBatchsTurn(t *testing.T) {
 	q, _ := queue(t, budget(), &fakeRunner{stage: kernel.StageExtractDetect}, &fakeRunner{stage: kernel.StagePreflight})

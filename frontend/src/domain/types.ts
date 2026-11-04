@@ -475,7 +475,7 @@ export interface HistoryEntry {
   live?: "batch" | "single";
   saved?: Single | Batch | BatchSummary;
   undo?: DecisionSnapshot[];
-  /** A single document parked to make room for another one. */
+  /** A single document under “最近”: it goes on there if it has work, and continues from here. */
   park?: boolean;
 }
 

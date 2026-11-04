@@ -30,6 +30,7 @@ const baseName = (p: string): string => p.split(/[\\/]/).pop() || p;
 
 /** Why a call failed, as a sentence; the kernel only ever sends closed codes. */
 const CALL_ERRORS: Record<string, string> = {
+  BATCH_HAS_OPEN_FILES: "任务还有未结束的文件，暂时无法清理，请稍后再试",
   WORKSPACE_BUSY: "工作区正被另一个 Tacet 使用",
   WORKSPACE_KEY_MISSING: "找不到工作区密钥，无法打开已有数据",
   KEYSTORE_UNAVAILABLE: "无法使用系统钥匙串",

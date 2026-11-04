@@ -200,6 +200,15 @@
 
 ## 状态与显示
 
+**操作中途失败留下的半成品，要测它经过关闭和重启，不能只测下一次操作。**
+- PR #28（`90e49aa`）的 `TestAnImportThatStopsBeforeItsFilesLeavesNothingInTheWay` 只验证下一次导入能成功，没有关闭引擎。导入在两个事务之间停下时（`createKeys` 失败、进程在这里退出），`app_member` 的行已写入，`jobs` 的任务行还没有；`recoverJobs` 按成员行逐个恢复，`RecoverMember` 返回 `JOB_NOT_FOUND`，关闭失败，再打开走同一步也失败，工作区打不开。
+- 发现：feat/parallel-same-kind 把这个测试加上关闭再打开，失败信息是 `closing with what the import left: JOB_NOT_FOUND`；在 `90e49aa` 上用同样的步骤复现，`Close` 和再次 `Open` 都返回 `JOB_NOT_FOUND`。
+- 修复：`recoverJobs` 跳过任务行不存在的成员（`jobs.ErrJobMissing`）。
+- 规则：
+  - 为失败路径写测试时，留下半成品之后要关闭、重新打开，再断言；
+  - 启动时遍历记录的步骤，要对照写入这些记录的事务边界，逐个想“只写了前一半”时它读到什么。
+- 出现：1 次（2026-11-04）
+
 **界面上的结论如果来自内存里的记录，要测重启之后显示什么。**
 - 推理设备由插件握手回报，记在 `Engine.modelBackends` 里，这份记录只在内存中。下载后的试运行确认过设备，所以下载完那一刻显示正确；重启后 `Recover` 把模型改回 installed，界面仍是"已就绪"，内存记录却已清空，模型卡退回"GPU 优先 · 启动时检测"，直到第一次跑任务才有结论。已有的测试都在同一个引擎里下载后立即检查，没有一个关掉再重开，所以没抓到。这个问题由 Jorben 在真机上发现（2026-11-02）。
 - 修复：fix/model-device-probe。应用启动时，对已安装的 GPU 兼容模型在后台起 worker，握手后立即结束，不试运行；探测期间返回 `Detecting`。新测试 `TestTheDeviceOfAnInstalledModelIsConfirmedAtStartUp` 用假 worker 回报 Core ML，不依赖模型资源。旧代码上失败：`before the handshake: device "auto" detecting false, want auto and detecting`。

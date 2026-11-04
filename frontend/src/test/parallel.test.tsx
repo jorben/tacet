@@ -5,7 +5,7 @@ import { openBatchFile, startBatch, togglePause } from "../actions/batch";
 import { returnToBatch } from "../actions/single";
 import { openHistoryEntry, resumeSavedBatch } from "../actions/home";
 import { sendDecisions } from "../actions/decisions";
-import { startLive, stopLiveBatch, takePaths } from "../actions/live";
+import { errorText, startLive, stopLiveBatch, takePaths } from "../actions/live";
 import { requestQuit } from "../actions/window";
 import type { Batch, Single } from "../domain/types";
 import { closeModal, overlayStore } from "../overlay/store";
@@ -105,8 +105,9 @@ describe("单文件在“最近”继续", () => {
 
   it("在内核里已取消：留给放弃的那条路收尾，事件不抢着移除或报错", async () => {
     await twoSingles();
+    await fake.emitFor("b0001", [fake.row(0, "awaiting_review", { pending: 1 })]);
     await fake.emitFor("b0001", [fake.row(0, "cancelled")]);
-    expect(entryOf("b0001")).toMatchObject({ park: true });
+    expect(entryOf("b0001")).toMatchObject({ park: true, st: "warn", stl: "待确认" });
     expect(fake.cleaned).toEqual([]);
   });
 
@@ -209,6 +210,27 @@ describe("单文件在“最近”继续", () => {
     open();
   });
 
+  it("开始被拒绝时正在批次文件背后：它不再回到屏幕，打开的文件不受影响", async () => {
+    await runningBatch(["awaiting_review", { pending: 1 }], ["completed"]);
+    await waitFor(() => expect(batch().files[0]?.g.length).toBeGreaterThan(0));
+    fake.units = [unit(1, "x", [{ id: 31, start: 0, end: 1 }])];
+    const [held, open] = gate();
+    fake.startGate = held;
+    fake.calls = [];
+    takePaths(["/d/z.txt"]);
+    await waitFor(() => expect(fake.calls).toContain("start"));
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.from).toBe("batch"));
+    expect(getState().behind?.single.name).toBe("z.txt");
+    fake.startFails = new Error("NOT_READY");
+    open();
+    await waitFor(() => expect(getState().behind).toBeNull());
+    expect(single().from).toBe("batch");
+    expect(fake.cancelled).toEqual(["b0002"]);
+    returnToBatch();
+    await waitFor(() => expect(getState().single).toBeNull());
+  });
+
   it("批次文件关上后，背后的单文件读一次内核：它在文件开着时完成了处理", async () => {
     fake.units = [unit(1, "x", [{ id: 11, start: 0, end: 1 }])];
     takePaths(["/d/a.txt"]);
@@ -227,6 +249,7 @@ describe("单文件在“最近”继续", () => {
     expect(getState().behind?.single.name).toBe("a.txt");
     await fake.emitFor("b0001", [fake.row(0, "awaiting_review", { pending: 1 })]);
     expect(getState().behind?.single.phase).toBe("processing"); // it hears nothing behind the open file
+    expect(documentBusy(getState())).toBe(true); // and the model cannot be changed underneath it
     returnToBatch();
     await waitFor(() => expect(getState().single?.name).toBe("a.txt"));
     await waitFor(() => expect(single().phase).toBe("review"));
@@ -242,6 +265,19 @@ describe("批次在“最近”继续", () => {
     expect(entryOf("b0001")).toMatchObject({ st: "run", stl: "处理中 · 0 / 300", park: true });
     expect(fake.calls.filter((c) => c.startsWith("files:"))).toEqual([]);
     expect(batch().live!.id).toBe("b0002");
+  });
+
+  it("读文件时又来了新状态：读完后以最新的为准，中间的不读", async () => {
+    await twoBatches(["extracting_detecting"], ["queued"]);
+    const [held, open] = gate();
+    fake.filesGate = held;
+    const rows = (state: string) => Array.from({ length: 300 }, (_, i) => fake.row(i, state));
+    await fake.emitFor("b0002", rows("awaiting_review"));
+    expect(fake.calls).toContain("files:0");
+    await fake.emitFor("b0002", rows("failed"));
+    await fake.emitFor("b0002", rows("completed"));
+    open();
+    await waitFor(() => expect(batch().files[299]!.st).toBe("done"));
   });
 
   it("全部在等人：读出文件，条目说明待处理，继续时是这些文件", async () => {
@@ -294,6 +330,9 @@ describe("批次在“最近”继续", () => {
     await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
     takePaths(["/d/c.txt", "/d/d.txt"]);
     await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    fake.calls = [];
+    await fake.emitFor("b0001", Array.from({ length: 300 }, (_, i) => fake.row(i, "preflighted")));
+    expect(fake.calls.filter((c) => c.startsWith("files:"))).toEqual([]);
     await fake.emitFor("b0001", rowsOf(["preflighted"], ["unprocessable"]));
     expect(entryOf("b0001")).toMatchObject({ stl: "待开始" });
     act(() => resumeSavedBatch(entryOf("b0001")!.id));
@@ -387,6 +426,10 @@ describe("批次在“最近”继续", () => {
 });
 
 describe("离开屏幕的任务仍然算数", () => {
+  it("清理被拒绝（还有文件没结束）：说清原因，不显示错误码", () => {
+    expect(errorText(new Error("BATCH_HAS_OPEN_FILES"))).toBe("任务还有未结束的文件，暂时无法清理，请稍后再试");
+  });
+
   it("模型不能在后台还在处理文档时换掉；处理完就可以", async () => {
     await twoSingles();
     await fake.emit("awaiting_review", { pending: 1 });

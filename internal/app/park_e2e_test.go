@@ -234,6 +234,14 @@ func TestARefusedDraftIsNotParked(t *testing.T) {
 	if now, _ := r.e.Status(r.ctx, st.ID, 10); now.Parked || now.ID == next.ID {
 		t.Fatalf("a draft was parked or replaced: %+v", now)
 	}
+	// nor is one that was paused: all its files are stopped, but nobody has started it
+	if err = r.e.Pause(r.ctx, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	now, err := r.e.Status(r.ctx, st.ID, 10)
+	if err != nil || now.Files[0].State != "paused" || now.Parked {
+		t.Fatalf("a paused draft: %+v %v", now, err)
+	}
 }
 
 // A10: the first transaction of an import is all or nothing.
