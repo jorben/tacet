@@ -159,13 +159,26 @@ export class FakeEngine implements EngineService {
     const was = this.beforePause.get(b);
     if (was) { this.setRows(b, was); this.beforePause.delete(b); }
   }
+  /** While set, a cancel leaves the files cancelling, as the kernel does until a running stage has stopped. */
+  stageStopping = false;
   async cancel(b?: string) {
     this.calls.push("cancel");
     if (!b) return;
     this.cancelled.push(b);
-    this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: "cancelled" })));
+    this.setRows(b, this.rowsOf(b).map((r) => ({ ...r, state: this.stageStopping ? "cancelling" : "cancelled" })));
   }
-  async clean(b?: string) { this.calls.push("clean"); if (b) this.cleaned.push(b); }
+  /** The stage has stopped: what was cancelling is cancelled. */
+  stageStopped(b: string) {
+    this.stageStopping = false;
+    this.setRows(b, this.rowsOf(b).map((r) => (r.state === "cancelling" ? { ...r, state: "cancelled" } : r)));
+  }
+  /** As the kernel: refused while a file has not come to rest. */
+  async clean(b?: string) {
+    this.calls.push("clean");
+    if (!b) return;
+    if (this.rowsOf(b).some((r) => r.state === "cancelling")) throw new Error("ACTION_NOT_ALLOWED: batch has unfinished files");
+    this.cleaned.push(b);
+  }
   retried: [string, string[]][] = [];
   /** As the kernel: a failed file runs again, a blocked one too unless it waits for a password or the original changed. */
   async retry(b: string, only: string[] = []) {

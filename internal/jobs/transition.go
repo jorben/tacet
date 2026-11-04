@@ -335,6 +335,8 @@ func stageOutcome(s Snapshot, e Event, l Limits) (Result, error) {
 		// discarded and the stage is redone on resume.
 		return Result{Snapshot: s, Discard: true}, nil
 	case Cancelling:
+		// Only the machine on its own comes here: Apply clears the attempt on a cancel, so CompleteStage refuses the
+		// late result first. What ends a cancelling file in the running system is EvCancelDone (see the app's settleCancelled).
 		if out.Kind == sched.Cancelled {
 			return to(s, Cancelled, kernel.StageNone), nil
 		}

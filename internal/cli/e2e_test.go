@@ -212,8 +212,9 @@ func (r *rig) expectNothingLeft(batch string) {
 	}
 }
 
-// discard relies on this: with its files cancelled, a draft whose kept start could go through (this preset
-// needs no model, as when a model was installed just after the refusal) drops that start and begins nothing.
+// discard relies on this: a cancel drops the start the draft kept, so a wait ends without anything carrying it out,
+// and a resume begins nothing even where that start could go through (this preset needs no model, as when a model
+// was installed just after the refusal).
 func TestACancelledDraftIsNotBegunByTheStartItKept(t *testing.T) {
 	r := newRig(t)
 	bg := context.Background()
@@ -238,11 +239,15 @@ func TestACancelledDraftIsNotBegunByTheStartItKept(t *testing.T) {
 	if err = core.Cancel(bg, st.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Nothing else of this batch is running, so the wait takes a few reads or never ends: the deadline only tells them apart.
+	ctx, cancel := context.WithTimeout(bg, 30*time.Second)
+	defer cancel()
+	if _, err = core.Wait(ctx, st.ID); err != nil {
+		t.Fatalf("the wait after the cancel: %v", err)
+	}
 	if err = core.Resume(bg, st.ID); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(bg, 30*time.Second)
-	defer cancel()
 	res, err := core.Wait(ctx, st.ID)
 	if err != nil {
 		t.Fatal(err)
