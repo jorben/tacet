@@ -60,6 +60,10 @@ func (s *Service) end(key string) {
 // verification of every file, atomic registration, and the session preparation. It
 // returns when the model is ready, paused (ErrPaused) or failed (the error state
 // carries the code). The network is only ever used because the caller asked.
+// In error with installed files it is the "download again" the screens offer for files
+// that changed and after a failed preparation (requirements 3.4.1): a copy that still
+// matches is loaded again without the network, one that does not is replaced once the new
+// files verified (finish).
 func (s *Service) Download(ctx context.Context, key string) error {
 	e, err := s.entry(key)
 	if err != nil {
@@ -74,9 +78,6 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	default:
 		return ErrNotDownloadable
 	}
-	if _, err := os.Stat(s.installed(e)); err == nil && st == StateError {
-		return ErrNotDownloadable // installed files exist: re-prepare or discard, not download
-	}
 	dctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	j, err := s.begin(key, cancel)
@@ -85,6 +86,13 @@ func (s *Service) Download(ctx context.Context, key string) error {
 	}
 	defer s.end(key)
 
+	if st == StateError {
+		// finish would only throw the same bytes away, and a failed transfer would turn a usable
+		// copy into a network error.
+		if _, err := s.checkFiles(e, false); err == nil {
+			return s.prepare(ctx, e)
+		}
+	}
 	if err := s.transfer(dctx, e); err != nil {
 		return s.settle(ctx, e, j, err)
 	}
@@ -234,14 +242,21 @@ func (s *Service) fetchFile(ctx context.Context, fx *netgate.Fetcher, e Entry, f
 	return nil
 }
 
-// stamp is a cheap fingerprint of a directory's files (name, size, modification
-// time), used to decide whether a full re-hash is needed.
+// stamp is a cheap fingerprint of a directory's files (name, size, modification time). It
+// decides whether CheckBinding hashes the files again. A rewrite that keeps the size and
+// falls in the same tick of the file clock keeps the stamp too (1 ms measured on Linux, where
+// tmpfs is fast enough to hit it, #29), and a file the manifest does not list does not change
+// it, so loading never relies on it. A listed file that is not a regular file is errVerify,
+// never a stamp: an empty cache must not match it.
 func stamp(e Entry, dir string) (string, error) {
 	h := sha256.New()
 	for _, f := range e.Files {
 		info, err := os.Lstat(filepath.Join(dir, f.Name))
-		if err != nil || !info.Mode().IsRegular() {
+		if err != nil {
 			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", errVerify
 		}
 		fmt.Fprintf(h, "%s\x00%d\x00%d\n", f.Name, info.Size(), info.ModTime().UnixNano())
 	}
@@ -355,7 +370,7 @@ func (s *Service) prepare(ctx context.Context, e Entry) error {
 	if err := s.set(ctx, e, StatePreparing, ""); err != nil {
 		return ErrFailed
 	}
-	if _, err := s.checkFiles(e); err != nil {
+	if _, err := s.checkFiles(e, true); err != nil { // the files are loaded: hashed in full
 		s.set(ctx, e, StateError, CodeChanged)
 		return err
 	}
@@ -400,9 +415,10 @@ func (s *Service) SessionLost(ctx context.Context, key string) error {
 	return s.set(ctx, e, StateInstalled, "")
 }
 
-// Discard clears the partial download (the "download again" action) of a model that is
-// not installed; transfer data is bound to one version and entity and is never reused
-// after this.
+// Discard clears the partial download (the first step of "download again"); transfer
+// data is bound to one version and entity and is never reused after this. It says nothing
+// about installed files: a model in error stays in error until a download or a preparation
+// has checked them, so damaged files are never shown as installed.
 func (s *Service) Discard(ctx context.Context, key string) error {
 	e, err := s.entry(key)
 	if err != nil {
@@ -419,33 +435,44 @@ func (s *Service) Discard(ctx context.Context, key string) error {
 	}
 	s.setEntity(ctx, e, "", "")
 	if _, err := os.Stat(s.installed(e)); err == nil {
+		st, _, err := s.stored(ctx, e)
+		if err != nil {
+			return ErrFailed
+		}
+		if st == StateError {
+			return nil
+		}
 		return s.set(ctx, e, StateInstalled, "")
 	}
 	return s.set(ctx, e, StatePending, "")
 }
 
-// checkFiles verifies the installed files against the manifest, re-hashing only when
-// the fingerprint changed since they were last hashed in full.
-func (s *Service) checkFiles(e Entry) (string, error) {
+// checkFiles verifies the installed files against the manifest. With full (loading,
+// architecture 8.3) they are hashed every time; otherwise only when the fingerprint
+// changed since they were last hashed in full, which misses a rewrite that keeps size and
+// modification time (stamp).
+func (s *Service) checkFiles(e Entry, full bool) (string, error) {
 	dir := s.installed(e)
 	st, err := stamp(e, dir)
-	if err != nil {
+	if err != nil && !errors.Is(err, errVerify) {
 		return "", ErrBindingMissing
 	}
 	s.mu.Lock()
 	known := s.verified[e.Key()]
 	s.mu.Unlock()
-	if known != st {
-		if err := verifyDir(e, dir); err != nil {
-			s.mu.Lock()
-			delete(s.verified, e.Key())
-			s.mu.Unlock()
-			return "", ErrBindingMismatch
-		}
-		s.mu.Lock()
-		s.verified[e.Key()] = st
-		s.mu.Unlock()
+	if err == nil && !full && known == st {
+		return dir, nil
 	}
+	// verifyDir also refuses the file stamp found not to be a regular one (errVerify)
+	if verifyDir(e, dir) != nil {
+		s.mu.Lock()
+		delete(s.verified, e.Key()) // a refusal is never undone by a stamp from before it
+		s.mu.Unlock()
+		return "", ErrBindingMismatch
+	}
+	s.mu.Lock()
+	s.verified[e.Key()] = st
+	s.mu.Unlock()
 	return dir, nil
 }
 
@@ -474,7 +501,7 @@ func (s *Service) CheckBinding(ctx context.Context, id, digest string) (Binding,
 		if st != StateInstalled && st != StateReady && st != StatePreparing && !(st == StateError && code == CodePrepare) {
 			return Binding{}, ErrBindingMissing
 		}
-		dir, err := s.checkFiles(e)
+		dir, err := s.checkFiles(e, false) // called often; the load hashes in full
 		if err != nil {
 			if errors.Is(err, ErrBindingMismatch) {
 				s.set(ctx, e, StateError, CodeChanged)

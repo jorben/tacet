@@ -120,7 +120,7 @@
 | [MD-16](../tacet-module-design.md#L765) | publish, workspace, platform | 确切字节摘要、授权版本、竞争无覆盖发布与崩溃补记 | partial: 发布授权绑定（任务，处置键）：Grant 覆盖旧授权，处置键变化后 Publish 在预检与提交区内两次核对均拒绝（ErrNoGrant/ErrStale），只影响该成员；部分结果需要部分授权且输出名带 -partial 标记；授权在复制期间被撤销/收窄也被提交区内的复查拒绝（测试注入） |
 | [MD-17](../tacet-module-design.md#L676) | review, exceptions, findings, query | 分组筛选、两阶段批量提交/撤销、范围变更、补充词表与部分结果授权 | partial: exceptions.Actions：仅在 PartialEligible 时提供“保留”且带部分结果后果，否则禁用并给出原因；coverage.PartialBeforeExport/PartialEligible 两步判定。授权记录、发布授权与持久化未实现；exceptions.Repository.Decide 对“保留”实际校验可用性（无部分结果资格则拒绝），并把后果记入决定历史 |
 | [MD-18](../tacet-module-design.md#L473) | review, exceptions, findings, query | 分组筛选、两阶段批量提交/撤销、范围变更、补充词表与部分结果授权 | partial: review.AddTerms：批次范围、带版本、经批次密钥加密（TermCipher 注入；库中只存密文，测试断言无明文）、按 request 幂等、无新增则不建新版本、上限 2000 条/64 字符并拒绝控制字符；不触碰冻结规则集。向受影响成员派发只用规则的补充扫描属 jobs/app 装配，未做 |
-| [MD-19](../tacet-module-design.md#L899) | netgate, sched, platform, host | 租约并发、出站连接监测、预装后断网真实处理 | partial: sched 每个准入票据持有处理租约至 runner 真正停止，取消不提前释放；网络活动阻止准入，释放后事件唤醒，队列暂停/压力不轮询。netgate.Lease.HTTPClient 已实现受租约约束的出站客户端：仅 Network 租约可创建；只允许 https、无 URL 凭据、主机白名单（空白名单拒绝一切），重定向每一跳重新校验且最多 5 跳；每次请求和拨号在租约下准入，释放租约会取消在途请求并使响应体读取返回 ACTIVITY_LEASE_RELEASED，同时关闭空闲连接（7 项本地 TLS 服务器测试，-race 通过，5 个有效变异验证）；模型/插件下载、更新、安装的具体调用方与 UI 待接入。；pluginmgr.Confirm 取维护租约（需下载依赖时再取网络租约），models/update 下载取网络租约，处理期间均返回 ACTIVITY_BUSY 且未发起任何请求或部署（测试） |
+| [MD-19](../tacet-module-design.md#L900) | netgate, sched, platform, host | 租约并发、出站连接监测、预装后断网真实处理 | partial: sched 每个准入票据持有处理租约至 runner 真正停止，取消不提前释放；网络活动阻止准入，释放后事件唤醒，队列暂停/压力不轮询。netgate.Lease.HTTPClient 已实现受租约约束的出站客户端：仅 Network 租约可创建；只允许 https、无 URL 凭据、主机白名单（空白名单拒绝一切），重定向每一跳重新校验且最多 5 跳；每次请求和拨号在租约下准入，释放租约会取消在途请求并使响应体读取返回 ACTIVITY_LEASE_RELEASED，同时关闭空闲连接（7 项本地 TLS 服务器测试，-race 通过，5 个有效变异验证）；模型/插件下载、更新、安装的具体调用方与 UI 待接入。；pluginmgr.Confirm 取维护租约（需下载依赖时再取网络租约），models/update 下载取网络租约，处理期间均返回 ACTIVITY_BUSY 且未发起任何请求或部署（测试） |
 | [PF-01](../tacet-requirements.md#L374) | sched, host, platform, store, refs | 100/500 MiB、2,000 页、全进程树资源采样、背压、取消、磁盘高水位及 4 h 稳定性 | 待实现 / 待验证 |
 | [PF-02](../tacet-requirements.md#L375) | gui, query, lifecycle, sched | R1 界面/冷启动/任务接受实际计时及窗口隐藏处理 | 待实现 / 待验证 |
 | [PF-03](../tacet-requirements.md#L376) | gui, query, lifecycle, sched | R1 界面/冷启动/任务接受实际计时及窗口隐藏处理 | 待实现 / 待验证 |
@@ -150,7 +150,7 @@
 | [SEC-10](../tacet-requirements.md#L511) | preview, gui, host, platform | 恶意 XML/ZIP/HTML/SVG、无外部资源、选择伪造与桥接隔离 | 待实现 / 待验证 |
 | [SEC-11](../tacet-requirements.md#L512) | publish, workspace, platform | 确切字节摘要、授权版本、竞争无覆盖发布与崩溃补记 | 待实现 / 待验证 |
 | [SEC-12](../tacet-requirements.md#L513) | preview, gui, host, platform | 恶意 XML/ZIP/HTML/SVG、无外部资源、选择伪造与桥接隔离 | partial: exceptions.ValidatePluginReport 拒绝未知与内核专属类型码，插件无法自定义动作；预览隔离与选择校验未实现 |
-| [SEC-13](../tacet-requirements.md#L514) | models, envs, registry | 固定版本清单及全部文件大小/摘要；篡改拒绝与会话失效 | partial: models：模型清单仅在应用签名验证通过后才被解释（ParseSigned）；下载按目录逐文件核对大小与 SHA-256，暂存区只含清单所列文件，原子登记，失败清理半成品且不覆盖已安装资源；加载前（CheckBinding/Prepare）核对已安装文件，缺失/被改即阻塞并进入错误态，大小与修改时间不变但内容改变也会重新哈希；任务绑定按 ID+摘要，缺失或不符不回退到仅规则 |
+| [SEC-13](../tacet-requirements.md#L514) | models, envs, registry | 固定版本清单及全部文件大小/摘要；篡改拒绝与会话失效 | partial: models：模型清单仅在应用签名验证通过后才被解释（ParseSigned）；下载按目录逐文件核对大小与 SHA-256，暂存区只含清单所列文件，原子登记，失败清理半成品且不覆盖已安装资源；加载前（CheckBinding/Prepare）核对已安装文件，缺失/被改即阻塞并进入错误态：Prepare 每次全量哈希；CheckBinding 在指纹（所列文件的名称、大小与修改时间）与上次全量哈希时一致时沿用结果，所以同大小同修改时间的改写和清单外文件在它这里要到重启后才查出，加载时由 Prepare 拦住（#29：实测的 Linux tmpfs 上 1 ms 时间精度曾让被改文件通过 Prepare）；所列文件为符号链接等非普通文件时，不论缓存都拒绝；文件校验未通过后的“重新下载”可修复：Discard 不把错误态改为已安装；已安装副本仍与清单一致时不联网、直接重新加载，不一致时下载，新文件全部通过校验后才替换，失败或中断时保留原目录且不可绑定（服务层测试，未在应用层端到端运行）；任务绑定按 ID+摘要，缺失或不符不回退到仅规则 |
 | [SEC-14](../tacet-requirements.md#L515) | pluginmgr, envs, netgate | 仅固定 wheel；拒绝源码构建/安装钩子；中断回滚不损坏已有环境 | partial: 安装不执行插件或依赖的构建/安装代码：拒绝 setup.py/setup.cfg/安装脚本/Makefile/.pth/内置 wheel 与 sdist；uv.lock 必须存在，每个包要么是带 wheels 的注册表包，要么是根目录下的插件自身，仅有源码分发、git、路径或其他 editable 的依赖一律拒绝；失败回滚快照与已部署环境，不影响其他插件 |
 | [SEC-15](../tacet-requirements.md#L516) | update, lifecycle, store | 签名/摘要拒绝、离线更新、任务处置、迁移回滚及旧版本拒绝 | partial: update：检查请求只含版本、平台、通道（测试断言每个请求的查询串）；清单与签名均在解释前先验签（ed25519，用途绑定，多公钥可轮换），签名/用途/载荷/密钥任一不符统一拒绝；平台/通道不符、非更新版本、min_from 不满足均拒绝；下载只在网络租约内、包须与已签名清单的大小与 SHA-256 完全一致才登记为 ready（被篡改、过长、过短、中断均不登记）；离线导入走同一校验；Apply 先核对包未变，存在待复核/可恢复任务时必须由用户选择作废或更新后重新执行，选择“先完成”则不更新，且在检查失败时不会先作废任务；Apply 取维护租约（与处理互斥）→执行退出顺序→交给安装器，任一步失败即停。FirstRun 把第三方环境按 Python ABI 标记为需重新部署。真实的 Wails 更新器/安装器替换、代码签名与公证未做（需打包环境） |
 | [UX-00](../tacet-requirements.md#L433) | app, gui, cli, review | 固定任务 + 至少 5 名目标用户，人工时间/主要提交/机器耗时分列 | 待实现 / 待验证 |
@@ -167,7 +167,7 @@
 
 - `tacet-requirements.md`: `3f4beb71756006e392e88399cde35a08389548b3a51dd5415e78b4dffce5f93a`
 - `tacet-architecture.md`: `e60be8c9ef65232b8f1bb622fa5732270c83088db162188e236ca94760d97bca`
-- `tacet-module-design.md`: `c47b73afe4a34d0ddb887e1f3b235caef95a87000bed0a16bd62ada15e009bc4`
+- `tacet-module-design.md`: `499f01aad68d831ff65043141f5de615758d3523b36a6b30b69714041e105e05`
 
 ## 模块边界与实现盘点
 

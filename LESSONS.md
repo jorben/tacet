@@ -242,6 +242,11 @@
   - 单文件的选择只在导出时才发给内核，“已保存到‘最近’”重启后就没了。上一版测试还写着 `expect(fake.decisions).toBeNull()`，把缺口固定成了预期；
   - 重启后继续一个导出时受阻的单文件，`syncSingle` 按“处理前受阻”取消并清理。修的时候又查出两层：“可重试导出”的提示从来不成立（`exportLiveSingle` 不调 `retry`，`Publish` 只推进 `ready_to_publish`）；只补 `retry` 还会出隐私问题（`blocked` 上的决定变更是无效迁移，重试直接发布按旧决定做出的候选）。真实内核上复现：先保留、受阻、再改成涂抹，旧代码重试后发布的是 `"电话 13812345678\n"`。
 - 验证：`internal/app` 的端到端测试带 `darwin` 标签，Linux 上开不了工作区。这次在临时目录里给 `platform` 补了不提交的 Linux 垫片（flock、renameat2、文件密钥），去掉标签后 12 个停放测试和整个 `internal/app` 都能跑（只有依赖进程回收的 2 个测试因垫片失败）。修复前后都用真实内核跑过，状态机测试和 fake 给不出上面那个隐私问题，也给不出“重启后是 `paused`，继续之后才是 `blocked`”。
+- 同一天的 fix/model-redownload-repair 是同一条规则，所以“出现”不加 1。文件校验未通过时，界面只给“重新下载”，实际执行 `Discard` 再 `Download`。5bd694f 起，已安装目录还在时 `Download` 返回 `MODEL_NOT_DOWNLOADABLE`，`TestAFailedRedownloadNeverReplacesAnInstalledModel` 把这个拒绝固定成预期（注释写着 download is not the repair），没人问拒绝之后用户怎么办：
+  - `DownloadModel` 是 `go e.catalog.Download(...)`，拒绝不会到界面；`Discard` 已把状态改成 `installed`，文件其实是坏的，而前端把 `installed` 映射成“已就绪”（这一步是读代码得出的，没有在界面上跑过）。目录里多一个 `.DS_Store`，就只能手动删文件才能恢复。
+  - 前端的 `FakeEngine.discardModel` 恒回到 `pending`，测试碰不到这条路。
+  - 只去掉拒绝还不够：加载失败后点“重新下载”，副本完好也会再下一遍，下完被 `finish` 扔掉；断网时“加载失败”还会变成“网络错误”。
+  - 修复：`Discard` 不改错误态；`Download` 在副本仍匹配时不联网，直接重新加载；不匹配时下载，通过校验才替换。旧 `download.go` 上 5 个测试都失败（`the download again did not run`、`after the discard, files that do not match are shown as`、`download again: MODEL_NOT_DOWNLOADABLE` 等），4 个变异逐个放回都有测试失败。只在服务层验证：`internal/app` 里模型相关的端到端测试依赖本地模型资源，本机和 CI 上都不运行。
 - 规则：
   - 动作会让用户相信某件事（“可继续”“已清理”），测试就断言内核状态，并接着做用户下一步会做的事（再开一批、再重启一次）；
   - 测试从用户点的那个入口进去（列表条目、页面按钮），不要直接调入口背后的函数；
@@ -250,6 +255,21 @@
   - 清空或覆盖屏幕上的状态放在内核接受之后，拒绝不能改变屏幕；
   - fake 要能给出真实实现的拒绝，并让测试在屏幕上有任务时触发；
   - 把“拒绝”固定成预期的测试，要写明拒绝之后用户还能做什么；答不出来就是缺口。
+- 出现：1 次（2026-11-04）
+
+## 校验与缓存
+
+**按（大小、修改时间）跳过校验的缓存，测试要把修改时间设回原值，不能只把它推后；缓存的零值不能和出错时的返回值相等。**
+- 加载模型前的文件核对（`internal/models` 的 `checkFiles`）按文件名、大小、修改时间算指纹，和上次全量哈希时的指纹相同就不再哈希。实测的 Linux 虚拟机（HZ=1000）上文件时间的精度是 1ms，tmpfs 上写得够快，下载完的文件和随后同样大小的改写落在同一毫秒，修改时间不变，被改过的文件通过了 `Prepare` 并被加载（#29）。
+  - `TestPrepareRefusesWhatIsNotInstalledAndFilesThatChanged` 在 Linux 上偶发失败，失败日志没留下。按 issue 的建议 `-race -count=200` 重跑，macOS 和 Linux overlay 都复现不了：两次写之间最少隔 1.4ms（macOS，时间精度不到 1ms）和 4ms（overlay）。把临时目录放进 tmpfs、不带 `-race` 之后，2000 次里失败 1142 次（`models_test.go:523: <nil>`）；300 次里有 193 次两次写的修改时间完全相同。只关掉缓存，2000 次零失败。
+  - 已有的 `TestACachedVerificationIsRedoneWhenAFileChangesWithoutChangingSize` 把修改时间推后一小时，测的是“修改时间变了会重新哈希”，没有覆盖“修改时间没变”。CI 的 Go job 只跑 macOS 和 Windows，没有 Linux。issue 报告的 `-race` 环境没有复现，原始日志已丢失，所以那一次失败是否同因只是推断。
+- 同一处还有一个缓存问题，复现时一起发现：所列文件换成符号链接时 `stamp` 返回 `"", nil`，重启后缓存为空，也是 `""`，两者相等，校验被跳过，指向包外的链接被当成模型文件。
+- 修复：fix/issue-29-model-verify。`Prepare` 加载前每次全量哈希；`CheckBinding` 仍用缓存，所列文件不是普通文件时报错而不是给出指纹。测试用 `os.Chtimes` 把修改时间设回改写前的值，不依赖时钟。旧代码上 4 个测试都失败（涉及 `Prepare` 的 3 个报 `<nil>`，符号链接的报 `a link was taken for the model file`）；6 个变异（含“`CheckBinding` 也全量哈希”）逐个放回，各有测试失败；tmpfs 上 2000 次、整包 30 次、`-race` 200 次全部通过。
+- 规则：
+  - 用便宜的指纹代替全量校验时，写明它漏掉什么（这里是同大小、同一时钟刻度内的改写），结论要求“每次都校验”的地方（加载前，架构 8.3 节）不用这个缓存；
+  - 测缓存失效，既要测指纹变了，也要测内容变了而指纹不变，后者用 `os.Chtimes` 设回原值，确定性地造出来；
+  - 出错时返回的值（这里是 `""`）不能等于缓存的零值，否则空缓存会“命中”一个出错的结果；
+  - 偶发失败重跑复现不了时，按怀疑的原因改变一个条件（这里是换成 tmpfs、关掉 `-race`），不要只加大 `-count`。
 - 出现：1 次（2026-11-04）
 
 ## 界面布局
