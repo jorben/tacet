@@ -10,7 +10,7 @@ import { requestScroll } from "./scrollRequests";
 import { getService } from "../services";
 import type { ModelPlugin, ModelStatus } from "../domain/types";
 import type { EngineService } from "../services/types";
-import { refreshModels } from "./liveConfig";
+import { expectModelStart, refreshModels } from "./liveConfig";
 
 function tickModel(id: string): void {
   const m = modelById(getState().models, id);
@@ -40,6 +40,9 @@ const MODEL_REFUSED: Record<string, string> = {
   MODEL_OPERATION_IN_PROGRESS: "此模型正在处理中",
 };
 
+/** What a download does first: from an error it checks the copy on disk, which takes seconds; otherwise it transfers. */
+const downloadStatus = (b: { status: ModelStatus }): ModelStatus => (b.status === "error" ? "verifying" : "downloading");
+
 /** A model operation of the real kernel; the screens learn the outcome from the model's state. */
 async function liveModel(m: ModelPlugin, op: (e: EngineService) => Promise<void>, busy?: ModelStatus): Promise<void> {
   const e = getService().engine!;
@@ -65,7 +68,8 @@ export function downloadModel(id: string | null | undefined = contextModelId(get
     void liveModel(m, async (e) => {
       if (m.status === "error" && m.error === "integrity") await e.discardModel(m.id);
       await e.downloadModel(m.id);
-    }, "downloading");
+      expectModelStart(m.id, m);
+    }, downloadStatus(m));
     return;
   }
   stopModelTimer(m.id);
@@ -88,7 +92,8 @@ export function downloadAccel(modelId: string): void {
   void liveBuild(m, a.id, async (e) => {
     if (a.status === "error" && a.error === "integrity") await e.discardModel(a.id);
     await (a.status === "error" && a.error === "load" ? e.prepareModel(a.id) : e.downloadModel(a.id));
-  }, a.status === "error" && a.error === "load" ? "loading" : "downloading");
+    expectModelStart(a.id, a);
+  }, a.status === "error" && a.error === "load" ? "loading" : downloadStatus(a));
 }
 
 export function pauseAccel(modelId: string): void {
@@ -117,7 +122,13 @@ export function prepareModel(id: string | null | undefined = contextModelId(getS
   const m = modelById(s.models, id);
   if (!m) return;
   if (documentBusy(s)) { toast("请先完成或停止当前文档处理，再准备模型"); return; }
-  if (getService().engine) { void liveModel(m, (e) => e.prepareModel(m.id), "loading"); return; }
+  if (getService().engine) {
+    void liveModel(m, async (e) => {
+      await e.prepareModel(m.id);
+      expectModelStart(m.id, m);
+    }, "loading");
+    return;
+  }
   stopModelTimer(m.id);
   store.update((d) => {
     const x = modelById(d.models, m.id)!;

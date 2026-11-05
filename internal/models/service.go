@@ -87,6 +87,9 @@ type Service struct {
 	active   map[string]*job
 	ready    map[string]bool
 	verified map[string]string // key -> stamp of the files last hashed in full; CheckBinding skips the hash when it matches
+
+	// beforeHash, when a test sets it, runs as checkFiles starts hashing the installed files.
+	beforeHash func()
 }
 
 func New(cfg Config) (*Service, error) {
@@ -244,7 +247,8 @@ func (s *Service) entry(key string) (Entry, error) {
 // Recover runs once at start-up. It never touches the network: a download that was
 // running when the program ended becomes "paused", and the interface offers to
 // continue it (architecture 8.3). A model that was ready is installed again until a
-// worker has loaded it in this session.
+// worker has loaded it in this session. Verifying with a code was "download again" checking
+// the copy of a model in error (Download): nothing was decided, so the error comes back.
 func (s *Service) Recover(ctx context.Context) error {
 	for _, e := range s.entries {
 		st, code, err := s.stored(ctx, e)
@@ -257,10 +261,12 @@ func (s *Service) Recover(ctx context.Context) error {
 			// checked before any use (CheckBinding, the plugin's own verification)
 			next = StateInstalled
 		}
-		switch st {
-		case StateDownloading, StateVerifying:
+		switch {
+		case st == StateVerifying && code != "":
+			next = StateError // cut off while checking a copy for "download again": nothing was decided
+		case st == StateDownloading || st == StateVerifying:
 			next = StatePaused
-		case StatePreparing, StateReady:
+		case st == StatePreparing || st == StateReady:
 			next = StateInstalled
 		}
 		if _, err := os.Stat(s.installed(e)); err != nil && (next == StateInstalled) {
