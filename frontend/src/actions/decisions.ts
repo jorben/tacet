@@ -2,12 +2,17 @@
 // do not keep it by themselves: a write can take longer than the next call. Writes of one file land in the order
 // they were made, and whatever reads a file or acts on what it holds can wait for them first. A write that failed
 // is kept until a later one of that file lands: until then the kernel holds older choices than the person made.
+// A write refused because the file's document has gone out is another matter: nothing can make it land, so it stands
+// in nobody's way. It is only kept to tell the person why, when they ask for it to be saved again.
 import { getService } from "../services";
 
 export type Decisions = { id: number; keep: boolean }[];
 
 /** The choices of a file that the kernel refused, and why. Each write sends all of them, so one per file is enough. */
 export interface UnsavedDecisions { job: string; ds: Decisions; failure: unknown }
+
+/** The kernel will not take these whatever is tried: the document went out from the choices it has. */
+const tooLate = (u: UnsavedDecisions): boolean => String((u.failure as { message?: string })?.message ?? u.failure).includes("DECISIONS_CLOSED");
 
 /** The last write of each file still on its way. */
 const pending = new Map<string, Promise<void>>();
@@ -31,13 +36,19 @@ export function sendDecisions(job: string, ds: Decisions): Promise<void> {
 export const decisionsSettled = (job: string): Promise<void> => pending.get(job) ?? Promise.resolve();
 
 /** The choices of a file that have not reached the kernel, as of now: wait for its writes first. */
-export const unsavedDecisions = (job: string): Decisions | undefined => unsaved.get(job)?.ds;
+export const unsavedDecisions = (job: string): Decisions | undefined => {
+  const u = unsaved.get(job);
+  return u && !tooLate(u) ? u.ds : undefined;
+};
+
+/** The kernel's last refusal of a file, of whatever kind. */
+export const refusalOf = (job: string): unknown => unsaved.get(job)?.failure;
 
 /** Waits until no write is on its way, those made during the wait too: a person can go on choosing meanwhile. What
- *  has not reached the kernel by then, including earlier failures. */
+ *  has not reached the kernel by then and still can, including earlier failures. */
 export async function allDecisionsSettled(): Promise<UnsavedDecisions[]> {
   while (pending.size) await Promise.all(pending.values());
-  return [...unsaved.values()];
+  return [...unsaved.values()].filter((u) => !tooLate(u));
 }
 
 /** Sends again what the kernel refused; `allDecisionsSettled` tells how that went. What was refused is older than any

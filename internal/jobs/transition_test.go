@@ -208,17 +208,66 @@ func TestADecisionUnderAPauseIsWhatItsResumeGoesOnWith(t *testing.T) {
 			t.Fatalf("paused from %s, then decided and resumed: %+v", back, s)
 		}
 	}
+	// a publish stopped by the pause, or a file queued for a stage past resolution: nothing runs that it would have to replace
+	if s := resumed(decided(Snapshot{State: Paused, Resume: Publishing, Cursor: U})); s.State != Queued || s.Cursor != R {
+		t.Fatalf("paused from publishing, then decided and resumed: %+v", s)
+	}
+	for _, cursor := range []kernel.StageKind{kernel.StageExport, kernel.StageValidate, U} {
+		if s := resumed(decided(Snapshot{State: Paused, Resume: Queued, Cursor: cursor})); s.State != Queued || s.Cursor != R {
+			t.Fatalf("paused while queued for %s, then decided and resumed: %+v", cursor, s)
+		}
+	}
 	if s := resumed(decided(Snapshot{State: Paused, Resume: Blocked, Block: BlockTarget, Cursor: U})); s.State != Blocked || s.Block != BlockTarget || s.Cursor != R {
 		t.Fatalf("paused while blocked, then decided and resumed: %+v", s)
 	}
 	if s := resumed(decided(Snapshot{State: Paused, Resume: Failed, FailedStage: U})); s.State != Failed || s.FailedStage != R {
 		t.Fatalf("paused while failed, then decided and resumed: %+v", s)
 	}
-	// nothing was made yet that a decision could make stale: refused, so the caller's quiet apply leaves it alone
+	// nothing was made yet that a decision could make stale: an event that does not apply, and the caller just keeps the decision
 	for _, back := range []State{Preflighting, Preflighted, Locked, ExtractingDetecting} {
 		if _, err := Transition(Snapshot{State: Paused, Resume: back}, Event{Kind: EvDecisionsChange}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
 			t.Fatalf("paused from %s: %v", back, err)
 		}
+	}
+	if _, err := Transition(Snapshot{State: Paused, Resume: Queued, Cursor: R}, Event{Kind: EvDecisionsChange}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("paused while queued for resolution, which reads the decisions anyway: %v", err)
+	}
+}
+
+// A file on its way back to a stage past resolution would go on from the old decisions; it goes back to resolution.
+func TestADecisionOnAFileQueuedPastResolutionTakesItBackToResolution(t *testing.T) {
+	R := kernel.StageResolve
+	for _, cursor := range []kernel.StageKind{kernel.StageExport, kernel.StageValidate, kernel.StagePublish} {
+		r := step(t, Snapshot{State: Queued, Cursor: cursor}, Event{Kind: EvDecisionsChange})
+		if r.Snapshot.State != Queued || r.Snapshot.Cursor != R || !r.Snapshot.Reviewed {
+			t.Fatalf("queued for %s: %+v", cursor, r.Snapshot)
+		}
+	}
+	for _, cursor := range []kernel.StageKind{kernel.StageExtractDetect, R} {
+		if _, err := Transition(Snapshot{State: Queued, Cursor: cursor}, Event{Kind: EvDecisionsChange}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("queued for %s, which reads the decisions when it gets there: %v", cursor, err)
+		}
+	}
+}
+
+// A document that has gone out or is going out does not follow a new decision, and the caller has to be able to tell
+// that from an event that merely does not apply: the second is tolerated, the first must reach the person (#42).
+func TestADecisionOnAFilePublishingOrPublishedIsClosedNotJustInvalid(t *testing.T) {
+	for _, state := range []State{Publishing, Completed, Partial} {
+		_, err := Transition(Snapshot{State: state, Cursor: kernel.StagePublish}, Event{Kind: EvDecisionsChange}, DefaultLimits())
+		if !errors.Is(err, ErrDecisionsClosed) || errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("%s: %v", state, err)
+		}
+	}
+	// nothing goes out of these, so nothing depends on the decision
+	for _, state := range []State{Skipped, Unprocessable, Cancelled, Cancelling, ExtractingDetecting, Preflighting, Preflighted, Locked} {
+		if _, err := Transition(Snapshot{State: state}, Event{Kind: EvDecisionsChange}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("%s: %v", state, err)
+		}
+	}
+	// any other event on an ended file stays what it was
+	if _, err := Transition(Snapshot{State: Completed}, Event{Kind: EvPause}, DefaultLimits()); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("a pause of a completed file: %v", err)
 	}
 }
 

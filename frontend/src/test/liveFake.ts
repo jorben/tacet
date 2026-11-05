@@ -17,7 +17,7 @@ export class FakeEngine implements EngineService {
   decisions: { id: number; keep: boolean }[] | null = null;
   /** Every decision call, and what the kernel keeps of them across a restart: documents read back with them. */
   decisionLog: { job: string; ds: { id: number; keep: boolean }[] }[] = [];
-  private kernelDecisions = new Map<number, boolean>();
+  kernelDecisions = new Map<number, boolean>();
   decideFails: Error | null = null;
   decideGate: Promise<void> | null = null;
   /** The next write of one file waits for this; the writes of other files do not. */
@@ -331,6 +331,8 @@ export class FakeEngine implements EngineService {
     const own = this.decideGateOf.get(job);
     if (own) { this.decideGateOf.delete(job); await own; }
     if (this.decideFails) throw this.decideFails;
+    // as the kernel: a file whose document has gone out or is going out cannot follow a new choice
+    if (this.rows.some((r) => r.id === job && ["publishing", "completed", "partial"].includes(r.state))) throw new Error("DECISIONS_CLOSED");
     this.decisions = ds;
     this.decisionLog.push({ job, ds });
     ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));

@@ -65,6 +65,14 @@ func (s *Service) chunk() int {
 
 func (s *Service) ok() bool { return s != nil && s.Commit != nil && s.Findings != nil }
 
+// In is this service with its commits joined to tx: what it writes stands or falls with the rest of the caller's
+// commit. Only for the calls that write in one commit; DecideBulk works outside it (MD-11).
+func (s *Service) In(tx store.Tx) *Service {
+	joined := *s
+	joined.Commit = func(_ context.Context, write func(store.Tx) error) error { return write(tx) }
+	return &joined
+}
+
 func scope(tx store.Tx) (*store.Txn, *store.Scope, error) {
 	t, err := store.InTransaction(tx)
 	if err != nil {

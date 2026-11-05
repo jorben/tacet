@@ -389,7 +389,7 @@ function commitBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
 }
 
 /** Closes the open batch file (if any), restoring the single task that was parked behind it. */
-export function leaveBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
+export function leaveBatchFile(d: Draft<AppState>): "reexp" | "saved" | Promise<boolean> | null {
   const s = d.single;
   if (!s || s.from !== "batch") return null;
   if (s.live) return leaveLiveFile(d);
@@ -401,9 +401,11 @@ export function leaveBatchFile(d: Draft<AppState>): "reexp" | "saved" | null {
   return r;
 }
 
-export function reportLeftBatchFile(result: "reexp" | "saved" | null, where: "page" | "batch"): void {
+export function reportLeftBatchFile(result: ReturnType<typeof leaveBatchFile>, where: "page" | "batch"): void {
   if (!result) return;
   // A fully finished batch has stopped its clock; editing an exported file starts work again.
   if (!timers.batch && getState().batch?.phase === "run") startBatchClock();
+  // A file of the kernel is saved when the kernel says so, not when it is left.
+  if (result instanceof Promise) { void result.then((saved) => { if (saved) toast("已保存修改"); }); return; }
   toast(result === "reexp" ? (where === "batch" ? "已保存 · 该文件将重新导出并替代旧版本" : "已保存 · 该文件将重新导出") : "已保存修改");
 }

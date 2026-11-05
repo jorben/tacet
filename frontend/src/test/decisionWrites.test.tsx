@@ -4,11 +4,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { openBatchFile, startBatch } from "../actions/batch";
 import { discardSavedTask } from "../actions/home";
-import { openLiveGroup, skipLive, startLive, takePaths } from "../actions/live";
+import { openLiveGroup, publishLiveBatch, skipLive, startLive, takePaths } from "../actions/live";
 import { goTo, openSubpage } from "../actions/navigation";
 import { focusHit, returnToBatch, setHitState } from "../actions/single";
 import { requestQuit, saveAndQuit, stopAndQuit } from "../actions/window";
-import { closeModal, dismissToast, overlayStore } from "../overlay/store";
+import { closeModal, dismissToast, openModal, overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
@@ -52,7 +52,7 @@ const quitting = () => {
 /** A batch of two started without authorization to publish, as a person who exports by hand has it. */
 async function batchOf(paths: string[], ...states: [string, object?][]) {
   fake.units = [unit(1, "电话 13812345678", [{ id: 31, start: 3, end: 14 }])];
-  fake.rows = rowsOf(["preflighted"], ["preflighted"]);
+  fake.rows = rowsOf(...paths.map((): [string] => ["preflighted"]));
   takePaths(paths);
   await waitFor(() => expect(batch()?.live?.id).toBe("b0001"));
   await waitFor(() => expect(batch().files[0]?.st).not.toBe("proc"));
@@ -389,25 +389,32 @@ describe("等写入的时候，人还在继续操作", () => {
     expect(landed("j1")).toEqual([true]);
   });
 
-  it("W1 在路上时点导出，等待期间发出 W2：W1 结束也不发布，等 W2 落地，发布时内核里有 W2 的选择", async () => {
-    await batchOf(AB, ...bothReady);
+  // Exporting cannot be waited on like this any more: no file opens during its wait (#42, below). Reprocessing still can.
+  const twoReadyOneBlocked: [string, object?][] = [["ready_to_publish"], ["ready_to_publish"], ["blocked", { detail: "EXPORT_FAILED" }]];
+  const reprocess = () => {
+    act(() => openLiveGroup("live-blocked"));
+    act(() => button("重新处理").click());
+  };
+
+  it("W1 在路上时点重新处理，等待期间发出 W2：W1 结束也不重试，等 W2 落地", async () => {
+    await batchOf([...AB, "/d/c.txt"], ...twoReadyOneBlocked);
     const releaseFirst = await heldWrite(0, "keep");
-    exportByHand(2);
+    reprocess();
     fake.units = [unit(1, "电话 13812345678", [{ id: 32, start: 3, end: 14 }])];
     const releaseSecond = await heldWrite(1, "keep");
     releaseFirst();
     await settle();
-    expect(fake.calls).not.toContain("publish");
+    expect(fake.retried).toEqual([]);
     releaseSecond();
-    await waitFor(() => expect(fake.published).toBeTruthy());
-    expect(fake.publishedWith!.get(31)).toBe(true);
-    expect(fake.publishedWith!.get(32)).toBe(true);
+    await waitFor(() => expect(fake.retried).not.toEqual([]));
+    expect(fake.kernelDecisions.get(31)).toBe(true);
+    expect(fake.kernelDecisions.get(32)).toBe(true);
   });
 
-  it("W1 在路上时点导出，等待期间发出的 W2 失败：同样拦住，说明是哪个文件", async () => {
-    await batchOf(AB, ...bothReady);
+  it("W1 在路上时点重新处理，等待期间发出的 W2 失败：同样拦住，说明是哪个文件", async () => {
+    await batchOf([...AB, "/d/c.txt"], ...twoReadyOneBlocked);
     const releaseFirst = await heldWrite(0, "keep");
-    exportByHand(2);
+    reprocess();
     const releaseSecond = await heldWrite(1, "keep");
     releaseFirst();
     await settle();
@@ -415,7 +422,216 @@ describe("等写入的时候，人还在继续操作", () => {
     releaseSecond();
     await waitFor(() => expect(modal()?.type).toBe("unsavedDecisions"));
     expect(page()).toContain("b.txt");
+    expect(fake.retried).toEqual([]);
+  });
+});
+
+describe("#42 点了导出之后，选择不会再悄悄落空", () => {
+  const bothReady: [string, object?][] = [["ready_to_publish"], ["ready_to_publish"]];
+  const TOO_LATE = "这次修改不会生效";
+
+  /** The kernel holds “keep” on the second file, as in the issue: changing it to “redact” is what must not go missing. */
+  async function secondFileKept() {
+    await batchOf(AB, ...bothReady);
+    await fake.decide("j2", [{ id: 31, keep: true }]);
+    await setRows(...bothReady);
+    fake.decisionLog = [];
+    fake.calls = [];
+  }
+  /** The kernel has started on the files; the screen has not heard yet. */
+  const kernelAhead = (...states: [string, object?][]) => { fake.rows = rowsOf(...states); };
+
+  it("写入在路上时点导出：等待期间打不开别的文件，也就改不了选择；写入落地后发布", async () => {
+    await secondFileKept();
+    const release = await heldWrite(0, "keep");
+    exportByHand(2);
+    openBatchFile(1);
+    await settle();
+    expect(getState().single).toBeNull();
+    expect(getState().view).toBe("batch");
+    expect(toastText()).toContain("正在导出");
     expect(fake.calls).not.toContain("publish");
+
+    release();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(fake.publishedWith!.get(31)).toBe(true);
+    await waitFor(() => expect(toastText()).toContain("已开始导出"));
+
+    // the wait is over: the file opens, and what happens to a choice on it now is the kernel's answer
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+  });
+
+  it("文件还在读取时点导出：读完也不打开，屏幕不会跳进一份来不及改的文件", async () => {
+    await secondFileKept();
+    const [read, finishRead] = gate();
+    fake.documentGateOf.set("j2", read);
+    openBatchFile(1);
+    await waitFor(() => expect(opening()).toContain("b.txt"));
+    exportByHand(2);
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    finishRead();
+    await settle();
+    expect(getState().single).toBeNull();
+    expect(getState().view).toBe("batch");
+    expect(opening()).toBeNull();
+  });
+
+  it("等待结束后不留锁：发布被拒，文件照常打开", async () => {
+    await secondFileKept();
+    fake.publishFails = new Error("STORE_FAILED");
+    exportByHand(2);
+    await waitFor(() => expect(fake.calls).toContain("publish"));
+    await settle();
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+  });
+
+  it("别的批次的导出在等待，不挡这个批次打开文件", async () => {
+    await secondFileKept();
+    const release = await heldWrite(0, "keep");
+    exportByHand(2);
+    fake.nextRows = [fake.row(5, "ready_to_publish"), fake.row(6, "ready_to_publish")];
+    takePaths(["/d/c.txt", "/d/d.txt"]);
+    await waitFor(() => expect(batch().live!.id).toBe("b0002"));
+    await waitFor(() => expect(batch().files[0]?.st).toBe("ready"));
+    openBatchFile(0);
+    await waitFor(() => expect(single()?.name).toBe("c.txt"));
+    release();
+  });
+
+  it("等待期间再点一次导出：只发布一次", async () => {
+    await secondFileKept();
+    const release = await heldWrite(0, "keep");
+    exportByHand(2);
+    await act(() => publishLiveBatch());
+    release();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    await settle();
+    expect(fake.calls.filter((c) => c === "publish")).toEqual(["publish"]);
+  });
+
+  it("屏幕还没听到发布开始时改了选择：离开时提示未能保存，从不说已保存，内核里还是旧选择", async () => {
+    await secondFileKept();
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+    expect(shown(0)).toBe("keep");
+    choose(0, "redact");
+    kernelAhead(["publishing"], ["publishing"]);
+    act(() => dismissToast());
+    const [held, release] = gate();
+    fake.decideGateOf.set("j2", held);
+    act(() => returnToBatch());
+    await settle();
+    expect(toastText()).not.toContain("已保存"); // said now, it would be a guess
+
+    release();
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    expect(toastText()).toContain("b.txt");
+    expect(toastText()).toContain(TOO_LATE);
+    expect(fake.kernelDecisions.get(31)).toBe(true);
+  });
+
+  it("写入被收下才提示已保存修改；因别的原因被拒同样不说已保存", async () => {
+    await secondFileKept();
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+    choose(0, "redact");
+    const [held, release] = gate();
+    fake.decideGateOf.set("j2", held);
+    act(() => returnToBatch());
+    await settle();
+    expect(toastText()).not.toContain("已保存");
+    release();
+    await waitFor(() => expect(toastText()).toContain("已保存修改"));
+
+    await setRows(...bothReady);
+    act(() => dismissToast());
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+    choose(0, "keep");
+    fake.decideFails = new Error("STORE_FAILED");
+    act(() => returnToBatch());
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    await settle();
+    expect(toastText()).not.toContain("已保存");
+  });
+
+  /** A choice on the second file arrived too late; the first file is still to be exported. */
+  async function refusedTooLate() {
+    await secondFileKept();
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+    choose(0, "redact");
+    kernelAhead(["ready_to_publish"], ["publishing"]);
+    act(() => returnToBatch());
+    await waitFor(() => expect(toastText()).toContain(TOO_LATE));
+    await setRows(["ready_to_publish"], ["completed"]);
+  }
+
+  it("太晚的选择不挡别的文件导出：它不可能再存下", async () => {
+    await refusedTooLate();
+    exportByHand();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(modal()).toBeNull();
+  });
+
+  it("太晚的选择不挡“保存并退出”：它不可能再存下，不能把人关在窗口里", async () => {
+    await refusedTooLate();
+    const quit = quitting();
+    act(() => saveAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+  });
+
+  it("文件退回可处理后再打开：显示内核里的选择，不说是上次没存下的；再改能写入", async () => {
+    await refusedTooLate();
+    await setRows(...bothReady);
+    act(() => dismissToast());
+    openBatchFile(1);
+    await waitFor(() => expect(single()?.live?.job).toBe("j2"));
+    expect(shown(0)).toBe("keep");
+    expect(toastText()).not.toContain("上次未能保存");
+    choose(0, "redact");
+    act(() => returnToBatch());
+    await waitFor(() => expect(fake.kernelDecisions.get(31)).toBe(false));
+    await waitFor(() => expect(toastText()).toContain("已保存修改"));
+  });
+
+  it("重新保存时有写入在路上：等它落地，旧选择不盖新选择", async () => {
+    await refusedOnReadyFile("ready_to_publish");
+    expect(fake.kernelDecisions.get(31)).toBe(true);
+    fake.decideFails = null;
+    // the person went back to the file and changed their mind again: this write is newer than what was refused
+    const release = await heldWrite(0, "keep");
+    act(() => openModal({ type: "unsavedDecisions", targets: [{ job: "j1", name: "a.txt", reason: "STORE_FAILED" }] }));
+    act(() => button("重新保存").click());
+    await settle();
+    expect(modal()?.type).toBe("unsavedDecisions"); // the answer is not known yet
+    release();
+    await waitFor(() => expect(modal()).toBeNull());
+    await settle();
+    expect(landed("j1")).toEqual([true]);
+    expect(fake.kernelDecisions.get(31)).toBe(true);
+  });
+
+  it("重新保存时文件已开始导出：不说已保存，说明原因；关掉后不再挡导出", async () => {
+    await refusedOnReadyFile("ready_to_publish");
+    exportByHand(2);
+    await waitFor(() => expect(modal()?.type).toBe("unsavedDecisions"));
+    fake.decideFails = null;
+    kernelAhead(["publishing"], ["ready_to_publish"]);
+    act(() => button("重新保存").click());
+    await waitFor(() => expect(page()).toContain(TOO_LATE));
+    await settle();
+    expect(modal()?.type).toBe("unsavedDecisions");
+    expect(toastText()).not.toContain("选择已保存");
+    expect(fake.kernelDecisions.get(31)).toBe(true);
+
+    act(() => button("取消").click());
+    await setRows(["completed"], ["ready_to_publish"]);
+    exportByHand();
+    await waitFor(() => expect(fake.published).toBeTruthy());
+    expect(modal()).toBeNull();
   });
 });
 

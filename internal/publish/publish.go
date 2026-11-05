@@ -613,6 +613,21 @@ func Deliveries(tx store.Tx, job string) ([]Delivery, []bool, error) {
 	return ds, sup, rs.Err()
 }
 
+// Begun reports whether a job's document has gone out or may be on its way there: a delivery is on record, or an
+// intent that has not ended. No other intent can be committed once the attempt that would write it is stale.
+func Begun(tx store.Tx, job string) (bool, error) {
+	if job == "" {
+		return false, ErrInvalid
+	}
+	t, _, err := scope(tx)
+	if err != nil {
+		return false, err
+	}
+	var begun bool
+	err = t.QueryRow(`SELECT EXISTS(SELECT 1 FROM publish_delivery WHERE job=?) OR EXISTS(SELECT 1 FROM publish_intent WHERE job=? AND state='prepared')`, job, job).Scan(&begun)
+	return begun, err
+}
+
 // Purge deletes a job's grant, intents and delivery records (retention). The
 // delivered files themselves belong to the user and are never touched.
 func Purge(tx store.Tx, job string) error {
