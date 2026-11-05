@@ -77,13 +77,23 @@ func (f *fixture) get(t *testing.T, id string) Job {
 	}
 	return job
 }
+
+// due is the stage the file is at, which is what a current notification names.
+func (f *fixture) due(t *testing.T, job Job) kernel.StageKind {
+	t.Helper()
+	_, stage, ok := beginning(job.Position, f.repo.limits)
+	if !ok {
+		t.Fatalf("%s has no stage to begin at %s", job.ID, job.Position.State)
+	}
+	return stage
+}
 func (f *fixture) start(t *testing.T, id string) kernel.AttemptRef {
 	t.Helper()
 	job := f.get(t, id)
 	var attempt kernel.AttemptRef
 	if err := f.commit(func(tx store.Tx) error {
 		var err error
-		attempt, err = f.repo.BeginStage(tx, id, job.Version, f.ws.Generation())
+		attempt, err = f.repo.BeginStage(tx, id, f.due(t, job), job.Version, f.ws.Generation())
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -428,5 +438,67 @@ func TestRepositoryFrozenMembershipCannotGrow(t *testing.T) {
 	}
 	if err := f.commit(func(tx store.Tx) error { return f.repo.AddMember(tx, "b", "new", 1) }); !errors.Is(err, ErrJobRecord) {
 		t.Fatalf("new file entered frozen batch: %v", err)
+	}
+}
+
+// A notification can outlive the position it was sent for (#40). Begun anyway, the attempt would be recorded as the
+// stage the file is at while the scheduler ran the one the notification named.
+func TestBeginStageRefusesAStageTheFileIsNotAt(t *testing.T) {
+	R, E, U := kernel.StageResolve, kernel.StageExport, kernel.StagePublish
+	cases := []struct {
+		name     string
+		position Snapshot
+		stage    kernel.StageKind
+		begins   State // the state it begins at; empty: refused
+	}{
+		{"between resolve and export", Snapshot{State: Exporting}, R, ""},
+		{"ready to publish", Snapshot{State: ReadyToPublish}, R, ""},
+		{"queued for another stage", Snapshot{State: Queued, Cursor: R}, U, ""},
+		{"waiting for review", Snapshot{State: AwaitingReview}, R, ""},
+		{"paused", Snapshot{State: Paused, Resume: Exporting}, E, ""},
+		{"cancelling", Snapshot{State: Cancelling}, R, ""},
+		{"ended", Snapshot{State: Completed}, U, ""},
+		{"no stage named, none to run", Snapshot{State: AwaitingReview}, kernel.StageNone, ""},
+		{"queued with a cursor that names no stage", Snapshot{State: Queued, Cursor: kernel.StageSupplementScan}, kernel.StageSupplementScan, ""},
+		// what a current notification names still begins
+		{"at its stage", Snapshot{State: Exporting}, E, Exporting},
+		{"ready, with the publish", Snapshot{State: ReadyToPublish}, U, Publishing},
+		{"queued for this stage", Snapshot{State: Queued, Cursor: R}, R, Resolving},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := fixtureDB(t)
+			f.create(t, "b", RegularBatch)
+			f.member(t, "b", "j")
+			before := f.get(t, "j")
+			before.Position = c.position
+			if err := f.commit(func(tx store.Tx) error {
+				_, scope, err := transaction(tx)
+				if err != nil {
+					return err
+				}
+				return save(tx, scope, before, before.Version)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			var a kernel.AttemptRef
+			err := f.commit(func(tx store.Tx) (err error) {
+				a, err = f.repo.BeginStage(tx, "j", c.stage, before.Version, f.ws.Generation())
+				return err
+			})
+			after := f.get(t, "j")
+			if c.begins != "" {
+				if err != nil || a.AttemptID == "" || after.Position.State != c.begins {
+					t.Fatalf("a current notification: %v, attempt %q, state %s", err, a.AttemptID, after.Position.State)
+				}
+				return
+			}
+			if !errors.Is(err, ErrStaleDispatch) {
+				t.Fatalf("began %s at %s: %v, state now %s", c.stage, c.position.State, err, after.Position.State)
+			}
+			if after.Version != before.Version || after.AttemptID != "" || after.Position.State != c.position.State {
+				t.Fatalf("a refused notification changed the file: %+v", after)
+			}
+		})
 	}
 }

@@ -28,7 +28,7 @@ func (f *fixture) startReading(t *testing.T, id string, r StageReads) kernel.Att
 	var attempt kernel.AttemptRef
 	if err := f.commit(func(tx store.Tx) error {
 		var err error
-		attempt, err = f.repo.BeginStageReading(tx, id, job.Version, f.ws.Generation(), r)
+		attempt, err = f.repo.BeginStageReading(tx, id, f.due(t, job), job.Version, f.ws.Generation(), r)
 		return err
 	}); err != nil {
 		t.Fatal(err)
