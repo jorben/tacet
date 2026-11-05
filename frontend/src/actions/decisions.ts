@@ -33,13 +33,15 @@ export const decisionsSettled = (job: string): Promise<void> => pending.get(job)
 /** The choices of a file that have not reached the kernel, as of now: wait for its writes first. */
 export const unsavedDecisions = (job: string): Decisions | undefined => unsaved.get(job)?.ds;
 
-/** Waits for every write on its way; what has not reached the kernel by then, including earlier failures. */
+/** Waits until no write is on its way, those made during the wait too: a person can go on choosing meanwhile. What
+ *  has not reached the kernel by then, including earlier failures. */
 export async function allDecisionsSettled(): Promise<UnsavedDecisions[]> {
-  await Promise.all(pending.values());
+  while (pending.size) await Promise.all(pending.values());
   return [...unsaved.values()];
 }
 
-/** Sends again what the kernel refused; `allDecisionsSettled` tells how that went. */
+/** Sends again what the kernel refused; `allDecisionsSettled` tells how that went. What was refused is older than any
+ *  write of its file made since, so call this with none on its way, or it lands over the newer one. */
 export function resendDecisions(jobs: string[]): void {
   for (const job of jobs) {
     const u = unsaved.get(job);

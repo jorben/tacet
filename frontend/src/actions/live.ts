@@ -123,12 +123,15 @@ function keptJobs(s: AppState): Set<string> {
 /** Hands choices to the kernel before the window goes away. False, having said so, if the kernel did not take them. */
 export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean> {
   const inKept = (list: UnsavedDecisions[]) => { const kept = keptJobs(getState()); return list.filter((u) => kept.has(u.job)); };
-  // Only this window holds what was refused, so it goes again. The choices on screen are newer: they go after it.
-  resendDecisions(inKept(await allDecisionsSettled()).map((u) => u.job));
+  // The choices on screen go now, not after the wait: one made during it has to land after them.
   open.forEach((o) => { void sendDecisions(o.job, decisionsOf(o.hits, { findingOf: o.findingOf })).catch(() => {}); });
+  // Only this window holds what was refused, so it goes again, now that nothing newer can be ahead of it. A file on
+  // screen has just been sent: its failure is what the person is told below.
+  const onScreen = new Set(open.map((o) => o.job));
+  resendDecisions(inKept(await allDecisionsSettled()).map((u) => u.job).filter((job) => !onScreen.has(job)));
   const [refused] = inKept(await allDecisionsSettled());
   if (!refused) return true;
-  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试，或选择“停止并清理”退出");
+  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，但会清掉全部未完成的任务（含“最近”里的），已导出的文件不受影响");
   return false;
 }
 
@@ -439,12 +442,12 @@ const rasterPage = (p: EnginePagePreview): RasterPage => ({
 
 /** A PDF is shown as the rendered pages. The first page tells how many there are; if it cannot be drawn the
  *  text of the document is shown instead, and the person is told. */
-async function openRaster(job: string): Promise<{ doc: RasterDoc; pages: number } | null> {
+async function openRaster(job: string, stale: () => boolean): Promise<{ doc: RasterDoc; pages: number } | null> {
   try {
     const first = await liveEngine()!.pagePreview(job, 1, RASTER_DPI);
     return { doc: { pages: { 0: rasterPage(first) }, failed: {} }, pages: first.pages };
   } catch {
-    toast("页面预览不可用，改为文本显示");
+    if (!stale()) toast("页面预览不可用，改为文本显示");
     return null;
   }
 }
@@ -479,10 +482,11 @@ function padPages(pages: Single["pages"], seqOf: number[][], count: number): voi
 async function showReview(runId: number, job: string): Promise<void> {
   const s = getState().single;
   if (!s || s.runId !== runId) return;
+  const stale = () => getState().single?.runId !== runId; // the screen went on to another task: nothing to tell it
   try {
     const { units, truncated } = await loadUnits(job);
     const doc = buildLiveDocument(units, s.ext);
-    const raster = s.ext === "pdf" ? await openRaster(job) : null;
+    const raster = s.ext === "pdf" ? await openRaster(job, stale) : null;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
     store.update((d) => {
       const x = d.single;
@@ -490,7 +494,7 @@ async function showReview(runId: number, job: string): Promise<void> {
       Object.assign(x, { pages: doc.pages, hits: doc.hits, imgs: [], phase: "review", stage: 0, sp: 0 });
       x.live = { ...x.live!, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc };
     });
-    if (truncated) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
+    if (truncated && !stale()) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
   } catch (err) {
     shelveUnread(runId, err);
   }
@@ -989,11 +993,14 @@ function supersedeOpen(): number {
 /** Opens the document of one file of the batch for review, or the dialog it is waiting for. */
 export async function openLiveFile(fi: number): Promise<void> {
   const runId = supersedeOpen();
-  const stale = () => lastOpen !== runId;
+  const superseded = () => lastOpen !== runId;
   const s = getState();
   const b = s.batch!;
   const f = b.files[fi]!;
   const batchId = b.live!.id;
+  // What is read arrives late. It is dropped, without a word, if the person has moved on: another click, another batch,
+  // another page. The page is compared, not told: every way of leaving it changes the view.
+  const stale = () => superseded() || getState().batch?.live?.id !== batchId || getState().view !== s.view;
   const job = b.live!.jobs[fi]!;
   closeModal();
   if (f.g.includes(GROUP_PASSWORD)) { openModal({ type: "livePassword", targets: [{ job, name: f.name }] }); return; }
@@ -1009,15 +1016,14 @@ export async function openLiveFile(fi: number): Promise<void> {
     // what the kernel refused is still what the person chose: it shows, and leaving the file sends it again
     const unsaved = unsavedDecisions(job);
     const doc = buildLiveDocument(unsaved ? withDecisions(units, unsaved) : units, f.ext);
-    const raster = f.ext === "pdf" ? await openRaster(job) : null;
+    const raster = f.ext === "pdf" ? await openRaster(job, stale) : null;
     if (stale()) return;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
     store.update((d) => {
-      if (d.batch?.live?.id !== batchId) return;
       leaveLiveFile(d); // a file still on screen gives way: its choices exist nowhere else
       if (d.single && d.single.from !== "batch" && !d.behind) d.behind = { single: plain(d.single), undo: plain(d.undo) };
-      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch.preset, modelId: null }, {
-        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch.out, pages: doc.pages, hits: doc.hits, imgs: [],
+      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch!.preset, modelId: null }, {
+        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch!.out, pages: doc.pages, hits: doc.hits, imgs: [],
         live: { batch: batchId, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc, sent: !!unsaved },
       });
       d.undo = [];
@@ -1028,7 +1034,7 @@ export async function openLiveFile(fi: number): Promise<void> {
   } catch (err) {
     if (!stale()) toast(errorText(err));
   } finally {
-    if (!stale()) store.update((d) => { d.fileOpening = null; });
+    if (!superseded()) store.update((d) => { d.fileOpening = null; }); // a later click has its own to show
   }
 }
 

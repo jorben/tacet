@@ -20,6 +20,8 @@ export class FakeEngine implements EngineService {
   private kernelDecisions = new Map<number, boolean>();
   decideFails: Error | null = null;
   decideGate: Promise<void> | null = null;
+  /** The next write of one file waits for this; the writes of other files do not. */
+  decideGateOf = new Map<string, Promise<void>>();
   /** The next read of a document fails, once, as a store that is briefly unavailable. */
   documentFails: Error | null = null;
   /** The answer to a status call is late, as the real call is while the kernel is busy. */
@@ -288,6 +290,8 @@ export class FakeEngine implements EngineService {
   async decide(job: string, ds: { id: number; keep: boolean }[]) {
     this.calls.push("decide");
     if (this.decideGate) await this.decideGate;
+    const own = this.decideGateOf.get(job);
+    if (own) { this.decideGateOf.delete(job); await own; }
     if (this.decideFails) throw this.decideFails;
     this.decisions = ds;
     this.decisionLog.push({ job, ds });
