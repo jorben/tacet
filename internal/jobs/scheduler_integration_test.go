@@ -65,7 +65,7 @@ func TestSchedulerStageOutcomesPersistThroughWorkspaceAdmission(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			a, err = repo.BeginStage(tx, id, j.Version, ws.Generation())
+			a, err = repo.BeginStage(tx, id, stage, j.Version, ws.Generation())
 			return err
 		})
 		if err == nil {
