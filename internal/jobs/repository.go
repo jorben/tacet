@@ -364,7 +364,7 @@ func (r *Repository) ConfirmBatch(tx store.Tx, batch string) (int, error) {
 		for _, job := range members {
 			after = job.Ordinal
 			count++
-			if job.Position.State == Unprocessable {
+			if job.Position.State == Unprocessable || job.Position.State == Cancelled {
 				continue
 			}
 			if job.AttemptID != "" {

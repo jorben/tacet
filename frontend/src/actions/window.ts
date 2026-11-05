@@ -3,11 +3,12 @@ import { exportedCount, countFiles } from "../domain/batch";
 import { fmt } from "../domain/format";
 import { getService } from "../services";
 import { getState, store } from "../store";
-import { unfinishedBatch, unfinishedOnScreen } from "../store/selectors";
+import { refusedFiles, unfinishedBatch, unfinishedOnScreen } from "../store/selectors";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
-import { discardLiveTask, openDecisions, saveOpenDecisions, savedBatchId } from "./live";
+import { allDecisionsSettled, refusedJobs } from "./decisions";
+import { discardLiveTask, discardRefused, openDecisions, saveOpenDecisions, savedBatchId } from "./live";
 
 export function minimiseWindow(): void {
   void getService().minimiseWindow().catch(() => {});
@@ -47,22 +48,36 @@ export function saveAndQuit(): void {
   closeModal();
   void saveOpenDecisions(openDecisions(getState())).then((saved) => {
     if (!saved) return; // the window stays, and nothing was paused: the batch goes on as the screen says
-    store.update((d) => { if (d.batch) d.batch.paused = true; });
+    markKeptPaused();
     quitApp();
   });
 }
 
-/** Discard unfinished work and quit; exported files are not affected. */
+const markKeptPaused = () => store.update((d) => { if (d.batch) d.batch.paused = true; });
+const refusedJobsKept = () => refusedFiles(getState(), refusedJobs()).length > 0;
+
+/** “停止并清理”, then quit; exported files are not affected. Where the kernel refused choices, what goes is the files
+ *  they were on, as the dialog said; with none refused, everything it listed. A write still on its way decides between
+ *  the two when it ends, and goes the safe way: refused, it costs the file and not the rest. */
 export function stopAndQuit(): void {
   closeModal();
-  // The kernel would list them all again at the next start: what was listed in the dialog is stopped there too.
-  const before = getState();
-  const kept = [savedBatchId(unfinishedOnScreen(before, "single") ?? undefined), savedBatchId(unfinishedBatch(before) ?? undefined),
-    ...before.history.filter((h) => h.park).map((h) => savedBatchId(h.saved))].filter((id): id is string => !!id);
+  const named = refusedFiles(getState(), refusedJobs());
   store.update((d) => {
     if (d.single && d.single.from === "batch") leaveBatchFile(d);
   });
+  void allDecisionsSettled().then(async () => {
+    if (!named.length && !refusedJobsKept()) { discardEverything(); return; }
+    await discardRefused(named);
+    markKeptPaused();
+    quitApp();
+  });
+}
+
+function discardEverything(): void {
+  // The kernel would list them all again at the next start: what was listed in the dialog is stopped there too.
   const s = getState();
+  const kept = [savedBatchId(unfinishedOnScreen(s, "single") ?? undefined), savedBatchId(unfinishedBatch(s) ?? undefined),
+    ...s.history.filter((h) => h.park).map((h) => savedBatchId(h.saved))].filter((id): id is string => !!id);
   if (unfinishedOnScreen(s, "single")) { stopSingleTimer(); store.update((d) => { d.single = null; d.undo = []; }); }
   const bb = unfinishedBatch(s);
   if (bb) {

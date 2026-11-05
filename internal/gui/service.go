@@ -369,6 +369,16 @@ func (s *Service) CleanBatch(batch string) error {
 	return s.simple(batch, func(c app.Core, ctx context.Context, b string) error { return c.Clean(ctx, b) })
 }
 
+// CancelFile stops one file of a batch; the other files go on.
+func (s *Service) CancelFile(job string) error {
+	return s.simple(job, func(c app.Core, ctx context.Context, j string) error { return c.CancelFile(ctx, j) })
+}
+
+// CleanFile removes the data of one file that has ended; the rest of its batch stays.
+func (s *Service) CleanFile(job string) error {
+	return s.simple(job, func(c app.Core, ctx context.Context, j string) error { return c.CleanFile(ctx, j) })
+}
+
 // RetryFiles re-runs failed or blocked files; no files means all of them.
 func (s *Service) RetryFiles(batch string, files []string) error {
 	core, err := s.engine()

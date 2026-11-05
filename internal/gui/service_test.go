@@ -35,6 +35,14 @@ func (f *fakeCore) Import(_ context.Context, r app.ImportRequest) (app.BatchStat
 	return app.BatchStatus{ID: "b0001"}, f.err
 }
 func (f *fakeCore) Start(_ context.Context, r app.StartRequest) error { f.started = r; return f.err }
+func (f *fakeCore) CancelFile(_ context.Context, job string) error {
+	f.asked = append(f.asked, "cancel-file:"+job)
+	return f.err
+}
+func (f *fakeCore) CleanFile(_ context.Context, job string) error {
+	f.asked = append(f.asked, "clean-file:"+job)
+	return f.err
+}
 func (f *fakeCore) Status(context.Context, string, int) (app.BatchStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -179,6 +187,21 @@ func TestCommandsReachTheCoreAndHideDetails(t *testing.T) {
 	c.err = errors.New("NOT_ALLOWED: the file /x is not waiting")
 	if err = s.Start(StartArgs{}); err.Error() != "NOT_ALLOWED" {
 		t.Fatalf("detail after the code must be dropped: %v", err)
+	}
+}
+
+func TestOneFileIsCancelledAndCleanedByItsIDAndKeepsOnlyTheCode(t *testing.T) {
+	c := &fakeCore{}
+	s := NewService(opener(c, nil), &fakeHost{})
+	if err := s.CancelFile("j7"); err != nil || c.asked[len(c.asked)-1] != "cancel-file:j7" {
+		t.Fatalf("%v %v", c.asked, err)
+	}
+	if err := s.CleanFile("j7"); err != nil || c.asked[len(c.asked)-1] != "clean-file:j7" {
+		t.Fatalf("%v %v", c.asked, err)
+	}
+	c.err = errors.New("ACTION_NOT_ALLOWED: file /Users/x/a.txt has not ended")
+	if err := s.CleanFile("j7"); err == nil || err.Error() != "ACTION_NOT_ALLOWED" {
+		t.Fatal(err)
 	}
 }
 

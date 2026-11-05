@@ -14,8 +14,8 @@ import { getService } from "../services";
 import type { EngineBatch, EngineFile, EnginePagePreview, EngineService } from "../services/types";
 import type { ManualSelection } from "../domain/single";
 import { getState, store, type AppState } from "../store";
-import { isWorking, screenSingle } from "../store/selectors";
-import { allDecisionsSettled, decisionsSettled, forgetDecisions, resendDecisions, sendDecisions, unsavedDecisions, type UnsavedDecisions } from "./decisions";
+import { isWorking, keptTasks, refusedFiles, screenSingle, type RefusedFile } from "../store/selectors";
+import { allDecisionsSettled, decisionsSettled, forgetDecisions, refusedJobs, resendDecisions, sendDecisions, unsavedDecisions, type UnsavedDecisions } from "./decisions";
 import { batchEntryStatus, shelveLiveBatch, shelveSingle, singleEntryStatus } from "./shelf";
 import { nextId, nextRunId } from "./timers";
 import { flushConfig, loadConfig, presetEngineId, refreshModels } from "./liveConfig";
@@ -115,10 +115,12 @@ export function openDecisions(s: AppState): OpenDecisions[] {
 
 /** The files of every task still kept for the person: a refused write on any other has nothing left to save. */
 function keptJobs(s: AppState): Set<string> {
-  const jobsOf = (t: { live?: { jobs?: string[]; job?: string } } | null | undefined): string[] =>
-    t?.live?.jobs ?? (t?.live?.job ? [t.live.job] : []);
-  return new Set([s.batch, s.single, s.behind?.single, ...s.history.filter((h) => h.park).map((h) => h.saved as Single | Batch)].flatMap(jobsOf));
+  return new Set(keptTasks(s).flatMap((t) => ("files" in t ? t.live!.jobs : [t.live!.job])));
 }
+
+/** The refused files, as the person is told how far “停止并清理” reaches. */
+const refusedScope = (files: RefusedFile[]): string =>
+  "「" + files[0]!.name + "」" + (files.length > 1 ? "等 " + files.length + " 个文件" : "");
 
 /** Hands choices to the kernel before the window goes away. False, having said so, if the kernel did not take them. */
 export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean> {
@@ -131,7 +133,8 @@ export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean>
   resendDecisions(inKept(await allDecisionsSettled()).map((u) => u.job).filter((job) => !onScreen.has(job)));
   const [refused] = inKept(await allDecisionsSettled());
   if (!refused) return true;
-  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，但会清掉全部未完成的任务（含“最近”里的），已导出的文件不受影响");
+  const files = refusedFiles(getState(), refusedJobs());
+  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，只清理" + refusedScope(files) + "，其他任务保留，已导出的文件不受影响");
   return false;
 }
 
@@ -869,6 +872,7 @@ export async function stopLiveBatch(keep: boolean): Promise<void> {
   const b = getState().batch;
   if (!b?.live?.id) return;
   const id = b.live.id;
+  const { title } = b;
   await allDecisionsSettled();
   try {
     if (keep) {
@@ -892,17 +896,20 @@ export async function stopLiveBatch(keep: boolean): Promise<void> {
         d.history = d.history.filter((h) => !(h.park && savedBatchId(h.saved) === id));
         if (d.batch?.live?.id === id) { d.batch = null; d.view = "home"; }
       });
-      toast("已停止并清理；已导出的文件不受影响");
+      toast("已停止并清理「" + title + "」，其他任务保留；已导出的文件不受影响");
     }
   } catch (err) { toast(errorText(err)); }
 }
 
 /** Removes a stopped batch's data; the kernel refuses until every file has come to rest, so it is asked again. */
-async function cleanWhenStopped(id: string): Promise<void> {
-  const e = liveEngine()!;
+function cleanWhenStopped(id: string): Promise<void> {
+  return askUntilStopped(() => liveEngine()!.clean(id));
+}
+
+async function askUntilStopped(clean: () => Promise<void>): Promise<void> {
   let last: unknown;
   for (let i = 0; i < 100; i++) {
-    try { await e.clean(id); return; } catch (err) { last = err; await new Promise((r) => setTimeout(r, 100)); }
+    try { await clean(); return; } catch (err) { last = err; await new Promise((r) => setTimeout(r, 100)); }
   }
   throw last;
 }
@@ -955,6 +962,41 @@ export async function discardLiveTask(batch: string): Promise<boolean> {
     toast(errorText(err));
     return false;
   }
+}
+
+/** Stops one file of a batch and removes its data; the rest of the batch stays. False if the kernel refused. */
+async function discardLiveFile(job: string): Promise<boolean> {
+  const e = liveEngine();
+  if (!e) return false;
+  try {
+    await e.cancelFile(job);
+    await askUntilStopped(() => e.cleanFile(job));
+    await forgetDecisions(job); // its row stays in the batch: what was refused on it no longer holds the batch back
+    return true;
+  } catch (err) {
+    toast(errorText(err));
+    return false;
+  }
+}
+
+/** “停止并清理” with choices the kernel refused: those files go, a single task as a whole, and every other task is kept
+ *  as “保存并关闭” keeps it, with what only this window holds handed to the kernel first. `named` is what the person was
+ *  told goes: it does, even if a write of it has landed since. A file refused while this saves goes too: there is no
+ *  window left to hold its choices. */
+export async function discardRefused(named: RefusedFile[]): Promise<void> {
+  openDecisions(getState()).forEach((o) => {
+    void sendDecisions(o.job, decisionsOf(o.hits, { findingOf: o.findingOf })).catch(() => {});
+  });
+  await allDecisionsSettled();
+  const late = refusedFiles(getState(), refusedJobs()).filter((f) => !named.some((n) => n.job === f.job));
+  const files = [...named, ...late];
+  // a task the kernel would not give up stays where it is, as it does when discarded from its entry
+  const gone = await Promise.all(files.map(async (f) => (f.inBatch ? discardLiveFile(f.job) : (await discardLiveTask(f.batch)) && f.batch)));
+  const whole = new Set(gone.filter((g) => typeof g === "string"));
+  store.update((d) => {
+    if (d.single?.live && whole.has(d.single.live.batch)) { d.single = null; d.undo = []; d.view = "home"; }
+    d.history = d.history.filter((h) => !(h.park && whole.has(savedBatchId(h.saved) ?? "")));
+  });
 }
 
 /** Gives up a batch that has not started. */

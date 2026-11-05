@@ -160,7 +160,7 @@ describe("批量 · 处理中", () => {
     expect(menuTexts()).toContain("停止并保留以便恢复");
     pick("停止并清理");
     expect($("#tbTitle")!.textContent).toContain("Tacet");
-    expect($(".toast")!.textContent).toContain("已停止并清理");
+    expect($(".toast")!.textContent).toMatch(/已停止并清理「.+」，其他任务保留/);
     expect(getState().batch).toBeNull();
     go("b2");
     press("停止");

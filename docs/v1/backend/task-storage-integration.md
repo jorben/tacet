@@ -293,7 +293,7 @@ go test -race -count=1 -timeout=40s ./internal/jobs ./internal/query ./internal/
 
 **装配（`internal/app`）**：`Open`/`OpenWith` 取得工作区、恢复资源、登记内置插件与内置规则/方案/预设、启动调度与完成循环。六个阶段运行器（预检、抽取+检测、解析、导出、验证、发布）把真实插件进程（`host.Start`，`-I -m <module>`，环境白名单，按“工作区哈希+代次+序号”打标记）接到 `sched`/`jobs`：阶段完成经 `ws.AdmitTx` 与 `jobs.CompleteStage` 落库，应用侧后续（发布授权、报告、批次结束）在 `afterState`。`app` 因此是组合根，允许额外依赖 `host/refs/keys/netgate/platform`（`archtest` 同步放宽并注明）。
 
-**用例（`Core`）**：Import/Preflight/Start/Status/Files/Wait/Publish/Pause/Resume/Cancel/Retry/Clean/Unlock/Findings/Document/DecideFinding(s)/AddManual；`Notifier.Subscribe` 供 GUI 推送。每个文件的原件被复制为任务密钥加密的资源，之后所有阶段读该副本；解锁后的副本替代它。
+**用例（`Core`）**：Import/Preflight/Start/Status/Files/Wait/Publish/Pause/Resume/Cancel/CancelFile/Retry/Clean/CleanFile/Unlock/Findings/Document/DecideFinding(s)/AddManual；`Notifier.Subscribe` 供 GUI 推送。每个文件的原件被复制为任务密钥加密的资源，之后所有阶段读该副本；解锁后的副本替代它。
 
 **CLI**（`tacet preflight|run|status|resume|retry|clean`）：显式 `--preset/--authorize/--out`，文件清单 `--list`（`-`为 stdin），`--json` 逐行输出，Ctrl-C 暂停并退出 3；退出码 0/1/2/3 取自 `verdict`；默认使用独立于 GUI 的工作区；平台密钥不可用/工作区被占用返回 1 与封闭码；预检结束后取消并清理，不遗留草稿。
 

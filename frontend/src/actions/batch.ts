@@ -204,9 +204,10 @@ export function openStopMenu(anchor: PopAnchor): void {
       parkBatch(days);
       toast("已保存 " + days + " 天，可在“最近”中继续");
     } else {
-      const exported = exportedCount(countFiles(getState().batch!.files));
+      const { title, files } = getState().batch!;
+      const exported = exportedCount(countFiles(files));
       store.update((d) => discardBatch(d));
-      toast("已停止并清理；已导出的 " + fmt(exported) + " 份不受影响");
+      toast("已停止并清理「" + title + "」，其他任务保留；已导出的 " + fmt(exported) + " 份不受影响");
     }
     store.update((d) => { d.view = "home"; });
   }, { alignRight: true });
