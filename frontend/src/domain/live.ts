@@ -198,6 +198,15 @@ export function unitOffsets(block: Block, hits: Hit[], segment: number, st: numb
   return [before + st, before + en];
 }
 
+/** The units as they would read if the kernel had taken these choices. */
+export function withDecisions(units: EngineUnit[], ds: { id: number; keep: boolean }[]): EngineUnit[] {
+  const keep = new Map(ds.map((d) => [d.id, d.keep]));
+  return units.map((u) => ({
+    ...u,
+    findings: u.findings && u.findings.map((f) => (keep.has(f.id) ? { ...f, decision: keep.get(f.id) ? "keep" : "redact" } : f)),
+  }));
+}
+
 /** The decisions to hand to the engine for what is shown: keep or redact for every hit. */
 export function decisionsOf(hits: Hit[], live: Pick<LiveSingle, "findingOf">): { id: number; keep: boolean }[] {
   return hits.map((h, i) => ({ id: live.findingOf[i]!, keep: h.state === "keep" })).filter((d) => d.id != null);

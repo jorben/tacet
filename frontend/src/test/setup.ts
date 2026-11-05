@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import { resetDecisions } from "../actions/decisions";
 import { stopAllTimers } from "../actions/timers";
 import { setContinuation } from "../actions/pending";
 import { resetScenes } from "../dev/scenes";
@@ -19,6 +20,7 @@ window.scrollTo = vi.fn() as any;
 beforeEach(() => {
   stopAllTimers();
   setContinuation(null);
+  resetDecisions();
   resetScenes();
   resetOverlay();
   resetStore();

@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
-import { retryLive, skipLive, unlockLive } from "../../actions/live";
+import { openLiveFile, resendUnsaved, retryLive, skipLive, unlockLive } from "../../actions/live";
 import { publishValidated, resolveException } from "../../actions/batch";
 import { enterBatchReview } from "../../actions/review";
 import { countFiles, groupMembers, groupTotal } from "../../domain/batch";
 import { fmt } from "../../domain/format";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
-import { closeModal, toast } from "../../overlay/store";
+import { closeModal, toast, type UnsavedTarget } from "../../overlay/store";
 import { useAppState } from "../../store";
 import { Button, Field, KeyValue, pushLeft } from "../../ui";
 
@@ -199,8 +199,9 @@ export function LiveBlockedDialog({ targets: initial }: { targets: { job: string
   };
   const retry = async () => {
     setBusy(true);
-    await retryLive();
+    const queued = await retryLive();
     setBusy(false);
+    if (!queued) return; // what stands in the way was said, and may be a dialog of its own
     closeModal();
     toast("已重新排队");
   };
@@ -224,6 +225,47 @@ export function LiveBlockedDialog({ targets: initial }: { targets: { job: string
         </Button>
         <Button variant="primary" disabled={busy} onClick={() => void retry()}>
           重新处理
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/** Files whose last choices the kernel refused: nothing goes on from the older ones it holds until they are saved. */
+export function UnsavedDecisionsDialog({ targets: initial }: { targets: UnsavedTarget[] }) {
+  const [targets, setTargets] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const jobs = useAppState((s) => s.batch?.live?.jobs) ?? [];
+  const resend = async () => {
+    setBusy(true);
+    const left = await resendUnsaved(targets);
+    setBusy(false);
+    if (left.length) { setTargets(left); return; }
+    closeModal();
+    toast("选择已保存 · 文件按新选择处理好后可导出");
+  };
+  return (
+    <Modal>
+      <ModalHeader title="选择未能保存，这次操作没有执行" subtitle="继续会用到旧选择。请重新保存，或打开文件重新确认" />
+      <ModalBody>
+        {targets.map((t) => (
+          <div key={t.job} className="sm" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--ink-2)" }}>{t.name}</span>
+            <span className="muted">{t.reason}</span>
+            {jobs.includes(t.job) && (
+              <Button variant="ghost" style={{ marginLeft: "auto" }} disabled={busy} onClick={() => void openLiveFile(jobs.indexOf(t.job))}>
+                打开文件
+              </Button>
+            )}
+          </div>
+        ))}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={closeModal}>
+          取消
+        </Button>
+        <Button variant="primary" disabled={busy} onClick={() => void resend()}>
+          重新保存
         </Button>
       </ModalFooter>
     </Modal>

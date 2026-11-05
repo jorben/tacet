@@ -1,6 +1,6 @@
 import type { ModalSpec } from "../../overlay/store";
 import { UpdateAppDialog, AboutLinkDialog, LicensesDialog, CleanWorkspaceDialog, CloseWindowDialog } from "./appDialogs";
-import { BulkConfirmDialog, ExportReadyDialog, LiveBlockedDialog, LivePasswordDialog, PasswordDialog } from "./batchDialogs";
+import { BulkConfirmDialog, ExportReadyDialog, LiveBlockedDialog, LivePasswordDialog, PasswordDialog, UnsavedDecisionsDialog } from "./batchDialogs";
 import { DeleteCategoryDialog, DetectionLossDialog, ImportConflictDialog, RuleEditorDialog, VersionsDialog } from "./configDialogs";
 import { HistoryItemDialog, RecentTasksDialog, ResumeBatchDialog } from "./history";
 import { PresetTestDialog } from "./presetTest";
@@ -20,6 +20,7 @@ export function ModalContent({ spec }: { spec: ModalSpec }) {
     case "exportReady": return <ExportReadyDialog />;
     case "livePassword": return <LivePasswordDialog targets={spec.targets} />;
     case "liveBlocked": return <LiveBlockedDialog targets={spec.targets} />;
+    case "unsavedDecisions": return <UnsavedDecisionsDialog targets={spec.targets} />;
     case "ruleEditor": return <RuleEditorDialog rulesetId={spec.rulesetId} index={spec.index} category={spec.category} initial={spec.draft} />;
     case "detectionLoss": return <DetectionLossDialog action={spec.action} lost={spec.lost} noRules={spec.noRules} go={spec.go} back={spec.back} />;
     case "deleteCategory": return <DeleteCategoryDialog id={spec.id} back={spec.back} />;

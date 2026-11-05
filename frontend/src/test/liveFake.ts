@@ -20,6 +20,8 @@ export class FakeEngine implements EngineService {
   private kernelDecisions = new Map<number, boolean>();
   decideFails: Error | null = null;
   decideGate: Promise<void> | null = null;
+  /** The next write of one file waits for this; the writes of other files do not. */
+  decideGateOf = new Map<string, Promise<void>>();
   /** The next read of a document fails, once, as a store that is briefly unavailable. */
   documentFails: Error | null = null;
   /** The answer to a status call is late, as the real call is while the kernel is busy. */
@@ -36,6 +38,8 @@ export class FakeEngine implements EngineService {
   /** The next read of rows, and of a document, waits for this. */
   filesGate: Promise<void> | null = null;
   documentGate: Promise<void> | null = null;
+  /** The first read of one file's document waits for this, as a large document does; the other files do not. */
+  documentGateOf = new Map<string, Promise<void>>();
   pauseFails: Error | null = null;
   importFails: Error | null = null;
   publishFails: Error | null = null;
@@ -138,10 +142,13 @@ export class FakeEngine implements EngineService {
     return rows.slice(offset, offset + limit);
   }
   publishedBatch = "";
+  /** What the kernel held when it was told to publish: the export is made from these, not from what the screen shows. */
+  publishedWith: Map<number, boolean> | null = null;
   async publish(b: string, partial: boolean, dir?: string) {
     this.calls.push("publish");
     if (this.publishFails) throw this.publishFails;
     this.published = { partial, dir };
+    this.publishedWith = new Map(this.kernelDecisions);
     this.publishedBatch = b;
   }
   async pause(b?: string) {
@@ -191,9 +198,11 @@ export class FakeEngine implements EngineService {
     this.unlocked.push([job, password]);
     if (this.unlockFails) throw this.unlockFails;
   }
-  async documentUnits(_job: string, after: number) {
+  async documentUnits(job: string, after: number) {
     const gate = this.documentGate;
     if (gate) { this.documentGate = null; await gate; }
+    const own = this.documentGateOf.get(job);
+    if (own) { this.documentGateOf.delete(job); await own; }
     if (this.documentFails) { const err = this.documentFails; this.documentFails = null; throw err; }
     return this.units.filter((u) => u.seq > after).map((u) => ({ ...u, findings: (u.findings ?? []).map((f) => (this.kernelDecisions.has(f.id) ? { ...f, decision: this.kernelDecisions.get(f.id) ? "keep" : "redact" } : f)) }));
   }
@@ -294,12 +303,14 @@ export class FakeEngine implements EngineService {
   async decide(job: string, ds: { id: number; keep: boolean }[]) {
     this.calls.push("decide");
     if (this.decideGate) await this.decideGate;
+    const own = this.decideGateOf.get(job);
+    if (own) { this.decideGateOf.delete(job); await own; }
     if (this.decideFails) throw this.decideFails;
     this.decisions = ds;
     this.decisionLog.push({ job, ds });
     ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));
     // the kernel redoes the file from resolution as soon as a decision is stored
-    this.rows = this.rows.map((r) => (r.state === "awaiting_review" || r.state === "ready_to_publish" ? { ...r, state: "resolving", pending: 0 } : r));
+    this.rows = this.rows.map((r) => (r.id === job && (r.state === "awaiting_review" || r.state === "ready_to_publish") ? { ...r, state: "resolving", pending: 0 } : r));
   }
   skipped: string[] = [];
   skipFails: Error | null = null;
