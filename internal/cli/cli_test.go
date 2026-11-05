@@ -23,8 +23,8 @@ type fake struct {
 	mu            sync.Mutex
 	status        app.BatchStatus
 	waitErr       error
-	// startErr, cancelErr and resumeErr are what Start, Cancel and Resume answer.
-	startErr, cancelErr, resumeErr error
+	// startErr and cancelErr are what Start and Cancel answer.
+	startErr, cancelErr error
 	// onStart and onWait run as that call comes in: to look at what the person sees by then, or to interrupt there.
 	onStart, onWait func()
 	calls           []string
@@ -130,7 +130,7 @@ func (f *fake) Document(context.Context, string, int, int) ([]app.DocUnit, error
 func (f *fake) Findings(context.Context, string, int64, int) ([]app.Finding, error) { return nil, nil }
 func (f *fake) DecideFinding(context.Context, string, int64, bool) error            { return nil }
 func (f *fake) Pause(context.Context, string) error                                 { f.rec("pause"); return nil }
-func (f *fake) Resume(context.Context, string) error                                { f.rec("resume"); return f.resumeErr }
+func (f *fake) Resume(context.Context, string) error                                { f.rec("resume"); return nil }
 func (f *fake) Cancel(context.Context, string) error                                { f.rec("cancel"); return f.cancelErr }
 func (f *fake) Retry(_ context.Context, _ string, j []string) error {
 	f.rec("retry:" + strings.Join(j, ","))
@@ -230,34 +230,21 @@ func TestARefusedStartIsReportedAndReleasesItsDraft(t *testing.T) {
 			if code != ExitUsage || !strings.Contains(errOut, tc.kind) {
 				t.Fatalf("code %d err %q", code, errOut)
 			}
-			if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,wait,clean,close" {
+			if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,wait,clean,close" {
 				t.Fatalf("calls %s", got)
 			}
 		})
 	}
 }
 
-// When the files could not be cancelled, Resume could still begin them: nothing more is tried.
-func TestARefusedStartWhoseDraftCannotBeCancelledIsNotResumed(t *testing.T) {
+// When the files could not be cancelled nothing more is tried: a wait for them would not end.
+func TestARefusedStartWhoseDraftCannotBeCancelledIsLeftThere(t *testing.T) {
 	f := &fake{startErr: app.ErrNotReady, cancelErr: errors.New("cancel failed")}
 	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
 	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,close" {
-		t.Fatalf("calls %s", got)
-	}
-}
-
-// A Resume that fails has not dropped the kept start, so a wait for it would only end on an interrupt: the
-// run skips the wait, and still reports its refusal and cleans up.
-func TestARefusedStartWhoseResumeFailsIsNotWaitedFor(t *testing.T) {
-	f := &fake{startErr: app.ErrNotReady, resumeErr: errors.New("resume failed")}
-	code, _, errOut := call(context.Background(), opener(f, nil), "run", "--preset", "p", "--authorize", "--out", t.TempDir(), t.TempDir()+"/a.txt")
-	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
-		t.Fatalf("code %d err %q", code, errOut)
-	}
-	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,clean,close" {
 		t.Fatalf("calls %s", got)
 	}
 }
@@ -297,7 +284,7 @@ func TestAnInterruptEndsTheWaitOfARefusedStart(t *testing.T) {
 	if code != ExitUsage || !strings.Contains(errOut, "tacet: NOT_READY") {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
-	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,resume,wait,clean,close" {
+	if got := strings.Join(f.calls, ","); got != "unfinished,import,start,cancel,wait,clean,close" {
 		t.Fatalf("calls %s", got)
 	}
 }

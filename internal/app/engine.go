@@ -195,8 +195,13 @@ type Engine struct {
 	// beforeMembers, in tests, runs in Import after its first transaction committed, in place of what can fail
 	// there (the keys of the files); an error it returns ends the import.
 	beforeMembers func() error
+	// beforeSubmit, in tests, runs between a stage being begun and it being queued: an attempt is on record that the
+	// scheduler does not know yet.
+	beforeSubmit func()
 	// nextStage holds, per job, a channel closed once the stage being dispatched is queued or has failed.
 	nextStage sync.Map
+	// handOver is held for reading from a stage being begun until it is queued: see stagesHandedOver.
+	handOver sync.RWMutex
 	// stageStarted, in tests, runs as the scheduler starts a stage: the order in which stages were admitted.
 	stageStarted func(job string, stage kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step, with how many it reclaimed.

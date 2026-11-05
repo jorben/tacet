@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -738,11 +739,19 @@ func (e *Engine) Pause(ctx context.Context, batch string) error {
 	})
 }
 
-// stop asks the scheduler to give up the attempt a task had running.
+// stop asks the scheduler to give up the attempt a task had running. An attempt on record may still be on its way
+// to the queue, where the scheduler could not find it yet, so that hand-over is waited for first.
 func (e *Engine) stop(j jobs.Job) {
 	if j.AttemptID != "" {
+		e.stagesHandedOver()
 		e.disp.Cancel(kernel.AttemptRef{JobID: j.ID, AttemptID: j.AttemptID, OwnerGeneration: e.ws.Generation(), JobVersion: j.Version})
 	}
+}
+
+// stagesHandedOver waits until every stage begun so far is with the scheduler.
+func (e *Engine) stagesHandedOver() {
+	e.handOver.Lock()
+	defer e.handOver.Unlock() // nothing to do inside: waiting for the section in dispatch is the point
 }
 
 func (e *Engine) Resume(ctx context.Context, batch string) error {
@@ -764,20 +773,80 @@ func (e *Engine) Resume(ctx context.Context, batch string) error {
 	return err
 }
 
+// Cancel stops every unfinished file of a batch and drops the start it kept, in one commit. A file with nothing
+// running is cancelled at once; one whose stage is still stopping stays cancelling until that stage has ended.
 func (e *Engine) Cancel(ctx context.Context, batch string) error {
-	defer e.ws.Commit(ctx, func(tx store.Tx) error { return e.jobs.FinishBatch(tx, batch) })
-	return e.each(ctx, batch, func(j jobs.Job) error {
-		if j.Position.State.Terminal() {
-			return nil
-		}
-		if err := e.apply(ctx, j.ID, jobs.Event{Kind: jobs.EvCancel}, true); err != nil {
+	var stopped []jobs.Job
+	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		switch run, err := getRun(tx, batch); {
+		case errors.Is(err, sql.ErrNoRows): // an import that stopped between its transactions: nothing was kept
+		case err != nil:
 			return err
+		case run.Pending != "":
+			run.Pending = ""
+			if err = putRun(tx, run); err != nil {
+				return err
+			}
 		}
-		if j.AttemptID == "" {
-			return e.apply(ctx, j.ID, jobs.Event{Kind: jobs.EvCancelDone}, true)
+		for after := -1; ; {
+			page, err := e.jobs.Members(tx, batch, after, 200)
+			if err != nil {
+				return err
+			}
+			if len(page) == 0 {
+				return nil
+			}
+			after = page[len(page)-1].Ordinal
+			for _, j := range page {
+				if j.Position.State.Terminal() {
+					continue
+				}
+				if _, err = e.jobs.Apply(tx, j.ID, j.Version, jobs.Event{Kind: jobs.EvCancel}); err != nil {
+					return err
+				}
+				stopped = append(stopped, j)
+			}
+		}
+	}); err != nil {
+		return mapErr(err)
+	}
+	ids := make([]string, len(stopped))
+	for i, j := range stopped {
+		e.stop(j)
+		ids[i] = j.ID
+	}
+	// The files are cancelling now: a caller that goes away from here on must not leave them so.
+	return mapErr(e.settleCancelled(context.WithoutCancel(ctx), batch, ids...))
+}
+
+// settleCancelled ends the given files that are cancelling and have no stage left at the scheduler, and the batch
+// if that was the last of it. A cancelling file never begins another stage, so "none left" stays true. One with a
+// stage still stopping is left: when that stage ends, complete comes back here. The two run in either order: each
+// reads the scheduler inside a commit, and the scheduler lets go of a stage before calling complete.
+func (e *Engine) settleCancelled(ctx context.Context, batch string, ids ...string) error {
+	err := e.ws.Commit(ctx, func(tx store.Tx) error {
+		for _, id := range ids {
+			if e.disp.Running(id) {
+				continue
+			}
+			j, err := e.jobs.Get(tx, id)
+			if err != nil {
+				return err
+			}
+			// any other state is not this cancel's to end: a paused file whose old stage ended, say
+			if _, err = e.jobs.Apply(tx, id, j.Version, jobs.Event{Kind: jobs.EvCancelDone}); err != nil && !errors.Is(err, jobs.ErrInvalidTransition) {
+				return err
+			}
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// refused while a file is still stopping; the settling of that file comes back here
+	e.ws.Commit(ctx, func(tx store.Tx) error { return e.jobs.FinishBatch(tx, batch) })
+	e.changed(batch)
+	return nil
 }
 
 // Retry re-runs failed files once and releases files blocked by a resource or

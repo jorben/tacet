@@ -312,6 +312,8 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 		}
 		ctx := context.Background()
 		var view sched.JobView
+		// Begun and queued are one step to whoever stops the attempt: see stop.
+		e.handOver.RLock()
 		err := e.ws.Commit(ctx, func(tx store.Tx) error {
 			j, err := e.jobs.Get(tx, id)
 			if err != nil {
@@ -329,8 +331,12 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 			return err
 		})
 		if err == nil {
+			if e.beforeSubmit != nil {
+				e.beforeSubmit()
+			}
 			err = e.queue.Submit(view)
 		}
+		e.handOver.RUnlock()
 		if err != nil && !errors.Is(err, errDuplicate) {
 			e.fail(id, stage, err)
 		}
@@ -391,7 +397,10 @@ func (e *Engine) complete(view sched.JobView, out sched.StageOutcome) error {
 		return nil
 	})
 	if err != nil {
-		return nil // a late or replaced attempt: nothing to persist
+		// A late or replaced attempt: nothing to persist. If a cancel replaced it, this was what it waited for.
+		id := view.Attempt.JobID
+		e.settleCancelled(ctx, e.batchOf(ctx, id), id)
+		return nil
 	}
 	e.afterState(ctx, job)
 	e.changed(job.Batch)

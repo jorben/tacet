@@ -151,7 +151,7 @@ export function CloseWindowDialog() {
   const days = batchKeep && batchKeep !== "0" ? batchKeep : settingsKeep !== "0" ? settingsKeep : "7";
   return (
     <Modal>
-      <ModalHeader title="有未完成的任务" subtitle={`保存后加密保留 ${days} 天，下次打开继续；停止将清理中间数据，已导出的文件不受影响`} />
+      <ModalHeader title="有未完成的任务" subtitle={`保存后加密保留 ${days} 天，下次打开继续；停止将清理下列全部任务的中间数据，已导出的文件不受影响`} />
       <ModalBody>
         {tasks.map((t) => (
           <TaskLine key={t}>{t}</TaskLine>

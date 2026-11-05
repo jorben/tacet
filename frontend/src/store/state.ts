@@ -39,6 +39,8 @@ export interface AppState {
   batch: Batch | null;
   /** The single task set aside while a file of a batch is open for review. */
   behind: { single: Single; undo: DecisionSnapshot[] } | null;
+  /** The file of a batch being read after a click: it replaces the screen when it arrives, unless another click came first. */
+  fileOpening: { batch: string; name: string } | null;
   /** Undo stack of the open single document. */
   undo: DecisionSnapshot[];
   /** View mode shared between the single review and the batch review. */
@@ -75,6 +77,7 @@ export function createInitialState(): AppState {
     single: null,
     batch: null,
     behind: null,
+    fileOpening: null,
     undo: [],
     docMode: "orig",
     history: [],

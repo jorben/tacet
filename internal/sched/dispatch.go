@@ -50,6 +50,19 @@ func (d *Dispatcher) Cancel(a kernel.AttemptRef) bool {
 	return d.queue.RemovePending(a)
 }
 
+// Running reports whether a stage of the job was taken from the queue and its completion has not been called yet.
+// The stage is let go of before that call, so a completion does not see its own stage here.
+func (d *Dispatcher) Running(job string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for a := range d.active {
+		if a.JobID == job {
+			return true
+		}
+	}
+	return false
+}
+
 // Run serves until ctx cancellation or a completion error. Paused, pressured,
 // high-water or activity-blocked queues wait for Wake/state notifications, not
 // timers. Only one dispatcher can own a queue through this instance.

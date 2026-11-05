@@ -5,17 +5,17 @@ import { isSettled } from "../domain/batch";
 import { extOf, fmt } from "../domain/format";
 import {
   buildLiveDocument, decisionsOf, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, passwordWait, reasonLabel, toBatchFile,
-  unitOffsets,
+  unitOffsets, withDecisions,
 } from "../domain/live";
 import { createSingle } from "../domain/single";
 import type { Batch, BatchFile, CategoryId, HistoryEntry, RasterDoc, RasterPage, Single } from "../domain/types";
-import { closeModal, closePop, openModal, overlayStore, toast } from "../overlay/store";
+import { closeModal, closePop, openModal, overlayStore, toast, type UnsavedTarget } from "../overlay/store";
 import { getService } from "../services";
 import type { EngineBatch, EngineFile, EnginePagePreview, EngineService } from "../services/types";
 import type { ManualSelection } from "../domain/single";
 import { getState, store, type AppState } from "../store";
 import { isWorking, screenSingle } from "../store/selectors";
-import { allDecisionsSettled, decisionsSettled, sendDecisions } from "./decisions";
+import { allDecisionsSettled, decisionsSettled, forgetDecisions, resendDecisions, sendDecisions, unsavedDecisions, type UnsavedDecisions } from "./decisions";
 import { batchEntryStatus, shelveLiveBatch, shelveSingle, singleEntryStatus } from "./shelf";
 import { nextId, nextRunId } from "./timers";
 import { flushConfig, loadConfig, presetEngineId, refreshModels } from "./liveConfig";
@@ -90,12 +90,13 @@ export function leaveLiveFile(d: Draft<AppState>): "saved" | null {
   const s = d.single;
   if (!s?.live || s.from !== "batch") return null;
   const { job } = s.live;
+  const { name } = s;
   const findingOf = plain(s.live.findingOf);
   const hits = plain(s.hits);
   const changed = d.undo.length > 0 || !!s.live.sent;
   bringBackBehind(d);
   if (!changed) return null;
-  flushLiveDecisions(job, hits, findingOf);
+  flushLiveDecisions(name, job, hits, findingOf);
   return "saved";
 }
 
@@ -112,22 +113,51 @@ export function openDecisions(s: AppState): OpenDecisions[] {
   return [openDecisionsOf(s.single, s.undo), openDecisionsOf(s.behind?.single, s.behind?.undo ?? [])].filter((x): x is OpenDecisions => !!x);
 }
 
+/** The files of every task still kept for the person: a refused write on any other has nothing left to save. */
+function keptJobs(s: AppState): Set<string> {
+  const jobsOf = (t: { live?: { jobs?: string[]; job?: string } } | null | undefined): string[] =>
+    t?.live?.jobs ?? (t?.live?.job ? [t.live.job] : []);
+  return new Set([s.batch, s.single, s.behind?.single, ...s.history.filter((h) => h.park).map((h) => h.saved as Single | Batch)].flatMap(jobsOf));
+}
+
 /** Hands choices to the kernel before the window goes away. False, having said so, if the kernel did not take them. */
 export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean> {
-  // these go last, and a write still on its way from a task that left the screen is waited for with them
+  const inKept = (list: UnsavedDecisions[]) => { const kept = keptJobs(getState()); return list.filter((u) => kept.has(u.job)); };
+  // The choices on screen go now, not after the wait: one made during it has to land after them.
   open.forEach((o) => { void sendDecisions(o.job, decisionsOf(o.hits, { findingOf: o.findingOf })).catch(() => {}); });
-  const failure = await allDecisionsSettled();
-  if (failure === undefined) return true;
-  toast("你的选择未能保存，窗口未关闭：" + errorText(failure));
+  // Only this window holds what was refused, so it goes again, now that nothing newer can be ahead of it. A file on
+  // screen has just been sent: its failure is what the person is told below.
+  const onScreen = new Set(open.map((o) => o.job));
+  resendDecisions(inKept(await allDecisionsSettled()).map((u) => u.job).filter((job) => !onScreen.has(job)));
+  const [refused] = inKept(await allDecisionsSettled());
+  if (!refused) return true;
+  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，但会清掉全部未完成的任务（含“最近”里的），已导出的文件不受影响");
   return false;
 }
 
-/** Before acting on what a batch holds: the choices on their way must be there. False, having said so, if one was refused. */
-async function decisionsLanded(): Promise<boolean> {
-  const failure = await allDecisionsSettled();
-  if (failure === undefined) return true;
-  toast("你的选择未能保存，请检查后再试：" + errorText(failure));
+/** The files of a batch among those whose choices the kernel has not taken. */
+const unsavedTargets = (b: Batch, list: UnsavedDecisions[]): UnsavedTarget[] => list.flatMap((u) => {
+  const fi = b.live!.jobs.indexOf(u.job);
+  return fi < 0 ? [] : [{ job: u.job, name: b.files[fi]?.name ?? u.job, reason: errorText(u.failure) }];
+});
+
+/** Before acting on what a batch holds: the person's last choices must be there, not only the writes over. False if
+ *  they are not: the dialog names the files and offers what can be done, because a message would be gone before it is read. */
+async function decisionsLanded(b: Batch): Promise<boolean> {
+  const targets = unsavedTargets(b, await allDecisionsSettled());
+  if (!targets.length) return true;
+  openModal({ type: "unsavedDecisions", targets });
   return false;
+}
+
+/** Sends the refused choices of these files again; those the kernel still did not take, with the reason now. */
+export async function resendUnsaved(targets: UnsavedTarget[]): Promise<UnsavedTarget[]> {
+  resendDecisions(targets.map((t) => t.job));
+  const left = await allDecisionsSettled();
+  return targets.flatMap((t) => {
+    const u = left.find((x) => x.job === t.job);
+    return u ? [{ ...t, reason: errorText(u.failure) }] : [];
+  });
 }
 
 /** The single task behind an open file of a batch comes back on screen. It heard nothing meanwhile, so it reads the kernel. */
@@ -152,7 +182,7 @@ export function shelveScreenSingle(d: Draft<AppState>): void {
   const open = openDecisionsOf(d.single as Single | null, d.undo);
   if (open) {
     d.single!.live!.sent = true;
-    flushLiveDecisions(open.job, open.hits, open.findingOf);
+    flushLiveDecisions(d.single!.name, open.job, open.hits, open.findingOf);
   }
   const s = d.single;
   const reading = s?.phase === "processing" && !s.live?.locked ? s.live?.batch : undefined;
@@ -276,7 +306,7 @@ async function abandonSingle(runId: number, why: string): Promise<void> {
   if (!found) return;
   toast(why);
   const e = liveEngine();
-  if (e && batch) { try { await e.cancel(batch); await e.clean(batch); } catch { /* it stays in the kernel, which lists it at the next start */ } }
+  if (e && batch) { try { await e.cancel(batch); await cleanWhenStopped(batch); } catch { /* it stays in the kernel, which lists it at the next start */ } }
 }
 
 /** The runs reading their document right now: another run has a document of its own to read. */
@@ -412,12 +442,12 @@ const rasterPage = (p: EnginePagePreview): RasterPage => ({
 
 /** A PDF is shown as the rendered pages. The first page tells how many there are; if it cannot be drawn the
  *  text of the document is shown instead, and the person is told. */
-async function openRaster(job: string): Promise<{ doc: RasterDoc; pages: number } | null> {
+async function openRaster(job: string, stale: () => boolean): Promise<{ doc: RasterDoc; pages: number } | null> {
   try {
     const first = await liveEngine()!.pagePreview(job, 1, RASTER_DPI);
     return { doc: { pages: { 0: rasterPage(first) }, failed: {} }, pages: first.pages };
   } catch {
-    toast("页面预览不可用，改为文本显示");
+    if (!stale()) toast("页面预览不可用，改为文本显示");
     return null;
   }
 }
@@ -452,10 +482,11 @@ function padPages(pages: Single["pages"], seqOf: number[][], count: number): voi
 async function showReview(runId: number, job: string): Promise<void> {
   const s = getState().single;
   if (!s || s.runId !== runId) return;
+  const stale = () => getState().single?.runId !== runId; // the screen went on to another task: nothing to tell it
   try {
     const { units, truncated } = await loadUnits(job);
     const doc = buildLiveDocument(units, s.ext);
-    const raster = s.ext === "pdf" ? await openRaster(job) : null;
+    const raster = s.ext === "pdf" ? await openRaster(job, stale) : null;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
     store.update((d) => {
       const x = d.single;
@@ -463,7 +494,7 @@ async function showReview(runId: number, job: string): Promise<void> {
       Object.assign(x, { pages: doc.pages, hits: doc.hits, imgs: [], phase: "review", stage: 0, sp: 0 });
       x.live = { ...x.live!, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc };
     });
-    if (truncated) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
+    if (truncated && !stale()) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
   } catch (err) {
     shelveUnread(runId, err);
   }
@@ -517,7 +548,7 @@ export function cancelLiveSingle(): void {
   store.update((d) => { d.single = null; d.view = "home"; });
   toast("已停止");
   const e = liveEngine();
-  if (e && batch) void e.cancel(batch).then(() => e.clean(batch)).catch(() => {});
+  if (e && batch) void e.cancel(batch).then(() => cleanWhenStopped(batch)).catch(() => {});
 }
 
 /** A selection of the document becomes a redacted candidate in the kernel; the document is then read again. */
@@ -578,8 +609,8 @@ export async function withdrawLiveManual(finding: number): Promise<boolean> {
 }
 
 /** Decisions of a file opened from a batch are written to the kernel when the person leaves it. */
-export function flushLiveDecisions(job: string, hits: Single["hits"], findingOf: number[]): void {
-  void sendDecisions(job, decisionsOf(hits, { findingOf })).catch((err) => toast(errorText(err)));
+export function flushLiveDecisions(name: string, job: string, hits: Single["hits"], findingOf: number[]): void {
+  void sendDecisions(job, decisionsOf(hits, { findingOf })).catch((err) => toast("「" + name + "」的选择未能保存：" + errorText(err)));
 }
 
 /** “跳过此文件”: the file is left out of the batch and not exported. False when the kernel refused. */
@@ -588,6 +619,7 @@ export async function skipLive(job: string): Promise<boolean> {
   if (!e) return false;
   try {
     await e.skip(job);
+    void forgetDecisions(job);
     toast("已跳过 · 不会导出");
     return true;
   } catch (err) {
@@ -804,7 +836,7 @@ export async function publishLiveBatch(): Promise<void> {
   const b = getState().batch;
   if (!b?.live?.id) return;
   closeModal();
-  if (!(await decisionsLanded())) return; // it would publish what was built from the choices before them
+  if (!(await decisionsLanded(b))) return; // it would publish what was built from the choices before them
   try {
     await e.publish(b.live.id, b.imgAct === "keep", b.live.outputDir);
     toast("已开始导出");
@@ -932,23 +964,43 @@ export function cancelLiveBatch(): void {
   if (e && id) void e.cancel(id).then(() => cleanWhenStopped(id)).catch(() => {});
 }
 
-export async function retryLive(fi?: number): Promise<void> {
+/** False when nothing was queued, having said why. */
+export async function retryLive(fi?: number): Promise<boolean> {
   const e = liveEngine()!;
   const b = getState().batch;
-  if (!b?.live?.id) return;
-  if (!(await decisionsLanded())) return; // it would go on from what was built from the choices before them
+  if (!b?.live?.id) return false;
+  if (!(await decisionsLanded(b))) return false; // it would go on from what was built from the choices before them
   try {
     const only = fi == null ? [] : [b.live.jobs[fi]!];
     await e.retry(b.live.id, only);
-  } catch (err) { toast(errorText(err)); }
+    return true;
+  } catch (err) {
+    toast(errorText(err));
+    return false;
+  }
+}
+
+/** The click on a file of the batch that counts: only the last one may change the screen. */
+let lastOpen = 0;
+
+/** A new click: what is still being read for an earlier one is dropped when it arrives. */
+function supersedeOpen(): number {
+  lastOpen = nextRunId();
+  if (getState().fileOpening) store.update((d) => { d.fileOpening = null; });
+  return lastOpen;
 }
 
 /** Opens the document of one file of the batch for review, or the dialog it is waiting for. */
 export async function openLiveFile(fi: number): Promise<void> {
+  const runId = supersedeOpen();
+  const superseded = () => lastOpen !== runId;
   const s = getState();
   const b = s.batch!;
   const f = b.files[fi]!;
   const batchId = b.live!.id;
+  // What is read arrives late. It is dropped, without a word, if the person has moved on: another click, another batch,
+  // another page. The page is compared, not told: every way of leaving it changes the view.
+  const stale = () => superseded() || getState().batch?.live?.id !== batchId || getState().view !== s.view;
   const job = b.live!.jobs[fi]!;
   closeModal();
   if (f.g.includes(GROUP_PASSWORD)) { openModal({ type: "livePassword", targets: [{ job, name: f.name }] }); return; }
@@ -956,25 +1008,34 @@ export async function openLiveFile(fi: number): Promise<void> {
   if (f.st === "skipped") { toast("已跳过 · 不会导出"); return; }
   if (f.st === "done" || f.st === "partial") { toast("已导出为 " + (f.outputName ?? f.id)); return; }
   if (!(f.g.includes(GROUP_REVIEW) || f.g.includes(GROUP_STRICT) || f.st === "ready")) { toast("尚未检测完成"); return; }
-  const runId = nextRunId();
+  store.update((d) => { d.fileOpening = { batch: batchId, name: f.name }; });
   try {
     await decisionsSettled(job); // what the document says comes from the kernel: the last choices must be there first
     const { units, truncated } = await loadUnits(job);
-    const doc = buildLiveDocument(units, f.ext);
-    const raster = f.ext === "pdf" ? await openRaster(job) : null;
+    if (stale()) return;
+    // what the kernel refused is still what the person chose: it shows, and leaving the file sends it again
+    const unsaved = unsavedDecisions(job);
+    const doc = buildLiveDocument(unsaved ? withDecisions(units, unsaved) : units, f.ext);
+    const raster = f.ext === "pdf" ? await openRaster(job, stale) : null;
+    if (stale()) return;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
     store.update((d) => {
-      if (d.batch?.live?.id !== batchId) return;
+      leaveLiveFile(d); // a file still on screen gives way: its choices exist nowhere else
       if (d.single && d.single.from !== "batch" && !d.behind) d.behind = { single: plain(d.single), undo: plain(d.undo) };
-      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch.preset, modelId: null }, {
-        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch.out, pages: doc.pages, hits: doc.hits, imgs: [],
-        live: { batch: batchId, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc },
+      d.single = createSingle(f.name, f.ext, undefined, { mode: d.docMode, preset: d.batch!.preset, modelId: null }, {
+        phase: "review", from: "batch", bfi: fi, runId, size: "", out: d.batch!.out, pages: doc.pages, hits: doc.hits, imgs: [],
+        live: { batch: batchId, job, findingOf: doc.findingOf, seqOf: doc.seqOf, truncated, raster: raster?.doc, sent: !!unsaved },
       });
       d.undo = [];
       d.view = "single";
     });
-    if (truncated) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
-  } catch (err) { toast(errorText(err)); }
+    const notes = [unsaved && "这是上次未能保存的选择，离开文件时会重新保存", truncated && "文档较长，只显示前一部分；其余内容按方案自动处理"].filter(Boolean);
+    if (notes.length) toast(notes.join(" · "));
+  } catch (err) {
+    if (!stale()) toast(errorText(err));
+  } finally {
+    if (!superseded()) store.update((d) => { d.fileOpening = null; }); // a later click has its own to show
+  }
 }
 
 /** A group's row was clicked: open its first file, ask for its passwords, or retry it. */
@@ -982,6 +1043,7 @@ export function openLiveGroup(gid: string | null): void {
   const b = getState().batch!;
   const g = gid ? b.groups.find((x) => x.id === gid) : b.groups.find((x) => Object.keys(x.per).length);
   if (!g) return;
+  supersedeOpen();
   const members = Object.keys(g.per).map(Number);
   if (g.id === GROUP_PASSWORD) {
     openModal({ type: "livePassword", targets: members.map((fi) => ({ job: b.live!.jobs[fi]!, name: b.files[fi]!.name })) });
