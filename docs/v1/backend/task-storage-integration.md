@@ -22,7 +22,7 @@
 
 `jobs.Module` 注册 jobs_batch、jobs_job、jobs_stage 和相关索引。部分唯一索引限制每种批次类型最多一个未结束实例，快捷任务和普通批次可以并存，不能被新建操作替代。批次 confirmed 标记冻结成员；成员列表用有上限的 keyset 分页查询。
 
-`BeginStage` 在执行前保存随机 attempt、当前代次、任务版本和阶段记录。`CompleteStage` 检查版本/attempt/阶段记录，仅在 running 时接收结果，在同事务里写完成状态、产物引用、任务迁移、发件箱和提交后派发。重复结果被拒绝，不再产生事件或计数；用户控制命令携带 expectedVersion，变更时废弃原尝试。
+`BeginStage` 在执行前保存随机 attempt、当前代次、任务版本和阶段记录。调用方要说明自己要运行哪个阶段：派发通知在提交后异步执行，可能晚于任务的下一次迁移，与任务当前应运行的阶段不符时返回 `ErrStaleDispatch`，不改变任何记录，也不算阶段失败（迁移时已发出新的通知，见 #40）。`CompleteStage` 检查版本/attempt/阶段记录，仅在 running 时接收结果，在同事务里写完成状态、产物引用、任务迁移、发件箱和提交后派发。重复结果被拒绝，不再产生事件或计数；用户控制命令携带 expectedVersion，变更时废弃原尝试。
 
 `RecoverMember` 对已完成阶段不作重写，中断尝试标为 discarded，任务先呈现 paused；恢复到原阶段必须显式继续。取消中的任务在确认旧进程被回收后转 cancelled。生命周期调用方仍必须先回收上一代进程树并执行数据保留清扫。FinishBatch 只有在成员全部终止时释放活动批次类型槽位。
 

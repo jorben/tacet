@@ -50,7 +50,7 @@ func TestSnapshotFreezeAndBatchConfirmCommitTogether(t *testing.T) {
 	var attempt kernel.AttemptRef
 	if err = commit(func(tx store.Tx) error {
 		var err error
-		attempt, err = jobs.BeginStage(tx, "j", 1, ws.Generation())
+		attempt, err = jobs.BeginStage(tx, "j", kernel.StagePreflight, 1, ws.Generation())
 		return err
 	}); err != nil {
 		t.Fatal(err)

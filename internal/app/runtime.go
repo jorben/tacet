@@ -292,7 +292,9 @@ func (e *Engine) startDispatch(context.Context) error {
 	return nil
 }
 
-// dispatch is jobs.Dispatch: begin the stage durably, then hand it to the scheduler.
+// dispatch is jobs.Dispatch: begin the stage durably, then hand it to the scheduler. A notification runs on its own
+// and may land long after it was sent: one that no longer applies is dropped, and what moved the file since sent its
+// own (BeginStage refuses the wrong stage, see below for the authorization).
 func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 	done := make(chan struct{})
 	e.nextStage.Store(id, done)
@@ -326,7 +328,13 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 			if err != nil {
 				return err
 			}
-			a, err := e.jobs.BeginStage(tx, id, j.Version, e.ws.Generation())
+			// A file that is ready leaves for publishing only on its authorization, which a decision may have taken
+			// back since this was sent. Nothing is lost: Publish sends another. A file past this point, resuming
+			// its publish, has no other notification coming and is checked by the publish itself.
+			if j.Position.State == jobs.ReadyToPublish && !run.Grant {
+				return jobs.ErrStaleDispatch
+			}
+			a, err := e.jobs.BeginStage(tx, id, stage, j.Version, e.ws.Generation())
 			view = sched.JobView{Attempt: a, Stage: stage, Priority: stagePriority(run.Kind, j.Position), Group: j.Batch}
 			return err
 		})
@@ -337,7 +345,9 @@ func (e *Engine) dispatch(id string, stage kernel.StageKind) {
 			err = e.queue.Submit(view)
 		}
 		e.handOver.RUnlock()
-		if err != nil && !errors.Is(err, errDuplicate) {
+		// A dropped notification must not get as far as fail: by then the file may have begun the stage it is really
+		// at, and fail would end that attempt.
+		if err != nil && !errors.Is(err, errDuplicate) && !errors.Is(err, jobs.ErrStaleDispatch) {
 			e.fail(id, stage, err)
 		}
 	}()
@@ -354,6 +364,9 @@ func stagePriority(kind string, position jobs.Snapshot) kernel.Priority {
 
 // fail records a dispatch that could not even start as a failed stage.
 func (e *Engine) fail(id string, stage kernel.StageKind, cause error) {
+	if e.dispatchFailed != nil {
+		e.dispatchFailed()
+	}
 	var a kernel.AttemptRef
 	e.ws.Commit(context.Background(), func(tx store.Tx) error {
 		j, err := e.jobs.Get(tx, id)
@@ -377,7 +390,10 @@ func (e *Engine) complete(view sched.JobView, out sched.StageOutcome) error {
 		if err := e.ws.AdmitTx(tx, view.Attempt); err != nil {
 			return err
 		}
-		var err error
+		out, err := e.deliveryBehind(tx, view.Attempt.JobID, out)
+		if err != nil {
+			return err
+		}
 		job, err = e.jobs.CompleteStage(tx, view.Attempt, out)
 		if err != nil {
 			return err
@@ -412,6 +428,27 @@ func (e *Engine) complete(view sched.JobView, out sched.StageOutcome) error {
 		}
 	}
 	return nil
+}
+
+// deliveryBehind holds a stage outcome to what makes a file delivered: a publish stage is only done if a delivery is on
+// record. Whatever else reports it done, the file fails: reading as delivered with no document is the one thing the
+// state of a file must never say. The record is the publish module's, so the jobs state machine cannot check this.
+func (e *Engine) deliveryBehind(tx store.Tx, job string, out sched.StageOutcome) (sched.StageOutcome, error) {
+	if out.Kind != sched.Completed {
+		return out, nil
+	}
+	j, err := e.jobs.Get(tx, job)
+	if err != nil || j.Position.State != jobs.Publishing {
+		return out, err
+	}
+	ds, _, err := publish.Deliveries(tx, job)
+	if err != nil {
+		return out, err
+	}
+	if len(ds) == 0 {
+		return failed("DELIVERY_MISSING"), nil
+	}
+	return out, nil
 }
 
 var (
