@@ -266,7 +266,7 @@ flowchart TB
 | 授权发布 `AuthorizePublish` | 按成员当前处置键调用 `publish.Grant`；部分结果另需授权 | 范围为“当前符合条件的成员”或复核摘要中的全部成员（BUX-12、BUX-15） |
 | 解锁 `Unlock` | `preflight.Unlock`，作为交互级阶段派发 | 密码错误可重输，不计入重新处理（FR-09） |
 | 重新处理 / 跳过 | `exceptions.Actions` 核对可用动作 → `jobs` | 每个文件限一次重新处理 |
-| 暂停 / 继续 / 取消，调整顺序，暂停派发，只停止选定任务 | `jobs` → `sched` | 取消默认“停止并清理”（FR-05、BUX-12） |
+| 暂停 / 继续 / 取消，调整顺序，暂停派发，只停止选定任务 | `jobs` → `sched` | 取消默认“停止并清理”（FR-05、BUX-12）；取消和清理都可按批次（`Cancel`、`Clean`）或按文件（`CancelFile`、`CleanFile`），按文件时批次其余文件继续，开始前被取消的文件不进入这次开始 |
 | 修改批次方案 | `snapshot.NewVersion` → 逐成员 `lineage.EarliestStale` → `jobs.Invalidate` | 先展示受影响成员数；已发布成员按“被替代”处理 |
 | 重试选定成员 | `jobs.Retry` | 只重试失败、阻塞条件已解除或用户选定的成员，不重做已发布结果（BUX-14） |
 | 预览、模拟效果、提交选择 | `policy.Simulate` + `preview` | 只读；提交选择返回校验后的源位置或拒绝 |

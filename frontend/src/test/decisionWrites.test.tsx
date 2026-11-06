@@ -342,15 +342,16 @@ describe("#34 选择没有写进内核时，不按旧选择往下走", () => {
     act(() => dismissToast());
     act(() => saveAndQuit());
     await waitFor(() => expect(toastText()).toContain("停止并清理"));
-    // the way out costs more than this file: the person is told how far it reaches before choosing it
-    expect(toastText()).toContain("全部未完成的任务（含“最近”里的）");
+    // the person is told how far the way out reaches before choosing it; what it costs is the file (#41, stopScope.test.tsx)
+    expect(toastText()).toContain("只清理「a.txt」");
     expect(toastText()).toContain("已导出的文件不受影响");
     expect(quit.n).toBe(0);
     act(() => requestQuit());
-    expect(page()).toContain("停止将清理下列全部任务");
+    expect(page()).toContain("只清理这些文件的中间数据");
     act(() => stopAndQuit());
     await waitFor(() => expect(quit.n).toBe(1));
-    expect(fake.cancelled).toEqual(["b0001"]);
+    expect(fake.cleanedFiles).toEqual(["j1"]);
+    expect(fake.cancelled).toEqual([]);
   });
 });
 

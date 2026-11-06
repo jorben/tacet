@@ -322,7 +322,8 @@ func (e *Engine) Start(ctx context.Context, r StartRequest) error {
 			if err != nil {
 				return err
 			}
-			if p, ok := e.plugins[m.Format]; ok && j.Position.State != jobs.Unprocessable {
+			// a file that ended before the start is not part of it
+			if p, ok := e.plugins[m.Format]; ok && j.Position.State != jobs.Unprocessable && j.Position.State != jobs.Cancelled {
 				formats[m.Format] = true
 				refsByFormat[m.Format] = p.id
 			}
@@ -838,6 +839,35 @@ func (e *Engine) Cancel(ctx context.Context, batch string) error {
 	}); err != nil {
 		return mapErr(err)
 	}
+	return e.stopCancelling(ctx, batch, stopped)
+}
+
+// CancelFile stops one file as Cancel does a whole batch. The other files go on, and the start the batch kept stands
+// for them. A file that has ended is left as it is.
+func (e *Engine) CancelFile(ctx context.Context, job string) error {
+	var j jobs.Job
+	var cancelling bool
+	if err := e.ws.Commit(ctx, func(tx store.Tx) (err error) {
+		if j, err = e.jobs.Get(tx, job); err != nil || j.Position.State.Terminal() {
+			return err
+		}
+		cancelling = true
+		_, err = e.jobs.Apply(tx, job, j.Version, jobs.Event{Kind: jobs.EvCancel})
+		return err
+	}); errors.Is(err, jobs.ErrJobMissing) {
+		return ErrNotFound
+	} else if err != nil {
+		return mapErr(err)
+	}
+	if !cancelling {
+		return nil
+	}
+	return e.stopCancelling(ctx, j.Batch, []jobs.Job{j})
+}
+
+// stopCancelling stops the stages of files just moved to cancelling, as they were before the move, and ends those
+// with nothing left to wait for.
+func (e *Engine) stopCancelling(ctx context.Context, batch string, stopped []jobs.Job) error {
 	ids := make([]string, len(stopped))
 	for i, j := range stopped {
 		e.stop(j)
@@ -910,13 +940,33 @@ func (e *Engine) Clean(ctx context.Context, batch string) error {
 		}
 	}
 	for _, j := range ms {
-		switch err := e.ret.Purge(ctx, j.ID); {
-		case err == nil:
-		case errors.Is(err, retention.ErrPublishing):
-			return fmt.Errorf("%w: a file is being published", ErrNotAllowed)
-		default:
+		if err = e.purgeEnded(ctx, j.ID); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// CleanFile removes what the workspace holds for one file that has ended, as Clean does for a batch; what the other
+// files of the batch hold, and the batch itself, stay. A file not yet at rest is refused: CancelFile first.
+func (e *Engine) CleanFile(ctx context.Context, job string) error {
+	var j jobs.Job
+	if err := e.ws.Commit(ctx, func(tx store.Tx) (err error) { j, err = e.jobs.Get(tx, job); return err }); errors.Is(err, jobs.ErrJobMissing) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if !j.Position.State.Terminal() {
+		return fmt.Errorf("%w: file has not ended", ErrNotAllowed)
+	}
+	return e.purgeEnded(ctx, job)
+}
+
+func (e *Engine) purgeEnded(ctx context.Context, job string) error {
+	if err := e.ret.Purge(ctx, job); errors.Is(err, retention.ErrPublishing) {
+		return fmt.Errorf("%w: a file is being published", ErrNotAllowed)
+	} else if err != nil {
+		return err
 	}
 	return nil
 }

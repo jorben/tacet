@@ -382,6 +382,42 @@ func TestRepositoryBoundedPagesAndActiveSlotRelease(t *testing.T) {
 	f.create(t, "next", RegularBatch)
 }
 
+// A file cancelled before the batch starts is left out of the start, as one that cannot be processed is: the other
+// files must not lose their start to it (#41).
+func TestConfirmingABatchLeavesOutAFileCancelledBeforeIt(t *testing.T) {
+	f := fixtureDB(t)
+	f.create(t, "b", RegularBatch)
+	if err := f.commit(func(tx store.Tx) error {
+		if err := f.repo.AddMember(tx, "b", "j1", 0); err != nil {
+			return err
+		}
+		return f.repo.AddMember(tx, "b", "j2", 1)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.complete(t, f.start(t, "j2"), sched.StageOutcome{Kind: sched.Completed})
+	j1 := f.get(t, "j1")
+	if err := f.commit(func(tx store.Tx) error {
+		next, err := f.repo.Apply(tx, "j1", j1.Version, Event{Kind: EvCancel})
+		if err != nil {
+			return err
+		}
+		_, err = f.repo.Apply(tx, "j1", next.Version, Event{Kind: EvCancelDone})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.commit(func(tx store.Tx) error { _, err := f.repo.ConfirmBatch(tx, "b"); return err }); err != nil {
+		t.Fatalf("the start refused for a cancelled file: %v", err)
+	}
+	if s := f.get(t, "j1").Position.State; s != Cancelled {
+		t.Fatalf("the cancelled file is %s", s)
+	}
+	if s := f.get(t, "j2").Position.State; s != Queued {
+		t.Fatalf("the other file is %s", s)
+	}
+}
+
 func TestRepositoryBatchConfirmationIsAtomicAcrossMembers(t *testing.T) {
 	f := fixtureDB(t)
 	f.create(t, "b", RegularBatch)

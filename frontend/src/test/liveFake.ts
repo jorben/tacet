@@ -3,6 +3,9 @@ import type { EngineCategory, EngineModelRuntime, EnginePlugin, EngineSettings, 
 
 export const cleanBatchStub = true;
 
+/** The kernel's terminal states. */
+const ENDED = ["completed", "partial", "skipped", "unprocessable", "cancelled"];
+
 export const unit = (seq: number, text: string, findings: Partial<EngineFinding>[], part = "body"): EngineUnit => ({
   seq, part, ordinal: seq, visibility: "visible", text,
   findings: findings.map((f, i) => ({ id: i + 1, start: 0, end: 1, category: "phone", source: "rule", score: 1, low: false, ...f })),
@@ -18,6 +21,9 @@ export class FakeEngine implements EngineService {
   /** Every decision call, and what the kernel keeps of them across a restart: documents read back with them. */
   decisionLog: { job: string; ds: { id: number; keep: boolean }[] }[] = [];
   kernelDecisions = new Map<number, boolean>();
+  /** What the kernel holds on each file, until the file is cleaned. */
+  private heldDecisions = new Map<string, Map<number, boolean>>();
+  decisionsHeld(job: string) { return Object.fromEntries(this.heldDecisions.get(job) ?? []); }
   decideFails: Error | null = null;
   decideGate: Promise<void> | null = null;
   /** The next write of one file waits for this; the writes of other files do not. */
@@ -184,7 +190,30 @@ export class FakeEngine implements EngineService {
     this.calls.push("clean");
     if (!b) return;
     if (this.rowsOf(b).some((r) => r.state === "cancelling")) throw new Error("ACTION_NOT_ALLOWED: batch has unfinished files");
+    this.rowsOf(b).forEach((r) => this.heldDecisions.delete(r.id));
     this.cleaned.push(b);
+  }
+  cancelledFiles: string[] = [];
+  cleanedFiles: string[] = [];
+  private batchOfFile(job: string): string {
+    const owner = this.rows.some((r) => r.id === job) ? this.current : [...this.kept].find(([, rows]) => rows.some((r) => r.id === job))?.[0];
+    if (!owner) throw new Error("NOT_FOUND");
+    return owner;
+  }
+  /** As the kernel: this file only, one that ended stays as it ended, the batch ends with its last open file. */
+  async cancelFile(job: string) {
+    this.calls.push("cancelFile:" + job);
+    const b = this.batchOfFile(job);
+    this.cancelledFiles.push(job);
+    this.setRows(b, this.rowsOf(b).map((r) => (r.id !== job || ENDED.includes(r.state) ? r : { ...r, state: this.stageStopping ? "cancelling" : "cancelled" })));
+  }
+  /** As the kernel: refused until the file has come to rest, and only that file's data goes. */
+  async cleanFile(job: string) {
+    this.calls.push("cleanFile:" + job);
+    const row = this.rowsOf(this.batchOfFile(job)).find((r) => r.id === job)!;
+    if (!ENDED.includes(row.state)) throw new Error("ACTION_NOT_ALLOWED: file has not ended");
+    this.heldDecisions.delete(job);
+    this.cleanedFiles.push(job);
   }
   retried: [string, string[]][] = [];
   /** As the kernel: a failed file runs again, a blocked one too unless it waits for a password or the original changed. */
@@ -336,6 +365,9 @@ export class FakeEngine implements EngineService {
     this.decisions = ds;
     this.decisionLog.push({ job, ds });
     ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));
+    const held = this.heldDecisions.get(job) ?? new Map<number, boolean>();
+    ds.forEach((d) => held.set(d.id, d.keep));
+    this.heldDecisions.set(job, held);
     // the kernel redoes the file from resolution as soon as a decision is stored
     this.rows = this.rows.map((r) => (r.id === job && (r.state === "awaiting_review" || r.state === "ready_to_publish") ? { ...r, state: "resolving", pending: 0 } : r));
   }

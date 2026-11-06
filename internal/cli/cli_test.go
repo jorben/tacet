@@ -136,8 +136,10 @@ func (f *fake) Retry(_ context.Context, _ string, j []string) error {
 	f.rec("retry:" + strings.Join(j, ","))
 	return nil
 }
-func (f *fake) Clean(context.Context, string) error { f.rec("clean"); return f.cleanErr }
-func (f *fake) Close() error                        { f.rec("close"); return nil }
+func (f *fake) Clean(context.Context, string) error      { f.rec("clean"); return f.cleanErr }
+func (f *fake) CancelFile(context.Context, string) error { return nil }
+func (f *fake) CleanFile(context.Context, string) error  { return nil }
+func (f *fake) Close() error                             { f.rec("close"); return nil }
 
 func opener(f *fake, err error) Opener {
 	return func(context.Context, string) (app.Core, error) {
