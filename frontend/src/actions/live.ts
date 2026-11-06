@@ -4,7 +4,7 @@ import { isDraft, current, type Draft } from "immer";
 import { isSettled } from "../domain/batch";
 import { extOf, fmt } from "../domain/format";
 import {
-  buildLiveDocument, decisionsClosedIn, decisionsOf, decisionsOpenIn, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, passwordWait, reasonLabel, toBatchFile,
+  buildLiveDocument, decisionsOf, decisionsOpenIn, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, passwordWait, reasonLabel, staysClosed, toBatchFile,
   unitOffsets, withDecisions,
 } from "../domain/live";
 import { createSingle } from "../domain/single";
@@ -180,7 +180,7 @@ function followFile(f: Pick<EngineFile, "id" | "state">): void {
   const s = getState().single;
   if (s?.live?.job !== f.id || s.phase !== "review") return;
   const was = !!s.live.closed;
-  const closed = decisionsClosedIn(f.state) || (was && !decisionsOpenIn(f.state));
+  const closed = staysClosed(was, f.state);
   if (closed === was) return;
   const changed = !!openDecisionsOf(s, getState().undo);
   store.update((d) => { if (d.single?.live?.job === f.id) d.single.live.closed = closed; });
@@ -240,10 +240,11 @@ export function shelveScreenSingle(d: Draft<AppState>): void {
     flushLiveDecisions(d.single!.name, open.job, open.hits, open.findingOf);
   }
   const s = d.single;
-  const reading = s?.phase === "processing" && !s.live?.locked ? s.live?.batch : undefined;
+  const reread = (s?.phase === "processing" && !s.live?.locked) || s?.live?.closed ? s?.live?.batch : undefined;
   shelveSingle(d);
-  // the document it was reading for an event that came just before is dropped with the screen: the entry has to hear it again
-  if (reading) rereadSingle(reading);
+  // The document it was reading for an event that came just before is dropped with the screen, and a read-only file
+  // may have ended with no event to come: either way the entry has to hear it again.
+  if (reread) rereadSingle(reread);
 }
 
 /** The batch on screen gives way. A draft with every file refused has nothing to continue, so it goes, with its data;
@@ -386,6 +387,7 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
     const x = h.saved as Single;
     x.live!.job = f.id;
     x.live!.locked = passwordWait(f);
+    x.live!.closed = staysClosed(!!x.live!.closed, f.state); // it opens from here as it stands by then
     if (ended) {
       x.phase = "done";
       x.live!.output = f.output;
@@ -1119,6 +1121,7 @@ export async function openLiveFile(fi: number): Promise<void> {
   if (f.g.includes(GROUP_BLOCKED) || f.st === "bad") { toast((f.reason ?? "无法处理") + " · " + f.name); return; }
   if (f.st === "skipped") { toast("已跳过 · 不会导出"); return; }
   if (f.st === "done" || f.st === "partial") { toast("已导出为 " + (f.outputName ?? f.id)); return; }
+  if (f.closed) { toast("「" + f.name + "」" + READ_ONLY); return; }
   if (!(f.g.includes(GROUP_REVIEW) || f.g.includes(GROUP_STRICT) || f.st === "ready")) { toast("尚未检测完成"); return; }
   store.update((d) => { d.fileOpening = { batch: batchId, name: f.name }; });
   try {

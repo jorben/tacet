@@ -74,6 +74,7 @@ export function cancelSingle(): void {
 }
 
 export function exportSingle(): void {
+  if (readOnly()) return;
   if (getState().single?.live) { void exportLiveSingle(); return; }
   closePop();
   const runId = nextRunId();
@@ -350,6 +351,7 @@ export function openSingleSchemeMenu(anchor: PopAnchor): void {
 /** Changing the scheme detects the document again; the user's decisions on it are dropped. */
 export function switchPreset(name: string): void {
   closeModal();
+  if (readOnly()) return;
   const s = getState().single!;
   if (!needModel(name, () => switchPreset(name), s.name + " · 切换方案")) return;
   const runId = nextRunId();

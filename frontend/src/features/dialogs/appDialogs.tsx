@@ -168,7 +168,7 @@ export function CloseWindowDialog() {
   const lost = useAppState((s) => openDecisions(s).filter((o) => o.closed).map((o) => o.name), (a, b) => a.join("|") === b.join("|"));
   const onlyChoices = !files.length && !tasks.length;
   const subtitle = onlyChoices
-    ? (lost.length ? "关闭后这些修改不会保留；已导出的文件不受影响" : "“保存并关闭”会把屏幕上的选择交给内核；已导出的文件不受影响")
+    ? (lost.length ? "关闭后这些修改不会保留；已导出的文件不受影响" : "“保存并关闭”会把还没保存的选择交给内核；已导出的文件不受影响")
     : files.length
     ? `${files.length} 个文件的选择未能保存。“保存并关闭”会再试一次；“停止并清理”只清理这些文件的中间数据，其他任务保留 ${days} 天，下次打开继续；已导出的文件不受影响`
     : `保存后加密保留 ${days} 天，下次打开继续；停止将清理下列全部任务的中间数据，已导出的文件不受影响`;

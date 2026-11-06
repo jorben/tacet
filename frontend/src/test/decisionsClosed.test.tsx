@@ -5,7 +5,7 @@ import { act, waitFor } from "@testing-library/react";
 import { openBatchFile, startBatch } from "../actions/batch";
 import { refusalOf, refusedJobs } from "../actions/decisions";
 import { publishLiveBatch, retryLive, startLive, takePaths } from "../actions/live";
-import { addManualRedaction, clickHit, focusHit, openAllImagesMenu, openCategoryMenu, openImageMenu, returnToBatch, setHitState, toggleFocusedHit, undoSingle } from "../actions/single";
+import { addManualRedaction, clickHit, focusHit, openAllImagesMenu, openCategoryMenu, openImageMenu, returnToBatch, setHitState, switchPreset, toggleFocusedHit, undoSingle } from "../actions/single";
 import { requestQuit } from "../actions/window";
 import { closeModal, closePop, dismissToast, overlayStore } from "../overlay/store";
 import { setService } from "../services";
@@ -500,5 +500,123 @@ describe("文件退回可写：太晚的记录不再是太晚", () => {
     await act(async () => { await publishLiveBatch(); });
     expect(fake.calls).toContain("publish");
     expect(modal()).toBeNull();
+  });
+});
+
+describe("退出和只读的其余入口", () => {
+  const dialogText = () => document.querySelector("#layer .modal")!.textContent!;
+
+  it("写入还在路上，任务都结束了：不直接退出；等它有了结果，太晚就先说，再点才退", async () => {
+    await ready();
+    await openSecond();
+    choose(0, "redact");
+    const [held, release] = gate();
+    fake.decideGateOf.set("j2", held);
+    kernelAhead("completed", "completed");
+    act(() => returnToBatch());
+    await setRows("completed", "completed");
+    act(() => dismissToast());
+
+    act(() => requestQuit());
+    expect(quit.n).toBe(0);
+    expect(modal()?.type).toBe("closeWindow");
+    act(() => button("保存并关闭").click());
+    await settle();
+    expect(quit.n).toBe(0); // the write has not answered
+    release();
+    await waitFor(() => expect(toastText()).toContain(NOT_IN_OUTPUT));
+    expect(toastText()).toContain("b.txt");
+    await settle();
+    expect(quit.n).toBe(0);
+
+    act(() => requestQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect(modal()).toBeNull(); // told, and nothing is left on its way: the window goes without another question
+  });
+
+  it("写入失败过，任务都结束了：不直接退出，对话框点名，能再试", async () => {
+    await ready();
+    await openSecond();
+    choose(0, "redact");
+    fake.decideFails = new Error("STORE_FAILED");
+    act(() => returnToBatch());
+    await waitFor(() => expect(toastText()).toContain("未能保存"));
+    fake.decideFails = null;
+    await setRows("completed", "completed");
+
+    act(() => requestQuit());
+    expect(quit.n).toBe(0);
+    expect(modal()?.type).toBe("closeWindow");
+    expect(dialogText()).toContain("b.txt");
+    expect(dialogText()).toContain("未能保存");
+  });
+
+  it("只读的单文件：⌘↩ 不开始导出，不发写入，说明原因", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    choose(0, "keep");
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    fake.calls = [];
+    act(() => dismissToast());
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })); });
+    expect(single().phase).toBe("review");
+    expect(fake.calls).toEqual([]);
+    expect(toastText()).toContain("现在只读");
+  });
+
+  it("只读的单文件：切换方案不重新检测，屏幕上的文档不动", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    const before = single().hits;
+    act(() => dismissToast());
+    act(() => switchPreset("其他方案"));
+    expect(single().phase).toBe("review");
+    expect(single().preset).not.toBe("其他方案");
+    expect(single().hits).toBe(before);
+    expect(toastText()).toContain("现在只读");
+  });
+
+  it("只读的单文件进了“最近”，发布失败退回：再打开可以继续改，不是只读", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q1.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    const first = single().live!.batch;
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().live!.closed).toBe(true);
+    fake.nextRows = [fake.row(0, "awaiting_review", { id: "q2", pending: 1 })];
+    takePaths(["/d/q2.txt"]);
+    await waitFor(() => expect(single()?.name).toBe("q2.txt"));
+    await act(() => fake.emitFor(first, [fake.row(0, "failed", { id: "q1" })]));
+    const entry = getState().history.find((h) => h.name === "q1.txt")!;
+    expect((entry.saved as { live: { closed?: boolean } }).live.closed).toBeFalsy();
+  });
+
+  it("只读的文件已完成，进了“最近”：条目是已导出，不是待确认", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q1.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().live!.closed).toBe(true);
+    fake.nextRows = [fake.row(0, "awaiting_review", { id: "q2", pending: 1 })];
+    takePaths(["/d/q2.txt"]);
+    await waitFor(() => expect(single()?.name).toBe("q2.txt"));
+    await waitFor(() => expect(getState().history.find((h) => h.name === "q1.txt")?.stl).toBe("已导出"));
+  });
+
+  it("批次里点发布中的文件：说只读，不说尚未检测完成", async () => {
+    await ready();
+    await setRows("ready_to_publish", "publishing");
+    act(() => dismissToast());
+    act(() => openBatchFile(1));
+    await settle();
+    expect(getState().single).toBeNull();
+    expect(toastText()).toContain("现在只读");
   });
 });

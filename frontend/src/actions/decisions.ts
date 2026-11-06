@@ -53,6 +53,9 @@ export function sendDecisions(job: string, ds: Decisions): Promise<void> {
   return write;
 }
 
+/** Some write has not been answered: nobody knows yet whether the kernel holds the person's choice. */
+export const decisionsOnTheirWay = (): boolean => pending.size > 0;
+
 /** Waits for the writes of one file. */
 export const decisionsSettled = (job: string): Promise<void> => pending.get(job) ?? Promise.resolve();
 

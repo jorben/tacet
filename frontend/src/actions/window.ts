@@ -2,12 +2,12 @@
 import { exportedCount, countFiles } from "../domain/batch";
 import { fmt } from "../domain/format";
 import { getService } from "../services";
-import { getState, store } from "../store";
+import { getState, store, type AppState } from "../store";
 import { refusedFiles, unfinishedBatch, unfinishedOnScreen } from "../store/selectors";
 import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
-import { allDecisionsSettled, refusedJobs } from "./decisions";
+import { allDecisionsSettled, decisionsOnTheirWay, refusedJobs } from "./decisions";
 import { discardLiveTask, discardRefused, lateChoicesKnown, openDecisions, saveOpenDecisions, savedBatchId, tellLateChoices } from "./live";
 
 export function minimiseWindow(): void {
@@ -36,11 +36,15 @@ export function requestClose(): void {
   requestQuit();
 }
 
+/** The window still has something to say of a person's choices: they are on screen only, on their way, or were refused
+ *  and can still land. Finished tasks do not end that: a file may have gone out without them. */
+const holdsChoices = (s: AppState): boolean => openDecisions(s).length > 0 || decisionsOnTheirWay() || refusedJobsKept();
+
 /** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once, and so
- *  are choices only this window holds, even on a task with nothing left to do: its file may have gone out without them. */
+ *  are choices the window still holds. */
 export function requestQuit(): void {
   const s = getState();
-  if (!unfinishedOnScreen(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park) && !openDecisions(s).length) { quitApp(); return; }
+  if (!unfinishedOnScreen(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park) && !holdsChoices(s)) { quitApp(); return; }
   openModal({ type: "closeWindow" });
 }
 

@@ -60,6 +60,8 @@ export const decisionsClosedIn = (state: string): boolean => DECISIONS_CLOSED.ha
  *  state between them says nothing (under a pause, say, it depends on whether the document went out). */
 const DECISIONS_OPEN = new Set(["awaiting_review", "ready_to_publish", "failed", "blocked"]);
 export const decisionsOpenIn = (state: string): boolean => DECISIONS_OPEN.has(state);
+/** Whether a file is read-only now that it stands in `state`, having been so or not before. */
+export const staysClosed = (was: boolean, state: string): boolean => decisionsClosedIn(state) || (was && !decisionsOpenIn(state));
 
 export const passwordWait = (f: EngineFile): boolean => f.state === "locked" || (f.state === "blocked" && (f.detail === "password_required" || f.detail === "PASSWORD_INCORRECT"));
 
