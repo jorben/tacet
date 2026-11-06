@@ -198,6 +198,8 @@ type Engine struct {
 	// beforeSubmit, in tests, runs between a stage being begun and it being queued: an attempt is on record that the
 	// scheduler does not know yet.
 	beforeSubmit func()
+	// dispatchFailed, in tests, runs when a dispatch is about to be recorded as a failed stage.
+	dispatchFailed func()
 	// nextStage holds, per job, a channel closed once the stage being dispatched is queued or has failed.
 	nextStage sync.Map
 	// handOver is held for reading from a stage being begun until it is queued: see stagesHandedOver.

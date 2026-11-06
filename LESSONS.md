@@ -156,6 +156,24 @@
   - 涉及异步调度的测试，用钩子推迟调度，确定性地打开窗口；本机反复重跑都通过，不能说明没有竞争。
 - 出现：1 次（2026-11-02）
 
+**异步通知只说明“该看一眼了”：要做什么、记成什么，都以事务里读到的持久状态为准；两者对不上就丢弃。不要让记账和执行各读各的。**
+- #40：`dispatch` 里 `BeginStage` 按文件当前位置记账（`jobs_stage.stage`），调度器却按通知里的阶段选 runner。连续两次决定发出两个 resolve 通知，晚到的那个落在文件已前进、还没有 attempt 的窗口时，runner 跑 resolve，结果却记在别的阶段上：
+  - 文件在 `exporting`：导出没有真正运行，验证报 `failed / CANDIDATE_MISSING`；
+  - 文件停在 `ready_to_publish`（未授权）：`BeginStage` 替它走了一步 `EvDispatch`，resolve 的结果被当成发布完成，`completed / delivered=1`，输出目录里只有报告，没有文档。
+- 没抓到的原因：`TestReviewDecisionsLetTheFileContinue` 偶发失败（issue 记录同样负载 150 次失败 4 次），`completed` 的判定只看状态机，没有人核对交付记录。
+- 核查时多查出一种落点：publish 通知的阶段和位置都对得上，但决定已经收回了授权。阶段检查挡不住，这里是 `failed / PUBLISH_NOT_AUTHORIZED`，所以 `dispatch` 另查 `run.Grant`。
+- 修复：fix/40-late-stage-notification。`BeginStage` 必须说明阶段，不符返回 `ErrStaleDispatch`；状态机发出的通知都等于文件随后要开始的阶段（穷举测试），丢弃因此不会丢掉唯一的通知；`complete` 把没有交付记录的发布完成改判为 `failed / DELIVERY_MISSING`。
+- 逐处撤回时发现，修复后 `jobs_stage.stage` 记的是传入的阶段，只删检查得到的是另一种症状（`JOB_TRANSITION_INVALID` 被吞掉，文件一直卡在 `exporting`，测试等到超时）。要把记录一起改回才是旧行为，才看得到 issue 里的失败信息。
+- 同一次核查发现、这个分支没有修：发布暂停期间改选择，状态机不接受 `Publishing` 上的 `EvDecisionsChange`，`apply` 按 `quiet` 容忍，恢复后交付旧选择做出的文档。origin/master（3928540）和本分支用同一个探针结果相同：把保留改成涂抹后，文档仍是 `证件 110101199003074519 与 [证件号]`。这是“容忍无效迁移要列出被容忍的每个状态”那条规则漏掉的状态。
+- 验证：`internal/app` 的端到端测试带 `darwin` 标签，这次用不提交的 Linux 垫片（`go test -overlay`）跑；没有在 macOS、Windows 或真实界面上跑过。
+- 同时跑 master（3928540）和这个分支的 `TestReviewDecisionsLetTheFileContinue`，各 600 次（150 次一轮，4 轮）：`CANDIDATE_MISSING` 在 master 上 5 次，分支上 0 次。两边各另有超时类失败：分支 2 次，master 2 次（`sqlite3: interrupted`、`NOT_FOUND`）。带诊断的那一轮，两边在 14:42:08 同时失败，每秒一行的系统监控在那一刻断了 152.4 秒；分支的文件停在 `preflighting`，有 attempt，正在等插件回应，不是通知被丢。没带监控的那一轮（两边都约 146 秒）同因只是推测。这个测试的 2 分钟 context 是整个流程的墙钟上限，见上面“测试不用墙钟时间”一条，这次没有改。
+- 规则：
+  - 通知里带着信息时，问一句它晚到时还成不成立；不成立的部分不要读，或者和持久状态比对；
+  - 丢弃通知之前，先证明会有新的通知（这里是穷举 `Transition`），并逐个想被丢的是不是最后一个（这里是恢复后排队的 publish）；
+  - “已交付”这类对用户的结论，在写入时核对它依据的事实（交付记录），不只靠状态机走到了那一步；
+  - 撤回验证要还原旧行为本身，只删检查可能得到另一种失败。
+- 出现：1 次（2026-11-05）
+
 **新增的后台 goroutine，要对每一种退出方式和每一个入口逐一核对：谁会启动它、谁让它停、关闭时谁等它；“关闭会等它”要有一个在它卡住时关闭的测试。**
 - PR #5 第一版说“关闭时等待探测结束”，审查发现不成立：`waitProbe` 只挂在正常关闭的 Cancel 步骤上，`CloseForSystem` 不经过这一步，探测 worker 可能在 Reap 之后才起来；探测放在 `Open` 里，CLI 也会启动 worker；探测占着 `modelSem` 时，任务和试运行只能干等；关掉 GPU 后，排队中的探测仍会启动 worker。已有测试只覆盖“启动后握手成功”这一条路径。
 - 修复：fix/model-device-probe。只有桌面应用传 `ProbeDevices: true`；探测有自己的 cancel，两种关闭都在 StopDispatch 时停止它；任务和试运行取槽前先停掉探测；关 GPU 时停掉探测。第二轮审查又指出，Reap 前等探测结束（最多 3 秒）会被不可取消的模型文件校验拖满，于是改成只等“检查是否已停止并启动进程”这一小段（`probeLaunch`）：已启动的 worker 由 Reap 回收，之后不会再启动。

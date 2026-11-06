@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/query"
 	"github.com/jorben/tacet/internal/sched"
 	"github.com/jorben/tacet/internal/store"
@@ -84,7 +85,7 @@ func TestQueryProjectionAndCursorRollbackTogether(t *testing.T) {
 		t.Fatalf("double-consume=%d %v", n, err)
 	}
 	if err = ws.Commit(ctx, func(tx store.Tx) error {
-		a, err := repo.BeginStage(tx, "j1", 1, ws.Generation())
+		a, err := repo.BeginStage(tx, "j1", kernel.StagePreflight, 1, ws.Generation())
 		if err != nil {
 			return err
 		}

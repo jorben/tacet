@@ -24,18 +24,14 @@ type StageReads struct {
 // runs inside this transaction, so they cannot drift between the check and the
 // start. A run begun with plain BeginStage records nothing and is treated as
 // stale by any later comparison: lineage fails closed.
-func (r *Repository) BeginStageReading(tx store.Tx, id string, expected, generation uint64, reads StageReads) (kernel.AttemptRef, error) {
-	attempt, err := r.BeginStage(tx, id, expected, generation)
+func (r *Repository) BeginStageReading(tx store.Tx, id string, stage kernel.StageKind, expected, generation uint64, reads StageReads) (kernel.AttemptRef, error) {
+	attempt, err := r.BeginStage(tx, id, stage, expected, generation)
 	if err != nil {
 		return kernel.AttemptRef{}, err
 	}
-	t, scope, err := transaction(tx)
+	_, scope, err := transaction(tx)
 	if err != nil {
 		return kernel.AttemptRef{}, err
-	}
-	var stage kernel.StageKind
-	if err = t.QueryRow("SELECT stage FROM jobs_stage WHERE attempt=?", attempt.AttemptID).Scan(&stage); err != nil {
-		return kernel.AttemptRef{}, ErrJobRecord
 	}
 	done, err := r.finished(tx, id)
 	if err != nil {

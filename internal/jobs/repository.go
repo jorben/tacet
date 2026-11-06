@@ -17,6 +17,9 @@ var (
 	ErrBatchOpen       = errors.New("BATCH_HAS_OPEN_FILES")
 	ErrJobRecord       = errors.New("JOB_RECORD_INVALID")
 	ErrLateOutcome     = errors.New("JOB_STALE_OUTCOME")
+	// ErrStaleDispatch: the file is no longer where the notification found it. Nothing is wrong and nothing changes:
+	// whatever moved the file sent a notification of its own.
+	ErrStaleDispatch = errors.New("JOB_DISPATCH_STALE")
 )
 
 // Module registers only jobs-owned tables. Other entities (snapshots, findings,
@@ -231,8 +234,11 @@ func (r *Repository) Apply(tx store.Tx, id string, expected uint64, event Event)
 }
 
 // BeginStage durably registers an attempt before scheduler execution. A caller
-// checks workspace ownership and resource admission before invoking it.
-func (r *Repository) BeginStage(tx store.Tx, id string, expected, generation uint64) (kernel.AttemptRef, error) {
+// checks workspace ownership and resource admission before invoking it. stage is
+// the one the caller is going to run: a notification can outlive the position it
+// was sent for, and what runs must be what is on record, or its outcome would
+// move the file past a stage that never ran. Any other is ErrStaleDispatch.
+func (r *Repository) BeginStage(tx store.Tx, id string, stage kernel.StageKind, expected, generation uint64) (kernel.AttemptRef, error) {
 	if generation == 0 {
 		return kernel.AttemptRef{}, ErrJobRecord
 	}
@@ -247,17 +253,9 @@ func (r *Repository) BeginStage(tx store.Tx, id string, expected, generation uin
 	if job.Version != expected || job.AttemptID != "" {
 		return kernel.AttemptRef{}, ErrVersionConflict
 	}
-	position := job.Position
-	if position.State == Queued || position.State == ReadyToPublish {
-		next, err := Transition(position, Event{Kind: EvDispatch}, r.limits)
-		if err != nil {
-			return kernel.AttemptRef{}, err
-		}
-		position = next.Snapshot
-	}
-	stage, ok := stageOf[position.State]
-	if !ok {
-		return kernel.AttemptRef{}, ErrInvalidTransition
+	position, due, ok := beginning(job.Position, r.limits)
+	if !ok || due != stage {
+		return kernel.AttemptRef{}, ErrStaleDispatch
 	}
 	var random [16]byte
 	if _, err = rand.Read(random[:]); err != nil {

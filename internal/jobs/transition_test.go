@@ -474,3 +474,53 @@ func TestWhichStatesWaitForAPerson(t *testing.T) {
 		t.Error("a file ready to publish waits only until publishing is authorized")
 	}
 }
+
+// Dropping a notification that names another stage is safe only if the notification the machine sends for a move names
+// the stage the file then begins: otherwise the current one would be dropped too and the file would wait for ever.
+func TestEveryDispatchNamesTheStageTheFileThenBegins(t *testing.T) {
+	states := []State{Preflighting, Preflighted, Locked, Queued, ExtractingDetecting, Resolving, AwaitingReview, Exporting,
+		Validating, ReadyToPublish, Publishing, Blocked, Paused, Cancelling, Failed}
+	stages := []kernel.StageKind{kernel.StagePreflight, kernel.StageExtractDetect, kernel.StageResolve, kernel.StageExport, kernel.StageValidate, kernel.StagePublish}
+	var events []Event
+	for _, k := range []EventKind{EvConfirm, EvDispatch, EvDecisionsChange, EvUnlocked, EvPause, EvResume, EvCancel, EvCancelDone, EvReprocess, EvSkip, EvInputChanged, EvUnblock} {
+		events = append(events, Event{Kind: k})
+	}
+	for _, st := range stages {
+		events = append(events, Event{Kind: EvInvalidate, Stage: st})
+		for _, kind := range []sched.OutcomeKind{sched.Completed, sched.Failed, sched.Blocked, sched.Retry, sched.NeedsReview, sched.Cancelled} {
+			for _, detail := range []string{"", DetailPasswordRequired, DetailPartial, string(validate.Passed), string(validate.NotRun), string(validate.Widened), string(validate.NewFindings)} {
+				events = append(events, outcome(st, kind, detail))
+			}
+		}
+	}
+	named := map[kernel.StageKind]bool{}
+	for _, state := range states {
+		for _, resume := range []State{"", Exporting, ReadyToPublish, AwaitingReview} {
+			for _, cursor := range stages {
+				s := Snapshot{State: state, Resume: resume, Cursor: cursor, FailedStage: cursor, Block: BlockResource}
+				for _, e := range events {
+					r, err := Transition(s, e, DefaultLimits())
+					if err != nil || r.Discard {
+						continue
+					}
+					want := r.Dispatch
+					if want == kernel.StageNone {
+						if r.Snapshot.State != Queued {
+							continue
+						}
+						want = r.Snapshot.Cursor // what Apply and ConfirmBatch send for a file they queued
+					}
+					named[want] = true
+					if _, due, ok := beginning(r.Snapshot, DefaultLimits()); !ok || due != want {
+						t.Fatalf("%s in %+v: sends %s, and at %s it begins %s (%v)", e.Kind, s, want, r.Snapshot.State, due, ok)
+					}
+				}
+			}
+		}
+	}
+	for _, st := range stages {
+		if !named[st] {
+			t.Errorf("no move here sends %s: the check above did not cover it", st)
+		}
+	}
+}

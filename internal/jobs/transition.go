@@ -133,6 +133,19 @@ func (s State) pausable() bool {
 	return s.running() || s == Queued || s == AwaitingReview || s == ReadyToPublish || s == Preflighted || s == Locked
 }
 
+// beginning is what beginning a stage now makes of a position: the position it runs at and the stage that is. A file
+// with nothing to run (it waits for a person, has stopped or has ended) has none.
+func beginning(s Snapshot, l Limits) (Snapshot, kernel.StageKind, bool) {
+	if s.State == Queued || s.State == ReadyToPublish {
+		// one that cannot leave (a cursor that names no stage) stays where it is, which has no stage to run
+		if next, err := Transition(s, Event{Kind: EvDispatch}, l); err == nil {
+			s = next.Snapshot
+		}
+	}
+	stage, ok := stageOf[s.State]
+	return s, stage, ok
+}
+
 func to(s Snapshot, state State, dispatch kernel.StageKind) Result {
 	s.State = state
 	s.Block = ""
