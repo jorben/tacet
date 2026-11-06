@@ -38,6 +38,10 @@ func Module() store.Module {
 	}}, {Version: 2, SQL: []string{
 		`CREATE TABLE review_terms(batch TEXT NOT NULL, version INTEGER NOT NULL, request TEXT NOT NULL UNIQUE, blob BLOB NOT NULL, count INTEGER NOT NULL,
 			PRIMARY KEY(batch, version))`,
+	}}, {Version: 3, SQL: []string{
+		// Every decision asks for the next sequence number, inside a commit that holds the workspace lock for a whole
+		// file's list: without this, that query reads the table and the commit grows with the square of the list.
+		`CREATE INDEX review_decision_seq ON review_decision(seq)`,
 	}}}}
 }
 
@@ -124,9 +128,11 @@ func bump(tx store.Tx, t *store.Txn, sc *store.Scope, jobs []string) error {
 	return nil
 }
 
+const nextSeqQuery = "SELECT MAX(seq) FROM review_decision"
+
 func nextSeq(t *store.Txn) (int64, error) {
 	var n sql.NullInt64
-	if err := t.QueryRow("SELECT MAX(seq) FROM review_decision").Scan(&n); err != nil {
+	if err := t.QueryRow(nextSeqQuery).Scan(&n); err != nil {
 		return 0, err
 	}
 	return n.Int64 + 1, nil
