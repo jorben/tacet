@@ -242,9 +242,15 @@
 - PR #37 的两个测试（`W1 在路上时点导出，等待期间发出 W2`）把“导出等待期间还能打开文件”当成前提。现在导出等待期间打不开文件，这条路走不到了，所以改到仍会这样等待的“重新处理”上，`allDecisionsSettled` 循环等待的覆盖还在。
 - 验证：`internal/app` 的端到端测试用不提交的 Linux 垫片跑，没有在 macOS、Windows 或真实界面上跑过。`internal/app` 的逐处撤回只跑了相关测试子集，不是全包；在这个子集上，撤回 `e.stop`、`e.changed` 时没有测试失败，各补了一个测试：`the stage made from the decisions before this one keeps running`、`the screen was not told about the change`。
 - 文本合并没有冲突，不等于语义没有冲突：这个分支开发期间 #44 合入 master，它的 `TestAResumedPublishIsNotDroppedForTheAuthorizationADecisionTookBack` 断言暂停的发布在决定之后仍收到发布通知（注释写明“是否应该继续发布不在这里定”），这次修复让文件回到处置，通知不再来。`git merge-tree` 干净，在合并结果上跑才看到它在 `<-late.held` 一直等到 `go test -timeout`（`panic: test timed out after 15m0s`）。测试改成新语义（`TestAResumedPublishGoesOnWithTheChoiceMadeUnderItsPause`）；撤回 `Paused` 上的 `Publishing` 分支后报 `DECISIONS_CLOSED`。
+- 同一类问题又出现一次（2026-11-06，同一天，“出现”不加 1）：合入 #41（PR #45）时 `decisions.ts` 文本合并没有冲突，全量测试也全绿（594 个）。#42 说“太晚的拒绝不算没存下”，只改了 `allDecisionsSettled` 和 `unsavedDecisions`；#41 同时新增的 `refusedJobs` 读的是 `unsaved` 的全部键，两边各自都对，合起来 `DECISIONS_CLOSED` 就成了 #41 的“写入失败”。审查指出后，新测试在撤回修正时报：
+  - `expected [ 'cancelled', 'cancelled' ] to deeply equal [ 'publishing', 'cancelled' ]`（正在导出的文件被取消）；
+  - `expected [ 'a1' ] to deeply equal []`、`expected [] to deeply equal [ 'b0001' ]`（只取消这个文件，不再按整批清理）；
+  - `expected '有未完成的任务1 个文件的选择未能保存…' to contain '停止将清理下列全部任务'`（对话框说法）。
+  真实内核用不提交的探针确认过：`publishing` 的文件 `CancelFile` 后是 `cancelling`，阶段放手后是 `cancelled`，`CleanFile` 返回 nil。现在“还能写入的”只有 `landable` 一处定义，等待和范围都读它。
 - 这也让 #44 派发检查里的 `j.Position.State == jobs.ReadyToPublish` 失去了测试：换成 `stage == kernel.StagePublish` 后，`TestAResumedPublish|TestALate|TestAPublishStageWithNoDelivery` 全部通过。按读码，决定现在总把恢复点移回处置，“排队发布而没有授权”走不到；这是读码结论，没有穷举实验。没有手工造出这个状态来写测试，代码也没有动，留给审查决定。
 - 规则补充：
   - 基线在开发期间前进时，在合并结果上重跑测试，不能只看文本合并；
+  - 合并后，对方新增的读取方要逐个问一遍：它读的数据，这边是否改过含义（这里是 `unsaved` 里多了一种“不算失败”的记录）；测试全绿不算回答，这种组合两边的测试都没写过；
   - 判断“太晚了”要看事实的记录（发布意图、交付），不只看状态；
   - 判断和写入放进同一个提交，“接受”才等于“会跟上”；
   - 永远不会成功的拒绝（`DECISIONS_CLOSED`）不能当成“没存下、可重试”：它不挡后面的动作，也不能让窗口关不掉，但“重新保存”时仍要说明原因。

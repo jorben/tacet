@@ -18,11 +18,15 @@ const tooLate = (u: UnsavedDecisions): boolean => String((u.failure as { message
 const pending = new Map<string, Promise<void>>();
 const unsaved = new Map<string, UnsavedDecisions>();
 
-/** The files in `unsaved`, for a screen that says what a failure costs: it has to follow them while it is open. */
+/** What the kernel refused and could still take: this is what holds a person back, not one that came too late. */
+const landable = (): UnsavedDecisions[] => [...unsaved.values()].filter((u) => !tooLate(u));
+
+/** The files of `landable`, for a screen that says what a failure costs: it has to follow them while it is open. One
+ *  refused as too late costs nothing, so it must not narrow “停止并清理” to itself and stop a file going out. */
 let refused: readonly string[] = [];
 const refusedListeners = new Set<() => void>();
 function refusedChanged(): void {
-  refused = [...unsaved.keys()];
+  refused = landable().map((u) => u.job);
   refusedListeners.forEach((l) => l());
 }
 export const refusedJobs = (): readonly string[] => refused;
@@ -61,7 +65,7 @@ export const refusalOf = (job: string): unknown => unsaved.get(job)?.failure;
  *  has not reached the kernel by then and still can, including earlier failures. */
 export async function allDecisionsSettled(): Promise<UnsavedDecisions[]> {
   while (pending.size) await Promise.all(pending.values());
-  return [...unsaved.values()].filter((u) => !tooLate(u));
+  return landable();
 }
 
 /** Sends again what the kernel refused; `allDecisionsSettled` tells how that went. What was refused is older than any
