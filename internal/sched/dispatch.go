@@ -31,6 +31,8 @@ type Dispatcher struct {
 	mu      sync.Mutex
 	running bool
 	active  map[kernel.AttemptRef]context.CancelFunc
+	// beforeWait, when set by a test, runs when the dispatcher has done what it can and is about to sleep.
+	beforeWait func()
 }
 
 func NewDispatcher(q *Queue) *Dispatcher {
@@ -64,8 +66,8 @@ func (d *Dispatcher) Running(job string) bool {
 }
 
 // Run serves until ctx cancellation or a completion error. Paused, pressured,
-// high-water or activity-blocked queues wait for Wake/state notifications, not
-// timers. Only one dispatcher can own a queue through this instance.
+// high-water or activity-blocked queues wait for state notifications, not timers.
+// Only one dispatcher can own a queue through this instance.
 func (d *Dispatcher) Run(ctx context.Context, complete Completion) error {
 	if d == nil || d.queue == nil || complete == nil {
 		return ErrRunner
@@ -134,6 +136,9 @@ func (d *Dispatcher) Run(ctx context.Context, complete Completion) error {
 		var cancelled <-chan struct{}
 		if !stopping {
 			cancelled = ctx.Done()
+		}
+		if d.beforeWait != nil {
+			d.beforeWait()
 		}
 		select {
 		case <-cancelled:

@@ -91,6 +91,7 @@ func NewQueue(b Budget, gate *netgate.Gate, runners ...StageRunner) (*Queue, err
 		}
 		q.runners[runner.Kind()] = runner
 	}
+	gate.OnRelease(q.signal) // Take is refused while a download holds its lease: this is when to ask again
 	return q, nil
 }
 
@@ -334,18 +335,15 @@ func (q *Queue) RemovePending(attempt kernel.AttemptRef) bool {
 	return false
 }
 
-// signal coalesces state changes; it never waits for a dispatcher. The queue
-// state remains authoritative if several notifications collapse into one.
+// signal coalesces state changes, a released activity lease among them; it never
+// waits for a dispatcher and there is no periodic admission polling. The queue state
+// remains authoritative if several notifications collapse into one.
 func (q *Queue) signal() {
 	select {
 	case q.wake <- struct{}{}:
 	default:
 	}
 }
-
-// Wake notifies the dispatcher after an external condition changes, such as
-// release of a network lease. There is no periodic admission polling.
-func (q *Queue) Wake() { q.signal() }
 
 func (q *Queue) PauseDispatch(paused bool) {
 	q.mu.Lock()

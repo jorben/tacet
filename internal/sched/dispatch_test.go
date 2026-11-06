@@ -132,21 +132,51 @@ func TestDispatcherCompletionFailureStopsAndDrainsOtherStages(t *testing.T) {
 	}
 }
 
-func TestDispatcherExternalLeaseReleaseNeedsWake(t *testing.T) {
-	q, gate := queue(t, budget(), &fakeRunner{stage: kernel.StageExport})
-	lease, _ := gate.Acquire(netgate.Network)
-	submit(t, q, job("j", kernel.StageExport, kernel.Interactive))
-	if _, reason := q.Take(); reason != WaitActivity {
-		t.Fatal(reason)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- NewDispatcher(q).Run(ctx, func(JobView, StageOutcome) error { cancel(); return nil }) }()
-	lease.Release()
-	q.Wake()
-	if err := receive(t, done); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+// A stage refused because a download holds the network lease runs once the lease is released, with nothing else
+// happening: the dispatcher is asleep by then and only the release can wake it (#43).
+func TestAStageRefusedForALeaseRunsOnceTheLeaseIsReleased(t *testing.T) {
+	for _, kind := range []netgate.LeaseKind{netgate.Network, netgate.Maintenance} {
+		t.Run(string(kind), func(t *testing.T) {
+			q, gate := queue(t, budget(), &fakeRunner{stage: kernel.StageExport})
+			lease, err := gate.Acquire(kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			submit(t, q, job("j", kernel.StageExport, kernel.Interactive))
+			<-q.wake // what the submit signalled is spent: the dispatcher's first look finds the lease held
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			d := NewDispatcher(q)
+			asleep := make(chan struct{}, 1)
+			d.beforeWait = func() {
+				select {
+				case asleep <- struct{}{}:
+				default:
+				}
+			}
+			ran := make(chan JobView, 1)
+			done := make(chan error, 1)
+			go func() {
+				done <- d.Run(ctx, func(view JobView, _ StageOutcome) error {
+					ran <- view
+					cancel()
+					return nil
+				})
+			}()
+			receive(t, asleep)
+			if s := q.State(); s.Pending != 1 || s.Running != 0 {
+				t.Fatalf("the stage ran while the lease was held: %+v", s)
+			}
+			if err := lease.Release(); err != nil {
+				t.Fatal(err)
+			}
+			if view := receive(t, ran); view.Attempt.JobID != "j" {
+				t.Fatalf("%+v", view)
+			}
+			if err := receive(t, done); !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

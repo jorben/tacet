@@ -17,10 +17,12 @@ func (e *BusyError) Error() string { return CodeActivityBusy }
 // Gate is the single application activity coordinator (MD-19). Processing
 // excludes both network and maintenance. Multiple non-conflicting holders are
 // reference-counted, so releasing one task cannot unblock a live sibling.
-// Activity acquisition never queues or starts work implicitly.
+// Activity acquisition never queues or starts work implicitly: whoever waits for
+// a lease to go away asks again when OnRelease tells it one has.
 type Gate struct {
-	mu   sync.Mutex
-	held map[LeaseKind]uint64
+	mu        sync.Mutex
+	held      map[LeaseKind]uint64
+	listeners []func()
 }
 
 type Lease struct {
@@ -60,18 +62,35 @@ func (g *Gate) Acquire(kind LeaseKind) (*Lease, error) {
 	return &Lease{gate: g, kind: kind, ctx: ctx, cancel: cancel}, nil
 }
 
+// OnRelease adds a listener called after every release, once the lease no longer
+// counts: a listener that acquires at that moment does not find it held, so one
+// who was refused cannot miss the release it waits for. A release of one of several
+// holders notifies too; asking again settles what it means. A listener runs outside the
+// gate's lock, on the goroutine releasing, which may hold locks of its own
+// (Ticket.Finish holds the queue's): a listener only signals, it never blocks.
+func (g *Gate) OnRelease(listener func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.listeners = append(g.listeners, listener)
+}
+
 func (l *Lease) Release() error {
 	if l == nil || l.gate == nil {
 		return ErrLeaseReleased
 	}
 	l.gate.mu.Lock()
-	defer l.gate.mu.Unlock()
 	if l.released {
+		l.gate.mu.Unlock()
 		return ErrLeaseReleased
 	}
 	l.released = true
 	l.gate.held[l.kind]--
 	l.cancel() // in-flight work bound to the lease stops with it
+	listeners := l.gate.listeners
+	l.gate.mu.Unlock()
+	for _, listener := range listeners {
+		listener()
+	}
 	return nil
 }
 
