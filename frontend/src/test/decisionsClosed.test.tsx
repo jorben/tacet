@@ -551,6 +551,30 @@ describe("退出和只读的其余入口", () => {
     expect(dialogText()).toContain("未能保存");
   });
 
+  it("开着批次文件时，背后的单文件被拒为太晚：说一次；再关窗时对话框也点名它已来不及", async () => {
+    await ready();
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.nextRows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => { expect(single()?.name).toBe("q.txt"); expect(single().phase).toBe("review"); });
+    const task = single().live!.batch;
+    choose(0, "keep");
+    fake.units = [unit(1, "电话 13812345678", [{ id: 31, start: 3, end: 14 }])];
+    act(() => openBatchFile(1));
+    await waitFor(() => expect(getState().behind?.single.live?.batch).toBe(task));
+    fake.decideFailsOf.set("q1", new Error("DECISIONS_CLOSED"));
+    act(() => dismissToast());
+
+    saveAndCloseByHand();
+    await waitFor(() => expect(toastText()).toContain(NOT_IN_OUTPUT));
+    expect(toastText()).toContain("q.txt");
+    expect(quit.n).toBe(0);
+
+    act(() => requestQuit());
+    expect(dialogText()).toContain("这里的修改不会进入导出文件");
+    expect(dialogText()).toContain("q.txt");
+  });
+
   it("只读的单文件：⌘↩ 不开始导出，不发写入，说明原因", async () => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
     fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
