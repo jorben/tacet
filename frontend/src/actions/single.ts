@@ -15,7 +15,7 @@ import { leaveBatchFile, reportLeftBatchFile } from "./batch";
 import { enterBatchReview } from "./review";
 import { needModel } from "./models";
 import { openSubpage } from "./navigation";
-import { addLiveManual, cancelLiveSingle, chooseOutputFolder, exportLiveSingle, withdrawLiveManual } from "./live";
+import { addLiveManual, cancelLiveSingle, chooseOutputFolder, exportLiveSingle, READ_ONLY, withdrawLiveManual } from "./live";
 
 const plain = <T,>(v: T): T => (isDraft(v) ? (current(v as Draft<T>) as T) : v);
 
@@ -104,9 +104,17 @@ export function pushUndo(d: Draft<AppState>): void {
   if (d.undo.length > 50) d.undo.shift();
 }
 
+/** The document of the file on screen is going or has gone out: nothing done here would reach it. */
+function readOnly(): boolean {
+  const s = getState().single;
+  if (!s?.live?.closed) return false;
+  toast("「" + s.name + "」" + READ_ONLY);
+  return true;
+}
+
 export function undoSingle(): void {
   const u = getState().undo.at(-1);
-  if (!u) return;
+  if (!u || readOnly()) return;
   if (u.manual != null && getState().single?.live) {
     closePop();
     void withdrawLiveManual(u.manual).then((ok) => { if (ok) toast("已撤销"); });
@@ -120,13 +128,15 @@ export function undoSingle(): void {
   toast("已撤销");
 }
 
-/** Applies a decision to the open document, remembering the previous state for undo. */
-function decide(recipe: (s: Draft<Single>, d: Draft<AppState>) => void): void {
+/** Applies a decision to the open document, remembering the previous state for undo. False if the file takes none. */
+function decide(recipe: (s: Draft<Single>, d: Draft<AppState>) => void): boolean {
+  if (readOnly()) return false;
   store.update((d) => {
     if (!d.single) return;
     pushUndo(d);
     recipe(d.single, d);
   });
+  return true;
 }
 
 /* ── Hits ─────────────────────────────────────────────────────────────────── */
@@ -200,12 +210,12 @@ export function setHitState(state: "keep" | "redact"): void {
   const h = s?.hits[s.focus];
   if (!s || !h) return;
   let n = 1;
-  decide((x) => {
+  const decided = decide((x) => {
     const targets = x.sameAll ? sameValueHits(x, x.hits[x.focus]!) : [x.hits[x.focus]!];
     targets.forEach((t) => { t.state = state; t.seen = true; });
     n = targets.length;
   });
-  toast((state === "keep" ? "保留" : "涂抹") + (n > 1 ? " " + n + " 处" : ""), undoSingle);
+  if (decided) toast((state === "keep" ? "保留" : "涂抹") + (n > 1 ? " " + n + " 处" : ""), undoSingle);
 }
 
 export function toggleFocusedHit(): void {
@@ -220,6 +230,7 @@ export function setSameAll(on: boolean): void {
 
 /** Mask the selected text by hand. */
 export function addManualRedaction(type: CategoryId, sel: ManualSelection): void {
+  if (readOnly()) { closePop(); return; }
   if (getState().single?.live) {
     void addLiveManual(type, sel).then((ok) => { if (ok) toast("已涂抹 · " + categoryName(getState().categories, type), undoSingle); });
     window.getSelection()?.removeAllRanges();
@@ -267,14 +278,14 @@ export function openCategoryMenu(anchor: PopAnchor, t: CategoryId): void {
       { l: "全部保留", k: "keepAll" },
     ];
   openMenu(anchor, items, (it) => {
-    decide((x) => {
+    const decided = decide((x) => {
       if (it.k === "keepAll") x.hits.forEach((h) => { if (h.type === t) { h.state = "keep"; h.seen = true; } });
       else {
         x.catAct[t] = it.k as Treatment;
         if (x.mode === "orig" && it.k === "ph") x.mode = "fx";
       }
     });
-    if (it.k === "keepAll") toast("保留全部" + name, undoSingle);
+    if (decided && it.k === "keepAll") toast("保留全部" + name, undoSingle);
   }, { alignRight: true });
 }
 
@@ -299,8 +310,8 @@ export function openImageMenu(anchor: PopAnchor, index: number): void {
     { l: "保留", s: "部分结果", k: "keep", on: im.act === "keep" },
   ], (it) => {
     if (getState().single!.imgs[index]!.act === it.k) return;
-    decide((x) => { x.imgs[index]!.act = it.k as ImageAction; });
-    toast((it.k === "keep" ? "保留" : verb) + " · " + im.label, undoSingle);
+    const decided = decide((x) => { x.imgs[index]!.act = it.k as ImageAction; });
+    if (decided) toast((it.k === "keep" ? "保留" : verb) + " · " + im.label, undoSingle);
   });
 }
 

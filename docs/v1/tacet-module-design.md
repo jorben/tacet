@@ -420,7 +420,7 @@ type Session interface {
 | 非终止状态 | 暂停 / 取消 | `paused` / `cancelling` → `cancelled` | 记录恢复阶段 |
 | `paused` | 相关决定提交（可能晚于暂停落地） | 仍为 `paused` | 恢复点按未暂停时的规则变化，恢复后不沿用旧决定做出的结果；从 `publishing` 暂停的按 `ready_to_publish` 处理，已有发布意图或交付记录时由 `app` 拒绝 |
 | `queued`（恢复点在处置之后） | 相关决定提交 | `queued`（恢复点改为处置） | 恢复或解除阻塞后、调度之前的窗口；恢复点在处置及之前的，到时读取最新决定，不变 |
-| `publishing` / `completed` / `partial` | 相关决定提交 | 不变，返回 `DECISIONS_CLOSED` | 决定不写入，由界面提示未能保存（架构文档第 6 节） |
+| `publishing` / `completed` / `partial` | 相关决定提交 | 不变，返回 `DECISIONS_CLOSED` | 决定不写入，由界面提示未能保存；界面听到文件进入这些状态时转只读（架构文档第 6 节） |
 | 非终止状态 | `lineage` 判定上游已变 | 最早失效阶段的 `queued` | 已发布成员另生成新交付版本 |
 | 非终止状态 | 输入已变化 | `blocked`（输入变化） | FR-08 |
 

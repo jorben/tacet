@@ -53,6 +53,14 @@ export function fileStatus(f: EngineFile): FileStatus {
   }
 }
 
+/** The states in which the kernel refuses a change of decisions whatever else is on record. */
+const DECISIONS_CLOSED = new Set(["publishing", "completed", "partial"]);
+export const decisionsClosedIn = (state: string): boolean => DECISIONS_CLOSED.has(state);
+/** The states a file stands in when a publish has given up on it, or before one: the person can choose again. Any other
+ *  state between them says nothing (under a pause, say, it depends on whether the document went out). */
+const DECISIONS_OPEN = new Set(["awaiting_review", "ready_to_publish", "failed", "blocked"]);
+export const decisionsOpenIn = (state: string): boolean => DECISIONS_OPEN.has(state);
+
 export const passwordWait = (f: EngineFile): boolean => f.state === "locked" || (f.state === "blocked" && (f.detail === "password_required" || f.detail === "PASSWORD_INCORRECT"));
 
 /** Exceptions of a file other than its strict-mode confirmation. */
@@ -91,6 +99,7 @@ export function toBatchFile(prev: BatchFile, f: EngineFile): BatchFile {
     ...prev,
     h,
     st,
+    closed: decisionsClosedIn(f.state),
     det: hits > 0 || !["preflighting", "preflighted", "queued", "extracting_detecting"].includes(f.state),
     g: groups,
     reason: group === GROUP_REVIEW || group === GROUP_STRICT ? null : reason,

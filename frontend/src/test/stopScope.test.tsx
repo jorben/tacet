@@ -1,5 +1,5 @@
 // #41: with choices the kernel refused, “停止并清理” costs the file or task they were on, not every unfinished task.
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { openBatchFile, startBatch } from "../actions/batch";
 import { sendDecisions } from "../actions/decisions";
@@ -7,7 +7,7 @@ import { discardSavedTask, resumeSavedBatch } from "../actions/home";
 import { restoreUnfinished, startLive, stopLiveBatch, takePaths } from "../actions/live";
 import { focusHit, returnToBatch, setHitState } from "../actions/single";
 import { requestQuit, saveAndQuit, stopAndQuit } from "../actions/window";
-import { closeModal, dismissToast, overlayStore } from "../overlay/store";
+import { closeModal, dismissToast, openModal, overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
@@ -408,6 +408,24 @@ describe("内核说太晚了（DECISIONS_CLOSED）不算写入失败：文档已
 });
 
 describe("对话框和提示说明实际的清理范围", () => {
+  it("两个任务文案相同：对话框都列出，React 不报 key 重复", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await quickOn("q1", "/d/q.txt");
+    await quickOn("q2", "/d/q.txt");
+    await quickOn("q3", "/d/q.txt");
+    errors.mockClear();
+    act(() => requestQuit());
+    expect(dialog().match(/q\.txt/g)?.length).toBe(3);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+
+    errors.mockClear();
+    act(() => { closeModal(); openModal({ type: "updateApp" }); }); // the other dialog that lists them
+    expect(dialog().match(/q\.txt/g)?.length).toBe(3);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+    errors.mockRestore();
+    act(() => closeModal());
+  });
+
   it("“保存并退出”被拒：提示点名受影响的文件，说其他任务保留，不说全部", async () => {
     await batchWithARefusedFile("a", ["/d/a1.txt", "/d/a2.txt"]);
     act(() => dismissToast());

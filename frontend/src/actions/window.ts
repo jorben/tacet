@@ -8,7 +8,7 @@ import { closeModal, openModal, toast } from "../overlay/store";
 import { stopBatchTimer, stopSingleTimer } from "./timers";
 import { leaveBatchFile } from "./batch";
 import { allDecisionsSettled, refusedJobs } from "./decisions";
-import { discardLiveTask, discardRefused, openDecisions, saveOpenDecisions, savedBatchId } from "./live";
+import { discardLiveTask, discardRefused, lateChoicesKnown, openDecisions, saveOpenDecisions, savedBatchId, tellLateChoices } from "./live";
 
 export function minimiseWindow(): void {
   void getService().minimiseWindow().catch(() => {});
@@ -36,10 +36,11 @@ export function requestClose(): void {
   requestQuit();
 }
 
-/** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once. */
+/** An explicit quit (the window in “关闭程序” mode, or “退出” in the tray): unfinished work is asked about once, and so
+ *  are choices only this window holds, even on a task with nothing left to do: its file may have gone out without them. */
 export function requestQuit(): void {
   const s = getState();
-  if (!unfinishedOnScreen(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park)) { quitApp(); return; }
+  if (!unfinishedOnScreen(s, "single") && !unfinishedBatch(s) && !s.history.some((h) => h.park) && !openDecisions(s).length) { quitApp(); return; }
   openModal({ type: "closeWindow" });
 }
 
@@ -58,16 +59,19 @@ const refusedJobsKept = () => refusedFiles(getState(), refusedJobs()).length > 0
 
 /** “停止并清理”, then quit; exported files are not affected. Where the kernel refused choices, what goes is the files
  *  they were on, as the dialog said; with none refused, everything it listed. A write still on its way decides between
- *  the two when it ends, and goes the safe way: refused, it costs the file and not the rest. */
+ *  the two when it ends, and goes the safe way: refused, it costs the file and not the rest. Refused as too late, the
+ *  person hears of it before the window goes. */
 export function stopAndQuit(): void {
   closeModal();
+  const known = lateChoicesKnown();
   const named = refusedFiles(getState(), refusedJobs());
   store.update((d) => {
     if (d.single && d.single.from === "batch") leaveBatchFile(d);
   });
   void allDecisionsSettled().then(async () => {
-    if (!named.length && !refusedJobsKept()) { discardEverything(); return; }
+    if (!named.length && !refusedJobsKept()) { if (!tellLateChoices(known)) discardEverything(); return; }
     await discardRefused(named);
+    if (tellLateChoices(known)) return;
     markKeptPaused();
     quitApp();
   });

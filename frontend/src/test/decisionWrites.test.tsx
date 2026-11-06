@@ -578,22 +578,22 @@ describe("#42 点了导出之后，选择不会再悄悄落空", () => {
     expect(modal()).toBeNull();
   });
 
-  it("太晚的选择不挡“保存并退出”：它不可能再存下，不能把人关在窗口里", async () => {
+  it("太晚的选择不挡“保存并退出”：离开文件时已说过一次，不再把人关在窗口里", async () => {
     await refusedTooLate();
+    expect(toastText()).toContain(TOO_LATE); // what lets the window go is that the person was told
     const quit = quitting();
     act(() => saveAndQuit());
     await waitFor(() => expect(quit.n).toBe(1));
   });
 
-  it("文件退回可处理后再打开：显示内核里的选择，不说是上次没存下的；再改能写入", async () => {
+  it("文件退回可处理后再打开：显示的是人最后的选择，并说明离开时会重新保存", async () => {
     await refusedTooLate();
     await setRows(...bothReady);
     act(() => dismissToast());
     openBatchFile(1);
     await waitFor(() => expect(single()?.live?.job).toBe("j2"));
-    expect(shown(0)).toBe("keep");
-    expect(toastText()).not.toContain("上次未能保存");
-    choose(0, "redact");
+    expect(shown(0)).toBe("redact");
+    expect(toastText()).toContain("上次未能保存");
     act(() => returnToBatch());
     await waitFor(() => expect(fake.kernelDecisions.get(31)).toBe(false));
     await waitFor(() => expect(toastText()).toContain("已保存修改"));

@@ -154,6 +154,45 @@ func TestAChangeOfDecisionsWhileTheFileIsPublishingIsRefused(t *testing.T) {
 	}
 }
 
+// “Too late” holds as long as the publish does. The screen counts on that: when the file comes back, what was refused is
+// a failed write it sends again, and the next document has to be the one of that choice, not the one that did not get out.
+func TestAChoiceRefusedAsTooLateCanBeMadeOnceThePublishGaveUp(t *testing.T) {
+	r := newDecisionRig(t, "batch")
+	held, release := holdStage(t, r.e, kernel.StagePublish, nil)
+	if err := r.e.Publish(r.ctx, r.batch, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "at the publish", func() bool { return held.Load() == 1 })
+	r.refused()
+
+	st, err := r.e.Status(r.ctx, r.batch, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken := filepath.Join(r.out, r.batch+"-"+st.Files[0].Name+".txt")
+	if err = os.WriteFile(taken, []byte("in the way"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	eventually(t, "given up", func() bool { return r.state(r.batch, 0) == "blocked" })
+
+	if err = r.redact(); err != nil {
+		t.Fatalf("the file came back, and the choice is still refused: %v", err)
+	}
+	if err = os.Remove(taken); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Retry(r.ctx, r.batch, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.e.Publish(r.ctx, r.batch, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if doc := r.document(); strings.Contains(doc, phoneNumber) {
+		t.Fatalf("the document went out without the choice: %q", doc)
+	}
+}
+
 // A partial result is as delivered as a complete one. Nothing in the test files makes one, so the file is taken there
 // through the same call the stage ends with.
 func TestAChangeOfDecisionsOnAPartialResultIsRefused(t *testing.T) {

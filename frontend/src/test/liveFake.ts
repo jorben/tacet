@@ -25,6 +25,8 @@ export class FakeEngine implements EngineService {
   private heldDecisions = new Map<string, Map<number, boolean>>();
   decisionsHeld(job: string) { return Object.fromEntries(this.heldDecisions.get(job) ?? []); }
   decideFails: Error | null = null;
+  /** The writes of one file are refused for this reason; the others are not. */
+  decideFailsOf = new Map<string, Error>();
   decideGate: Promise<void> | null = null;
   /** The next write of one file waits for this; the writes of other files do not. */
   decideGateOf = new Map<string, Promise<void>>();
@@ -360,6 +362,8 @@ export class FakeEngine implements EngineService {
     const own = this.decideGateOf.get(job);
     if (own) { this.decideGateOf.delete(job); await own; }
     if (this.decideFails) throw this.decideFails;
+    const refused = this.decideFailsOf.get(job);
+    if (refused) throw refused;
     // as the kernel: a file whose document has gone out or is going out cannot follow a new choice
     if (this.rows.some((r) => r.id === job && ["publishing", "completed", "partial"].includes(r.state))) throw new Error("DECISIONS_CLOSED");
     this.decisions = ds;
