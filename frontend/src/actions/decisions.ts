@@ -13,6 +13,19 @@ export interface UnsavedDecisions { job: string; ds: Decisions; failure: unknown
 const pending = new Map<string, Promise<void>>();
 const unsaved = new Map<string, UnsavedDecisions>();
 
+/** The files in `unsaved`, for a screen that says what a failure costs: it has to follow them while it is open. */
+let refused: readonly string[] = [];
+const refusedListeners = new Set<() => void>();
+function refusedChanged(): void {
+  refused = [...unsaved.keys()];
+  refusedListeners.forEach((l) => l());
+}
+export const refusedJobs = (): readonly string[] => refused;
+export function onRefusedChange(listener: () => void): () => void {
+  refusedListeners.add(listener);
+  return () => refusedListeners.delete(listener);
+}
+
 /** Queues a write behind the ones of this file. It is registered at once, so a read that follows can wait for it. */
 export function sendDecisions(job: string, ds: Decisions): Promise<void> {
   const before = pending.get(job) ?? Promise.resolve();
@@ -20,8 +33,8 @@ export function sendDecisions(job: string, ds: Decisions): Promise<void> {
   if (!e || !ds.length) return before;
   const write = before.then(() => e.decide(job, ds));
   const last: Promise<void> = write.then(
-    () => { unsaved.delete(job); },
-    (failure: unknown) => { unsaved.set(job, { job, ds, failure }); },
+    () => { if (unsaved.delete(job)) refusedChanged(); },
+    (failure: unknown) => { unsaved.set(job, { job, ds, failure }); refusedChanged(); },
   ).then(() => { if (pending.get(job) === last) pending.delete(job); });
   pending.set(job, last);
   return write;
@@ -52,11 +65,12 @@ export function resendDecisions(jobs: string[]): void {
 /** The file will not be exported, so what the kernel refused on it no longer stands in the way. */
 export async function forgetDecisions(job: string): Promise<void> {
   await decisionsSettled(job);
-  unsaved.delete(job);
+  if (unsaved.delete(job)) refusedChanged();
 }
 
 /** A fresh start (tests): the jobs of the last kernel mean nothing to the next. */
 export function resetDecisions(): void {
   pending.clear();
   unsaved.clear();
+  refusedChanged();
 }

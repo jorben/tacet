@@ -37,6 +37,34 @@ export function unfinishedBatch(s: AppState): Batch | null {
   return unfinishedOnScreen(s, "batch") ?? (s.batch && batchStatus(s.batch)[0] === "warn" ? s.batch : null);
 }
 
+/** Every task still kept for the person, each once: a file of a batch that is open is part of that batch. */
+export function keptTasks(s: Pick<AppState, "batch" | "single" | "behind" | "history">): (Single | Batch)[] {
+  const parked = s.history.filter((h) => h.park).map((h) => h.saved as Single | Batch | undefined);
+  return [s.batch, s.single, s.behind?.single, ...parked].filter((t): t is Single | Batch => !!t?.live && (t as Single).from !== "batch");
+}
+
+/** What “停止并清理” removes for a file whose choices the kernel refused: the file, and with a single task the task it is. */
+export interface RefusedFile {
+  job: string;
+  name: string;
+  /** The kernel's batch of the task. */
+  batch: string;
+  /** The batch the file is one of; absent for a single task, which goes as a whole. */
+  inBatch?: string;
+}
+
+/** The files among `jobs` that belong to a task still kept, in the order of `keptTasks`. */
+export function refusedFiles(s: Pick<AppState, "batch" | "single" | "behind" | "history">, jobs: readonly string[]): RefusedFile[] {
+  return keptTasks(s).flatMap((t): RefusedFile[] => {
+    if ("files" in t) {
+      const live = t.live!;
+      return live.jobs.flatMap((job, i) => (jobs.includes(job) ? [{ job, name: t.files[i]?.name ?? job, batch: live.id, inBatch: t.title }] : []));
+    }
+    const live = t.live!;
+    return jobs.includes(live.job) ? [{ job: live.job, name: t.name, batch: live.batch }] : [];
+  });
+}
+
 /** The tasks on screen, followed by the ones under “最近”. */
 export function liveHistory(s: Pick<AppState, "batch" | "single" | "behind" | "history">): HistoryEntry[] {
   const out: HistoryEntry[] = [];

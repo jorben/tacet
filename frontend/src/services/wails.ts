@@ -40,6 +40,8 @@ const engine: EngineService = {
   resume: (b) => G.ResumeBatch(b),
   cancel: (b) => G.CancelBatch(b),
   clean: (b) => G.CleanBatch(b),
+  cancelFile: (job) => G.CancelFile(job),
+  cleanFile: (job) => G.CleanFile(job),
   retry: (b, files) => G.RetryFiles(b, files),
   unlock: (job, pw) => G.UnlockFile(job, pw),
   async documentUnits(job, after, limit) { return ((await G.DocumentUnits(job, after, limit)) ?? []) as any; },

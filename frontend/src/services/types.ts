@@ -249,6 +249,9 @@ export interface EngineService {
   resume(batch: string): Promise<void>;
   cancel(batch: string): Promise<void>;
   clean(batch: string): Promise<void>;
+  /** One file of a batch: the other files go on. Refused like the batch's until the file has come to rest. */
+  cancelFile(job: string): Promise<void>;
+  cleanFile(job: string): Promise<void>;
   retry(batch: string, files: string[]): Promise<void>;
   unlock(job: string, password: string): Promise<void>;
   documentUnits(job: string, after: number, limit: number): Promise<EngineUnit[]>;

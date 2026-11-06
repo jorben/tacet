@@ -1,11 +1,13 @@
-import { Fragment } from "react";
+import { Fragment, useSyncExternalStore } from "react";
+import { onRefusedChange, refusedJobs } from "../../actions/decisions";
+import { savedBatchId } from "../../actions/live";
 import { cleanWorkspace, confirmUpdate } from "../../actions/settings";
 import { saveAndQuit, stopAndQuit } from "../../actions/window";
 import { batchStatus } from "../../domain/batch";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../../overlay/Modal";
 import { closeModal } from "../../overlay/store";
 import { useAppState, type AppState } from "../../store";
-import { isRecoverable, unfinishedBatch, unfinishedOnScreen } from "../../store/selectors";
+import { isRecoverable, refusedFiles, screenSingle, unfinishedBatch, unfinishedOnScreen, type RefusedFile } from "../../store/selectors";
 import { Button, ButtonLink, Icon, KeyValue, pushLeft } from "../../ui";
 
 const ABOUT_LABEL = { website: "官网", discord: "Discord 社区", github: "GitHub" } as const;
@@ -143,16 +145,37 @@ export function CleanWorkspaceDialog() {
   );
 }
 
-/** Closing the window with unfinished work: keep it, or stop and clean up. */
+const sameFiles = (a: RefusedFile[], b: RefusedFile[]) => a.map((f) => f.job).join("|") === b.map((f) => f.job).join("|");
+
+/** The tasks the dialog lists as kept: all but a single task that goes as a whole. */
+function tasksLeft(s: AppState, files: RefusedFile[]): string[] {
+  const whole = new Set(files.filter((f) => !f.inBatch).map((f) => f.batch));
+  const single = screenSingle(s)?.live?.batch;
+  return unfinishedTasks({ ...s, single: single && whole.has(single) ? null : s.single, behind: single && whole.has(single) ? null : s.behind,
+    history: s.history.filter((h) => !whole.has(savedBatchId(h.saved) ?? "")) }, "parked");
+}
+
+/** Closing the window with unfinished work: keep it, or stop and clean up. With choices the kernel refused, cleaning
+ *  reaches those files only, and the dialog says which while it is open: a write can still fail. */
 export function CloseWindowDialog() {
-  const tasks = useAppState((s) => unfinishedTasks(s, "parked"), (a, b) => a.join("|") === b.join("|"));
+  const jobs = useSyncExternalStore(onRefusedChange, refusedJobs);
+  const files = useAppState((s) => refusedFiles(s, jobs), sameFiles);
+  const tasks = useAppState((s) => (files.length ? tasksLeft(s, files) : unfinishedTasks(s, "parked")), (a, b) => a.join("|") === b.join("|"));
   const batchKeep = useAppState((s) => unfinishedBatch(s)?.keep);
   const settingsKeep = useAppState((s) => s.settings.keep);
   const days = batchKeep && batchKeep !== "0" ? batchKeep : settingsKeep !== "0" ? settingsKeep : "7";
+  const subtitle = files.length
+    ? `${files.length} 个文件的选择未能保存。“保存并关闭”会再试一次；“停止并清理”只清理这些文件的中间数据，其他任务保留 ${days} 天，下次打开继续；已导出的文件不受影响`
+    : `保存后加密保留 ${days} 天，下次打开继续；停止将清理下列全部任务的中间数据，已导出的文件不受影响`;
   return (
     <Modal>
-      <ModalHeader title="有未完成的任务" subtitle={`保存后加密保留 ${days} 天，下次打开继续；停止将清理下列全部任务的中间数据，已导出的文件不受影响`} />
+      <ModalHeader title="有未完成的任务" subtitle={subtitle} />
       <ModalBody>
+        {files.length > 0 && <p className="muted sm">“停止并清理”将清理：</p>}
+        {files.map((f) => (
+          <TaskLine key={f.job}>{f.inBatch ? f.name + " · " + f.inBatch + "中的文件" : f.name}</TaskLine>
+        ))}
+        {files.length > 0 && tasks.length > 0 && <p className="muted sm" style={{ marginTop: 12 }}>保留：</p>}
         {tasks.map((t) => (
           <TaskLine key={t}>{t}</TaskLine>
         ))}

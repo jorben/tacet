@@ -318,8 +318,12 @@ type Core interface {
 	TestPreset(ctx context.Context, preset, text string) (PresetTest, error)
 	Resume(ctx context.Context, batch string) error
 	Cancel(ctx context.Context, batch string) error
+	// CancelFile stops one file of a batch; the other files go on.
+	CancelFile(ctx context.Context, job string) error
 	Retry(ctx context.Context, batch string, jobs []string) error
 	Clean(ctx context.Context, batch string) error
+	// CleanFile removes what the workspace holds for one file that has ended; the rest of its batch stays.
+	CleanFile(ctx context.Context, job string) error
 	Close() error
 }
 
