@@ -241,7 +241,10 @@
 - “先写决定，再判断能不能跟上”也留窗口：判断和写入分两次提交时，文件可能在中间进入发布，已拒绝的决定却留在内核，发布失败、文件退回复核后，屏幕会显示一个文档没有跟上的选择。现在决定和重做在同一提交里（`changeDecisions`）。代价是一次写入是一个事务：本机每条约 0.15ms（1200 条 186ms），按线性推算上限 10 万条约 15 秒内会挡住其他提交（未实测到上限；5000 和 20000 条的探针合起来 380 秒内没跑完，日志没留下时间花在哪一段，推测是处理文档）。
 - PR #37 的两个测试（`W1 在路上时点导出，等待期间发出 W2`）把“导出等待期间还能打开文件”当成前提。现在导出等待期间打不开文件，这条路走不到了，所以改到仍会这样等待的“重新处理”上，`allDecisionsSettled` 循环等待的覆盖还在。
 - 验证：`internal/app` 的端到端测试用不提交的 Linux 垫片跑，没有在 macOS、Windows 或真实界面上跑过。`internal/app` 的逐处撤回只跑了相关测试子集，不是全包；在这个子集上，撤回 `e.stop`、`e.changed` 时没有测试失败，各补了一个测试：`the stage made from the decisions before this one keeps running`、`the screen was not told about the change`。
+- 文本合并没有冲突，不等于语义没有冲突：这个分支开发期间 #44 合入 master，它的 `TestAResumedPublishIsNotDroppedForTheAuthorizationADecisionTookBack` 断言暂停的发布在决定之后仍收到发布通知（注释写明“是否应该继续发布不在这里定”），这次修复让文件回到处置，通知不再来。`git merge-tree` 干净，在合并结果上跑才看到它在 `<-late.held` 一直等到 `go test -timeout`（`panic: test timed out after 15m0s`）。测试改成新语义（`TestAResumedPublishGoesOnWithTheChoiceMadeUnderItsPause`）；撤回 `Paused` 上的 `Publishing` 分支后报 `DECISIONS_CLOSED`。
+- 这也让 #44 派发检查里的 `j.Position.State == jobs.ReadyToPublish` 失去了测试：换成 `stage == kernel.StagePublish` 后，`TestAResumedPublish|TestALate|TestAPublishStageWithNoDelivery` 全部通过。按读码，决定现在总把恢复点移回处置，“排队发布而没有授权”走不到；这是读码结论，没有穷举实验。没有手工造出这个状态来写测试，代码也没有动，留给审查决定。
 - 规则补充：
+  - 基线在开发期间前进时，在合并结果上重跑测试，不能只看文本合并；
   - 判断“太晚了”要看事实的记录（发布意图、交付），不只看状态；
   - 判断和写入放进同一个提交，“接受”才等于“会跟上”；
   - 永远不会成功的拒绝（`DECISIONS_CLOSED`）不能当成“没存下、可重试”：它不挡后面的动作，也不能让窗口关不掉，但“重新保存”时仍要说明原因。
