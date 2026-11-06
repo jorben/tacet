@@ -23,6 +23,10 @@ import (
 
 const stalledModel = "astrlink-guard-int8"
 
+// wakeLimit only keeps a broken scheduler or a download that never starts from taking the rest of the package down
+// with it (go test -timeout would). It bounds a wake-up and a small local transfer, no plugin.
+const wakeLimit = 2 * time.Minute
+
 // stalledHub serves one model file: half of it, then it waits for the test to say how the transfer ends. From reached
 // until then the download holds its network lease.
 type stalledHub struct {
@@ -55,10 +59,11 @@ func (h *stalledHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // downloadRig is a workspace with a model to download from a stalledHub. Its manifest lists one small file, so what
-// follows the transfer is real up to the load, which fails: there is no model in it.
-func downloadRig(t *testing.T) (*parkRig, *stalledHub) {
+// follows the transfer is real up to the load, which fails: there is no model in it. asleep holds the state the scheduler
+// last went to sleep in.
+func downloadRig(t *testing.T) (r *parkRig, hub *stalledHub, asleep <-chan sched.QueueState) {
 	t.Helper()
-	hub := &stalledHub{body: []byte(strings.Repeat("model bytes ", 64)), reached: make(chan struct{}), proceed: make(chan struct{})}
+	hub = &stalledHub{body: []byte(strings.Repeat("model bytes ", 64)), reached: make(chan struct{}), proceed: make(chan struct{})}
 	srv := httptest.NewTLSServer(hub)
 	t.Cleanup(srv.Close)
 	t.Cleanup(hub.goOn) // before the server closes, which waits for the handler (cleanups run last first)
@@ -66,8 +71,8 @@ func downloadRig(t *testing.T) (*parkRig, *stalledHub) {
 	pool.AddCert(srv.Certificate())
 	src := &ModelSource{Base: srv.URL, Hosts: []string{"127.0.0.1"}, TLS: &tls.Config{RootCAs: pool}}
 
-	r, _ := root(t)
-	raw, err := os.ReadFile(filepath.Join(r, "resources", "models", stalledModel+".json"))
+	base, _ := root(t)
+	raw, err := os.ReadFile(filepath.Join(base, "resources", "models", stalledModel+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,30 +90,38 @@ func downloadRig(t *testing.T) (*parkRig, *stalledHub) {
 	if err = os.WriteFile(manifest, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	model := &ModelOption{ManifestPath: manifest, Plugin: builtin(t, r, "detect-astrlink", "tacet_detect_astrlink")}
+	model := &ModelOption{ManifestPath: manifest, Plugin: builtin(t, base, "detect-astrlink", "tacet_detect_astrlink")}
 
-	rig := &parkRig{t: t, ws: filepath.Join(t.TempDir(), "ws"), in: t.TempDir(), out: t.TempDir(), key: &memKey{}, ctx: t.Context()}
-	rig.e = openEngineWith(t, rig.ws, rig.key, true, func(o *Options) {
+	slept := make(chan sched.QueueState, 1)
+	r = &parkRig{t: t, ws: filepath.Join(t.TempDir(), "ws"), in: t.TempDir(), out: t.TempDir(), key: &memKey{}, ctx: t.Context()}
+	r.e = openEngineWith(t, r.ws, r.key, true, func(o *Options) {
 		o.Models, o.ModelsRoot, o.ModelSource = []*ModelOption{model}, t.TempDir(), src
+		o.beforeSleep = func(s sched.QueueState) {
+			select { // the dispatcher is the only sender, so after this the send does not block
+			case <-slept:
+			default:
+			}
+			slept <- s
+		}
 	})
-	t.Cleanup(func() { rig.e.Close() })
-	return rig, hub
+	t.Cleanup(func() { r.e.Close() })
+	return r, hub, slept
 }
 
-// waitQueue waits for the queue to reach a condition. The limit only keeps a broken scheduler from taking the rest of
-// the package down with it (go test -timeout would): getting there takes a wake-up, no plugin.
-func waitQueue(t *testing.T, e *Engine, what string, reached func(sched.QueueState) bool) {
+// untilAsleep waits for the scheduler to go to sleep in a state that satisfies reached.
+func untilAsleep(t *testing.T, e *Engine, asleep <-chan sched.QueueState, what string, reached func(sched.QueueState) bool) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Minute)
+	limit := time.After(wakeLimit)
 	for {
-		s := e.queue.State()
-		if reached(s) {
-			return
-		}
-		if time.Now().After(deadline) {
+		select {
+		case s := <-asleep:
+			if reached(s) {
+				return
+			}
+		case <-limit:
+			s := e.queue.State()
 			t.Fatalf("%s: pending=%d running=%d", what, s.Pending, s.Running)
 		}
-		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -138,7 +151,7 @@ func TestWorkQueuedBehindADownloadRunsWhenTheDownloadEnds(t *testing.T) {
 		{name: "a failed download, an export", end: cut, export: true, state: "completed", model: "error", code: "MODEL_NETWORK"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r, hub := downloadRig(t)
+			r, hub, asleep := downloadRig(t)
 			st, err := r.e.Import(r.ctx, ImportRequest{Kind: "quick", Files: []string{r.file(needsReview)}, OutputDir: r.out, Preset: PresetID})
 			if err != nil {
 				t.Fatal(err)
@@ -168,7 +181,11 @@ func TestWorkQueuedBehindADownloadRunsWhenTheDownloadEnds(t *testing.T) {
 			if err = r.e.DownloadModel(r.ctx, stalledModel); err != nil {
 				t.Fatal(err)
 			}
-			<-hub.reached
+			select {
+			case <-hub.reached:
+			case <-time.After(wakeLimit):
+				t.Fatal("the download never reached the hub")
+			}
 			if c.export {
 				err = r.e.Publish(r.ctx, st.ID, false, "")
 			} else {
@@ -177,14 +194,15 @@ func TestWorkQueuedBehindADownloadRunsWhenTheDownloadEnds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitQueue(t, r.e, "the work never reached the queue", func(s sched.QueueState) bool { return s.Pending == 1 })
+			// The scheduler has seen the work and gone to sleep: from here only the download's end can wake it.
+			untilAsleep(t, r.e, asleep, "the work never reached the queue", func(s sched.QueueState) bool { return s.Pending == 1 })
 			// It is the lease that holds the work back, which this asks directly: Take admits nothing while it is held.
 			if ticket, why := r.e.queue.Take(); ticket != nil || why != sched.WaitActivity {
 				t.Fatalf("with the download running the queue says %q", why)
 			}
 
 			c.end(r, hub)
-			waitQueue(t, r.e, "the download ended and the work still waits", func(s sched.QueueState) bool { return s.Pending == 0 })
+			untilAsleep(t, r.e, asleep, "the download ended and the work still waits", func(s sched.QueueState) bool { return s.Pending == 0 })
 			if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != c.state {
 				t.Fatalf("%+v %v", st, err)
 			}

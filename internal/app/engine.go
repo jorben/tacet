@@ -132,6 +132,8 @@ type Options struct {
 	Activity func(on bool) error
 	// ProbeDevices: start-up device probe; only the desktop app shows the device, the CLI and tests leave it off.
 	ProbeDevices bool
+	// beforeSleep, when set by a test, is the dispatcher's BeforeSleep; an option because Open starts the dispatcher.
+	beforeSleep func(sched.QueueState)
 }
 
 // Engine is the shared kernel of the desktop app and the CLI: the same

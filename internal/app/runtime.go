@@ -247,6 +247,7 @@ func (e *Engine) build() error {
 		return err
 	}
 	e.disp = sched.NewDispatcher(e.queue)
+	e.disp.BeforeSleep = e.opt.beforeSleep
 	return nil
 }
 

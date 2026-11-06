@@ -143,14 +143,13 @@ func TestAStageRefusedForALeaseRunsOnceTheLeaseIsReleased(t *testing.T) {
 				t.Fatal(err)
 			}
 			submit(t, q, job("j", kernel.StageExport, kernel.Interactive))
-			<-q.wake // what the submit signalled is spent: the dispatcher's first look finds the lease held
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			d := NewDispatcher(q)
-			asleep := make(chan struct{}, 1)
-			d.beforeWait = func() {
+			asleep := make(chan QueueState, 1)
+			d.BeforeSleep = func(s QueueState) {
 				select {
-				case asleep <- struct{}{}:
+				case asleep <- s:
 				default:
 				}
 			}
@@ -163,8 +162,7 @@ func TestAStageRefusedForALeaseRunsOnceTheLeaseIsReleased(t *testing.T) {
 					return nil
 				})
 			}()
-			receive(t, asleep)
-			if s := q.State(); s.Pending != 1 || s.Running != 0 {
+			if s := receive(t, asleep); s.Pending != 1 || s.Running != 0 {
 				t.Fatalf("the stage ran while the lease was held: %+v", s)
 			}
 			if err := lease.Release(); err != nil {

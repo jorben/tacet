@@ -31,8 +31,9 @@ type Dispatcher struct {
 	mu      sync.Mutex
 	running bool
 	active  map[kernel.AttemptRef]context.CancelFunc
-	// beforeWait, when set by a test, runs when the dispatcher has done what it can and is about to sleep.
-	beforeWait func()
+	// BeforeSleep, when set by a test before Run, is told the queue's state when the dispatcher is about to sleep
+	// with no notification left to act on: only what happens from here on can wake it.
+	BeforeSleep func(QueueState)
 }
 
 func NewDispatcher(q *Queue) *Dispatcher {
@@ -137,8 +138,12 @@ func (d *Dispatcher) Run(ctx context.Context, complete Completion) error {
 		if !stopping {
 			cancelled = ctx.Done()
 		}
-		if d.beforeWait != nil {
-			d.beforeWait()
+		if d.BeforeSleep != nil {
+			// In this order: queued work has signalled by the time State shows it, and only this loop takes the
+			// signal, so with none left a Take has already looked at everything this state shows.
+			if s := d.queue.State(); len(d.queue.wake) == 0 {
+				d.BeforeSleep(s)
+			}
 		}
 		select {
 		case <-cancelled:
