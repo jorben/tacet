@@ -504,8 +504,9 @@ describe("#42 点了导出之后，选择不会再悄悄落空", () => {
     await secondFileKept();
     const release = await heldWrite(0, "keep");
     exportByHand(2);
-    await act(() => publishLiveBatch());
+    const again = publishLiveBatch(); // not awaited before the release: a second publish would wait for that same write
     release();
+    await act(() => again);
     await waitFor(() => expect(fake.published).toBeTruthy());
     await settle();
     expect(fake.calls.filter((c) => c === "publish")).toEqual(["publish"]);
