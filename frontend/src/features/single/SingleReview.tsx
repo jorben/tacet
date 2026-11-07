@@ -31,7 +31,7 @@ function ExportOverlay({ single }: { single: Single }) {
 
 /** Reviewing one document: pages, the document itself, and the decisions on the right. */
 export function SingleReview({ single }: { single: Single }) {
-  const undoCount = useAppState((s) => s.undo.length);
+  const undoCount = useAppState((s) => (s.single?.live?.closed ? 0 : s.undo.length));
   const scrollRef = useRef<HTMLDivElement>(null);
   const changeMode = useViewModeSwitch(scrollRef, single.mode, single.page);
   useSingleShortcuts(changeMode);

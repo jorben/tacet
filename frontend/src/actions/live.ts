@@ -4,7 +4,7 @@ import { isDraft, current, type Draft } from "immer";
 import { isSettled } from "../domain/batch";
 import { extOf, fmt } from "../domain/format";
 import {
-  buildLiveDocument, decisionsOf, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, passwordWait, reasonLabel, toBatchFile,
+  buildLiveDocument, decisionsOf, decisionsOpenIn, GROUP_BLOCKED, GROUP_PASSWORD, GROUP_REVIEW, GROUP_STRICT, liveGroups, passwordWait, reasonLabel, staysClosed, toBatchFile,
   unitOffsets, withDecisions,
 } from "../domain/live";
 import { createSingle } from "../domain/single";
@@ -15,7 +15,7 @@ import type { EngineBatch, EngineFile, EnginePagePreview, EngineService } from "
 import type { ManualSelection } from "../domain/single";
 import { getState, store, type AppState } from "../store";
 import { isWorking, keptTasks, refusedFiles, screenSingle, type RefusedFile } from "../store/selectors";
-import { allDecisionsSettled, decisionsSettled, forgetDecisions, refusedJobs, resendDecisions, sendDecisions, unsavedDecisions, type UnsavedDecisions } from "./decisions";
+import { allDecisionsSettled, decisionsSettled, forgetDecisions, refusalOf, refusedJobs, reopenDecisions, resendDecisions, sendDecisions, tooLateJobs, unsavedDecisions, type UnsavedDecisions } from "./decisions";
 import { batchEntryStatus, shelveLiveBatch, shelveSingle, singleEntryStatus } from "./shelf";
 import { nextId, nextRunId } from "./timers";
 import { flushConfig, loadConfig, presetEngineId, refreshModels } from "./liveConfig";
@@ -28,8 +28,13 @@ export const isLive = (): boolean => !!liveEngine();
 
 const baseName = (p: string): string => p.split(/[\\/]/).pop() || p;
 
+/** A file whose document is going or has gone out: what the screen says of it as long as it is open. */
+export const READ_ONLY = "已开始导出或已导出，现在只读";
+
 /** Why a call failed, as a sentence; the kernel only ever sends closed codes. */
 const CALL_ERRORS: Record<string, string> = {
+  DECISIONS_CLOSED: "这份文件已开始导出或已导出，这次修改不会生效",
+  DECISIONS_REOPENED: "这份文件上次开始导出时未能保存这些选择，现在已退回，可以重新保存",
   BATCH_HAS_OPEN_FILES: "任务还有未结束的文件，暂时无法清理，请稍后再试",
   WORKSPACE_BUSY: "工作区正被另一个 Tacet 使用",
   WORKSPACE_KEY_MISSING: "找不到工作区密钥，无法打开已有数据",
@@ -85,8 +90,9 @@ export function takePaths(paths: string[]): void {
 const leftBehind = (what: string, working: boolean): string =>
   working ? what + "继续在后台处理，可在“最近”查看" : what + "已保存到“最近”，可稍后继续";
 
-/** Closes a file of the batch that is open: the choices go to the kernel, which redoes the file. There is no local copy to keep. */
-export function leaveLiveFile(d: Draft<AppState>): "saved" | null {
+/** Closes a file of the batch that is open: the choices go to the kernel, which redoes the file. There is no local copy
+ *  to keep. What comes back, if there were choices to send, tells whether the kernel took them. */
+export function leaveLiveFile(d: Draft<AppState>): Promise<boolean> | null {
   const s = d.single;
   if (!s?.live || s.from !== "batch") return null;
   const { job } = s.live;
@@ -96,16 +102,15 @@ export function leaveLiveFile(d: Draft<AppState>): "saved" | null {
   const changed = d.undo.length > 0 || !!s.live.sent;
   bringBackBehind(d);
   if (!changed) return null;
-  flushLiveDecisions(name, job, hits, findingOf);
-  return "saved";
+  return flushLiveDecisions(name, job, hits, findingOf);
 }
 
-interface OpenDecisions { job: string; hits: Single["hits"]; findingOf: number[] }
+interface OpenDecisions { job: string; name: string; hits: Single["hits"]; findingOf: number[]; closed: boolean }
 
 /** The choices on a task under review that the kernel does not have yet: without them there, a restart loses them. */
 function openDecisionsOf(s: Single | null | undefined, undo: readonly unknown[]): OpenDecisions | null {
   if (!s?.live || s.phase !== "review" || !(undo.length > 0 || s.live.sent)) return null;
-  return { job: s.live.job, hits: plain(s.hits), findingOf: plain(s.live.findingOf) };
+  return { job: s.live.job, name: s.name, hits: plain(s.hits), findingOf: plain(s.live.findingOf), closed: !!s.live.closed };
 }
 
 /** Every choice on screen that only this window holds: the task on screen, and the one behind an open batch file. */
@@ -122,8 +127,35 @@ function keptJobs(s: AppState): Set<string> {
 const refusedScope = (files: RefusedFile[]): string =>
   "「" + files[0]!.name + "」" + (files.length > 1 ? "等 " + files.length + " 个文件" : "");
 
+const LATE = "已开始导出或已导出，这次修改没有保存，不会进入导出文件";
+
+/** The files whose choices came too late that the person knows of: told when the write was refused, or by the screen. */
+export function lateChoicesKnown(): Set<string> {
+  return new Set([...tooLateJobs(), ...openDecisions(getState()).filter((o) => o.closed).map((o) => o.job)]);
+}
+
+/** Refused as too late since `known`, so nobody has been told: the window must not go away over it. */
+const lateNews = (known: ReadonlySet<string>): RefusedFile[] => refusedFiles(getState(), tooLateJobs().filter((job) => !known.has(job)));
+
+function markClosed(files: RefusedFile[]): void {
+  store.update((d) => {
+    [d.single, d.behind?.single].forEach((x) => { if (x?.live && files.some((f) => f.job === x.live!.job)) x.live.closed = true; });
+  });
+}
+
+/** Says what came too late since `known`, once: from then on it is known, and the next try to leave goes through. True
+ *  if there was something to say. */
+export function tellLateChoices(known: ReadonlySet<string>): boolean {
+  const late = lateNews(known);
+  if (!late.length) return false;
+  markClosed(late);
+  toast(refusedScope(late) + LATE + " · 窗口未关闭，再次关闭可退出");
+  return true;
+}
+
 /** Hands choices to the kernel before the window goes away. False, having said so, if the kernel did not take them. */
 export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean> {
+  const known = lateChoicesKnown();
   const inKept = (list: UnsavedDecisions[]) => { const kept = keptJobs(getState()); return list.filter((u) => kept.has(u.job)); };
   // The choices on screen go now, not after the wait: one made during it has to land after them.
   open.forEach((o) => { void sendDecisions(o.job, decisionsOf(o.hits, { findingOf: o.findingOf })).catch(() => {}); });
@@ -132,10 +164,29 @@ export async function saveOpenDecisions(open: OpenDecisions[]): Promise<boolean>
   const onScreen = new Set(open.map((o) => o.job));
   resendDecisions(inKept(await allDecisionsSettled()).map((u) => u.job).filter((job) => !onScreen.has(job)));
   const [refused] = inKept(await allDecisionsSettled());
-  if (!refused) return true;
+  if (!refused) return !tellLateChoices(known);
   const files = refusedFiles(getState(), refusedJobs());
-  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，只清理" + refusedScope(files) + "，其他任务保留，已导出的文件不受影响");
+  const late = lateNews(known);
+  markClosed(late);
+  toast("你的选择未能保存，窗口未关闭：" + errorText(refused.failure) + " · 可再试；“停止并清理”也能退出，只清理" + refusedScope(files) + "，其他任务保留，已导出的文件不受影响" +
+    (late.length ? "；另外，" + refusedScope(late) + LATE : ""));
   return false;
+}
+
+/** What the kernel reports of a file, as far as it says whether the file takes choices. On screen under review, the person
+ *  is told at once, not when they try to leave: no other word comes of a publish that started without them. */
+function followFile(f: Pick<EngineFile, "id" | "state">): void {
+  if (decisionsOpenIn(f.state)) reopenDecisions(f.id);
+  const s = getState().single;
+  if (s?.live?.job !== f.id || s.phase !== "review") return;
+  const was = !!s.live.closed;
+  const closed = staysClosed(was, f.state);
+  if (closed === was) return;
+  const changed = !!openDecisionsOf(s, getState().undo);
+  store.update((d) => { if (d.single?.live?.job === f.id) d.single.live.closed = closed; });
+  if (!closed) { toast("「" + s.name + "」导出未完成，可以继续修改"); return; }
+  closePop();
+  toast("「" + s.name + "」" + (changed ? LATE : READ_ONLY));
 }
 
 /** The files of a batch among those whose choices the kernel has not taken. */
@@ -155,11 +206,12 @@ async function decisionsLanded(b: Batch): Promise<boolean> {
 
 /** Sends the refused choices of these files again; those the kernel still did not take, with the reason now. */
 export async function resendUnsaved(targets: UnsavedTarget[]): Promise<UnsavedTarget[]> {
+  await allDecisionsSettled(); // a write on its way is newer than what was refused: this must not land over it
   resendDecisions(targets.map((t) => t.job));
-  const left = await allDecisionsSettled();
+  await allDecisionsSettled();
   return targets.flatMap((t) => {
-    const u = left.find((x) => x.job === t.job);
-    return u ? [{ ...t, reason: errorText(u.failure) }] : [];
+    const failure = refusalOf(t.job);
+    return failure === undefined ? [] : [{ ...t, reason: errorText(failure) }];
   });
 }
 
@@ -188,10 +240,11 @@ export function shelveScreenSingle(d: Draft<AppState>): void {
     flushLiveDecisions(d.single!.name, open.job, open.hits, open.findingOf);
   }
   const s = d.single;
-  const reading = s?.phase === "processing" && !s.live?.locked ? s.live?.batch : undefined;
+  const reread = (s?.phase === "processing" && !s.live?.locked) || s?.live?.closed ? s?.live?.batch : undefined;
   shelveSingle(d);
-  // the document it was reading for an event that came just before is dropped with the screen: the entry has to hear it again
-  if (reading) rereadSingle(reading);
+  // The document it was reading for an event that came just before is dropped with the screen, and a read-only file
+  // may have ended with no event to come: either way the entry has to hear it again.
+  if (reread) rereadSingle(reread);
 }
 
 /** The batch on screen gives way. A draft with every file refused has nothing to continue, so it goes, with its data;
@@ -320,6 +373,7 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
   const f = st.files?.[0];
   const entry = shelvedEntry(getState(), st.id);
   if (!f || entry?.k !== "file") return;
+  followFile(f);
   const saved = entry.saved as Single;
   if (f.state === "unprocessable" || f.state === "skipped") {
     await abandonSingle(saved.runId, (reasonLabel(f.detail) ?? "文件无法处理") + " · " + saved.name);
@@ -333,6 +387,7 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
     const x = h.saved as Single;
     x.live!.job = f.id;
     x.live!.locked = passwordWait(f);
+    x.live!.closed = staysClosed(!!x.live!.closed, f.state); // it opens from here as it stands by then
     if (ended) {
       x.phase = "done";
       x.live!.output = f.output;
@@ -354,6 +409,7 @@ async function syncSingle(st: EngineBatch): Promise<void> {
   // from a batch is not this task either: the batch's events are about its other files too.
   if (!s?.live || s.live.batch !== st.id) { await syncShelvedSingle(st); return; }
   if (!f || s.from === "batch") return;
+  followFile(f);
   const runId = s.runId;
   const locked = passwordWait(f);
   if (locked !== !!s.live.locked || f.id !== s.live.job) store.update((d) => { if (d.single?.runId === runId) { d.single.live!.locked = locked; d.single.live!.job = f.id; } });
@@ -611,9 +667,13 @@ export async function withdrawLiveManual(finding: number): Promise<boolean> {
   }
 }
 
-/** Decisions of a file opened from a batch are written to the kernel when the person leaves it. */
-export function flushLiveDecisions(name: string, job: string, hits: Single["hits"], findingOf: number[]): void {
-  void sendDecisions(job, decisionsOf(hits, { findingOf })).catch((err) => toast("「" + name + "」的选择未能保存：" + errorText(err)));
+/** Decisions of a file opened from a batch are written to the kernel when the person leaves it. Whether it took them
+ *  comes back; a refusal has been told by then. */
+export function flushLiveDecisions(name: string, job: string, hits: Single["hits"], findingOf: number[]): Promise<boolean> {
+  return sendDecisions(job, decisionsOf(hits, { findingOf })).then(() => true, (err) => {
+    toast("「" + name + "」的选择未能保存：" + errorText(err));
+    return false;
+  });
 }
 
 /** “跳过此文件”: the file is left out of the batch and not exported. False when the kernel refused. */
@@ -792,6 +852,7 @@ async function takeBatch(cur: EngineBatch): Promise<void> {
     Object.assign(h, status);
     if (!status.park) finished = saved.title;
   });
+  rows.forEach(followFile);
   if (finished) toast("「" + finished + "」已在后台完成");
 }
 
@@ -838,12 +899,22 @@ export async function publishLiveBatch(): Promise<void> {
   const e = liveEngine()!;
   const b = getState().batch;
   if (!b?.live?.id) return;
+  const id = b.live.id;
   closeModal();
-  if (!(await decisionsLanded(b))) return; // it would publish what was built from the choices before them
+  if (getState().publishWaiting.includes(id)) return; // the last click is still on its way
+  // The publish waits for the writes on their way. A choice made on a file meanwhile would come too late for it, so no
+  // file opens until it has gone, not one still being read either.
+  store.update((d) => { d.publishWaiting.push(id); });
+  supersedeOpen();
   try {
-    await e.publish(b.live.id, b.imgAct === "keep", b.live.outputDir);
+    if (!(await decisionsLanded(b))) return; // it would publish what was built from the choices before them
+    await e.publish(id, b.imgAct === "keep", b.live.outputDir);
     toast("已开始导出");
-  } catch (err) { toast(errorText(err)); }
+  } catch (err) {
+    toast(errorText(err));
+  } finally {
+    store.update((d) => { d.publishWaiting = d.publishWaiting.filter((x) => x !== id); });
+  }
 }
 
 export function toggleLivePause(): void {
@@ -1045,10 +1116,12 @@ export async function openLiveFile(fi: number): Promise<void> {
   const stale = () => superseded() || getState().batch?.live?.id !== batchId || getState().view !== s.view;
   const job = b.live!.jobs[fi]!;
   closeModal();
+  if (s.publishWaiting.includes(batchId)) { toast("正在导出，暂时不能打开文件"); return; }
   if (f.g.includes(GROUP_PASSWORD)) { openModal({ type: "livePassword", targets: [{ job, name: f.name }] }); return; }
   if (f.g.includes(GROUP_BLOCKED) || f.st === "bad") { toast((f.reason ?? "无法处理") + " · " + f.name); return; }
   if (f.st === "skipped") { toast("已跳过 · 不会导出"); return; }
   if (f.st === "done" || f.st === "partial") { toast("已导出为 " + (f.outputName ?? f.id)); return; }
+  if (f.closed) { toast("「" + f.name + "」" + READ_ONLY); return; }
   if (!(f.g.includes(GROUP_REVIEW) || f.g.includes(GROUP_STRICT) || f.st === "ready")) { toast("尚未检测完成"); return; }
   store.update((d) => { d.fileOpening = { batch: batchId, name: f.name }; });
   try {
@@ -1061,6 +1134,8 @@ export async function openLiveFile(fi: number): Promise<void> {
     const raster = f.ext === "pdf" ? await openRaster(job, stale) : null;
     if (stale()) return;
     if (raster) padPages(doc.pages, doc.seqOf, raster.pages);
+    // it was not when it was clicked, but what is read takes time, and no later event may come to say so
+    if (getState().batch?.files[fi]?.closed) { toast("「" + f.name + "」" + READ_ONLY); return; }
     store.update((d) => {
       leaveLiveFile(d); // a file still on screen gives way: its choices exist nowhere else
       if (d.single && d.single.from !== "batch" && !d.behind) d.behind = { single: plain(d.single), undo: plain(d.undo) };

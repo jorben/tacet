@@ -206,6 +206,8 @@ type Engine struct {
 	handOver sync.RWMutex
 	// stageStarted, in tests, runs as the scheduler starts a stage: the order in which stages were admitted.
 	stageStarted func(job string, stage kernel.StageKind)
+	// stageContext, in tests, is handed the context a stage runs under, as it starts: what stopping that stage ends.
+	stageContext func(ctx context.Context, job string, stage kernel.StageKind)
 	// afterReap, in tests, runs between reclaiming the workers and the next exit step, with how many it reclaimed.
 	afterReap func(reaped int)
 	// beforeProbeCheck, in tests, runs just before the start-up probe checks the model's files (modelArgs); a slow one

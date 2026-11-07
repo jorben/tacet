@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jorben/tacet/internal/extract"
+	"github.com/jorben/tacet/internal/jobs"
 )
 
 // Public error codes of the use cases (module design 4.1). Messages carry no
@@ -15,6 +16,8 @@ var (
 	ErrNotReady   = errors.New("NOT_READY")
 	ErrVersion    = errors.New("VERSION_CONFLICT")
 	ErrTimeout    = errors.New("TIMEOUT")
+	// ErrDecisionsClosed refuses a change of decisions on a file whose document has gone out or is going out.
+	ErrDecisionsClosed = jobs.ErrDecisionsClosed
 )
 
 // ImportRequest names the files of a new batch. Kind "quick" is the
@@ -265,7 +268,8 @@ type Core interface {
 	// PagePreview renders page (1-based) of a PDF waiting for review at 72, 100 or 150 dpi.
 	PagePreview(ctx context.Context, job string, page, dpi int) (PagePreview, error)
 	DecideFinding(ctx context.Context, job string, finding int64, keep bool) error
-	// DecideFindings records many decisions and redoes the file once.
+	// DecideFindings records many decisions and redoes the file once. A nil answer means the file follows them;
+	// one whose document has gone out or is going out answers ErrDecisionsClosed and nothing is written.
 	DecideFindings(ctx context.Context, job string, decisions []FindingDecision) error
 	// ConfirmFile gives the per-file confirmation of strict mode; never for several files at once.
 	ConfirmFile(ctx context.Context, job string) error

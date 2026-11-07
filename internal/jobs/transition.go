@@ -14,6 +14,11 @@ import (
 // (MD-07, INV-02).
 var ErrInvalidTransition = errors.New("JOB_TRANSITION_INVALID")
 
+// ErrDecisionsClosed is the answer to a change of decisions on a file whose document has gone out or is going out:
+// it cannot follow them any more, so the person has to be told (#42). Not a kind of ErrInvalidTransition, which a
+// caller may tolerate.
+var ErrDecisionsClosed = errors.New("DECISIONS_CLOSED")
+
 // BlockReason says why a task is Blocked.
 type BlockReason string
 
@@ -163,6 +168,9 @@ func failFile(s Snapshot, l Limits, stage kernel.StageKind) Result {
 func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 	invalid := func() (Result, error) { return Result{}, ErrInvalidTransition }
 	if s.State.Terminal() {
+		if e.Kind == EvDecisionsChange && (s.State == Completed || s.State == Partial) {
+			return Result{}, ErrDecisionsClosed
+		}
 		return invalid()
 	}
 	switch e.Kind {
@@ -208,6 +216,16 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 			// A decision changed under a later stage: redo from resolution.
 			s.Cursor = kernel.StageResolve
 			return to(s, Queued, kernel.StageNone), nil
+		case Queued:
+			// On its way back to a later stage (a resume, an unblock), which would go on from the old decisions.
+			// One going back to resolution or before reads them when it gets there.
+			if stageRank[s.Cursor] <= stageRank[kernel.StageResolve] {
+				return invalid()
+			}
+			s.Cursor = kernel.StageResolve
+			return to(s, Queued, kernel.StageNone), nil
+		case Publishing:
+			return Result{}, ErrDecisionsClosed
 		case Blocked, Failed:
 			// The file stays stopped, but what it would go on with was made from the old decisions: a retry
 			// must not publish that.
@@ -217,6 +235,11 @@ func Transition(s Snapshot, e Event, l Limits) (Result, error) {
 			// without the pause; left alone, the resume would go on from the old decisions. The pause stays.
 			back := s
 			back.State, back.Resume = s.Resume, ""
+			if back.State == Publishing {
+				// Nothing runs any more, so it stands as it did before the publish, if nothing went out. That is
+				// on the publish module's record, not here: the caller refuses the decision first if something did.
+				back.State = ReadyToPublish
+			}
 			r, err := Transition(back, e, l)
 			if err != nil {
 				return Result{}, err

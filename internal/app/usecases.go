@@ -662,25 +662,51 @@ func (e *Engine) Findings(ctx context.Context, job string, after int64, limit in
 // DecideFinding records a single decision and, for a file waiting on review,
 // resolves it again.
 func (e *Engine) DecideFinding(ctx context.Context, job string, finding int64, keep bool) error {
-	var batch string
-	if err := e.ws.Commit(ctx, func(tx store.Tx) error { m, err := getMember(tx, job); batch = m.Batch; return err }); err != nil {
-		return ErrNotFound
-	}
-	var n int
-	e.ws.Commit(ctx, func(tx store.Tx) error { n, _ = next(tx, "decision"); return nil })
-	if _, err := e.revs.DecideItem(ctx, review.ItemRequest{Request: fmt.Sprintf("d%d", n), Batch: batch, Job: job, Finding: finding, Keep: keep}); err != nil {
+	return e.changeDecisions(ctx, job, func(tx store.Tx, revs *review.Service, batch string) error {
+		n, err := next(tx, "decision")
+		if err != nil {
+			return err
+		}
+		_, err = revs.DecideItem(ctx, review.ItemRequest{Request: fmt.Sprintf("d%d", n), Batch: batch, Job: job, Finding: finding, Keep: keep})
 		return err
-	}
-	return e.decisionsChanged(ctx, job)
+	})
 }
 
-// decisionsChanged redoes a file from resolution after its decisions changed. The authorization of a quick task
-// was given for what the person saw when exporting and is taken back (architecture 6.1, INV-04): exporting again
-// gives a new one. That of a batch is stated up front for files still to come, and stays.
-func (e *Engine) decisionsChanged(ctx context.Context, job string) error {
-	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
+// changeDecisions is the one way to change what a file is decided to be. In one commit it writes the change and
+// redoes the file from resolution, so that a file cannot start publishing in between and a change that returns nil
+// is one the file follows. A file whose document has gone out or is going out refuses with ErrDecisionsClosed and
+// nothing is written. A file with no document made yet, or none coming, has nothing to redo: the change is just kept.
+//
+// The authorization of a quick task was given for what the person saw when exporting and is taken back
+// (architecture 6.1, INV-04): exporting again gives a new one. That of a batch is stated up front for files still to
+// come, and stays.
+func (e *Engine) changeDecisions(ctx context.Context, job string, write func(tx store.Tx, revs *review.Service, batch string) error) error {
+	var before jobs.Job
+	var applied bool
+	err := e.ws.Commit(ctx, func(tx store.Tx) error {
 		m, err := getMember(tx, job)
 		if err != nil {
+			return ErrNotFound
+		}
+		j, err := e.jobs.Get(tx, job)
+		if err != nil {
+			return err
+		}
+		// a publish stopped by a pause leaves a state that does not tell whether its document went out
+		switch begun, err := publish.Begun(tx, job); {
+		case err != nil:
+			return err
+		case begun:
+			return ErrDecisionsClosed
+		}
+		_, err = e.jobs.Apply(tx, job, j.Version, jobs.Event{Kind: jobs.EvDecisionsChange})
+		switch {
+		case err == nil:
+			before, applied = j, true
+		case !errors.Is(err, jobs.ErrInvalidTransition):
+			return err
+		}
+		if err = write(tx, e.revs.In(tx), m.Batch); err != nil {
 			return err
 		}
 		run, err := getRun(tx, m.Batch)
@@ -689,14 +715,16 @@ func (e *Engine) decisionsChanged(ctx context.Context, job string) error {
 		}
 		run.Grant = false
 		return putRun(tx, run)
-	}); err != nil {
-		return err
+	})
+	if err == nil && applied {
+		e.stop(before) // the attempt the change replaced must not keep running
+		e.changed(before.Batch)
 	}
-	return e.apply(ctx, job, jobs.Event{Kind: jobs.EvDecisionsChange}, true)
+	return err
 }
 
-// apply sends an event to a task, tolerating an event that does not apply when
-// quiet is set (a decision on a file that is not waiting changes nothing yet).
+// apply sends an event to a task, tolerating an event that does not apply when quiet is set (a pause of a file that
+// has ended, say). Not for a change of decisions: see changeDecisions.
 func (e *Engine) apply(ctx context.Context, job string, ev jobs.Event, quiet bool) error {
 	var before jobs.Job
 	var applied bool
@@ -1142,31 +1170,24 @@ func (e *Engine) Publish(ctx context.Context, batch string, partial bool, output
 	return nil
 }
 
-// DecideFindings records the decisions one by one under their own request ids and
-// resolves the file once afterwards.
+// DecideFindings records the decisions under their own request ids and resolves the file once afterwards. All of
+// them or none (see changeDecisions).
 func (e *Engine) DecideFindings(ctx context.Context, job string, ds []FindingDecision) error {
 	if len(ds) == 0 || len(ds) > 100000 {
 		return ErrInvalid
 	}
-	var batch string
-	var n int
-	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
-		m, err := getMember(tx, job)
-		batch = m.Batch
+	return e.changeDecisions(ctx, job, func(tx store.Tx, revs *review.Service, batch string) error {
+		n, err := next(tx, "decision")
 		if err != nil {
 			return err
 		}
-		n, err = next(tx, "decision")
-		return err
-	}); err != nil {
-		return ErrNotFound
-	}
-	for i, d := range ds {
-		if _, err := e.revs.DecideItem(ctx, review.ItemRequest{Request: fmt.Sprintf("d%d_%d", n, i), Batch: batch, Job: job, Finding: d.ID, Keep: d.Keep}); err != nil {
-			return err
+		for i, d := range ds {
+			if _, err = revs.DecideItem(ctx, review.ItemRequest{Request: fmt.Sprintf("d%d_%d", n, i), Batch: batch, Job: job, Finding: d.ID, Keep: d.Keep}); err != nil {
+				return err
+			}
 		}
-	}
-	return e.decisionsChanged(ctx, job)
+		return nil
+	})
 }
 
 // utf16ToRune converts a UTF-16 offset of text into a rune offset (-1 when it
@@ -1200,15 +1221,9 @@ func (e *Engine) AddManual(ctx context.Context, job string, seq, start, end int,
 	if err != nil {
 		return 0, ErrNotFound
 	}
-	var batch string
 	var unit extract.Unit
 	var text string
 	if err = e.ws.Commit(ctx, func(tx store.Tx) error {
-		m, err := getMember(tx, job)
-		if err != nil {
-			return err
-		}
-		batch = m.Batch
 		attempt, ok, err := e.units.Sealed(tx, job)
 		if err != nil || !ok {
 			return ErrNotReady
@@ -1227,14 +1242,20 @@ func (e *Engine) AddManual(ctx context.Context, job string, seq, start, end int,
 	if rs < 0 || re <= rs {
 		return 0, ErrInvalid
 	}
-	var n int
-	e.ws.Commit(ctx, func(tx store.Tx) error { n, _ = next(tx, "manual"); return nil })
-	id, _, err := e.revs.AddManual(ctx, review.ManualRequest{Request: fmt.Sprintf("m%d", n), Batch: batch, Job: job, Unit: unit.UnitID, Version: 1,
-		Start: rs, End: re, Category: category, Value: []byte(string([]rune(text)[rs:re]))})
+	var id int64
+	err = e.changeDecisions(ctx, job, func(tx store.Tx, revs *review.Service, batch string) error {
+		n, err := next(tx, "manual")
+		if err != nil {
+			return err
+		}
+		id, _, err = revs.AddManual(ctx, review.ManualRequest{Request: fmt.Sprintf("m%d", n), Batch: batch, Job: job, Unit: unit.UnitID, Version: 1,
+			Start: rs, End: re, Category: category, Value: []byte(string([]rune(text)[rs:re]))})
+		return err
+	})
 	if err != nil {
 		return 0, err
 	}
-	return id, e.decisionsChanged(ctx, job)
+	return id, nil
 }
 
 // Unfinished lists the batches that are not finished as a status each, oldest first.
@@ -1388,22 +1409,14 @@ func (e *Engine) Skip(ctx context.Context, job string) error {
 // WithdrawManual is Core: the manual finding and its decision are taken back in one commit, then the file
 // is redone from resolution, as after any change of decision.
 func (e *Engine) WithdrawManual(ctx context.Context, job string, finding int64) error {
-	var n int
-	if err := e.ws.Commit(ctx, func(tx store.Tx) error {
-		if _, err := getMember(tx, job); err != nil {
-			return ErrNotFound
+	return e.changeDecisions(ctx, job, func(tx store.Tx, revs *review.Service, _ string) error {
+		n, err := next(tx, "withdraw")
+		if err != nil {
+			return err
 		}
-		var err error
-		n, err = next(tx, "withdraw")
-		return err
-	}); err != nil {
-		return err
-	}
-	if err := e.revs.WithdrawManual(ctx, fmt.Sprintf("w%d", n), job, finding); err != nil {
-		if errors.Is(err, review.ErrInvalid) {
+		if err = revs.WithdrawManual(ctx, fmt.Sprintf("w%d", n), job, finding); errors.Is(err, review.ErrInvalid) {
 			return ErrNotAllowed
 		}
 		return err
-	}
-	return e.decisionsChanged(ctx, job)
+	})
 }

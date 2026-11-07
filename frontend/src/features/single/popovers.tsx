@@ -25,8 +25,12 @@ export function HitPopover({ hitId }: { hitId: number }) {
       <div className="muted sm" style={{ margin: "-6px 0 12px" }}>
         {locAt(single.ext, hit)}
       </div>
-      <Segmented full value={hit.state} onChange={setHitState} options={[{ value: "keep", label: "保留" }, { value: "redact", label: "涂抹" }]} />
-      {same.length > 1 && (
+      {single.live?.closed ? (
+        <div className="muted sm">{hit.state === "keep" ? "保留" : "涂抹"} · 只读</div>
+      ) : (
+        <Segmented full value={hit.state} onChange={setHitState} options={[{ value: "keep", label: "保留" }, { value: "redact", label: "涂抹" }]} />
+      )}
+      {!single.live?.closed && same.length > 1 && (
         <label className="hp-same">
           <input type="checkbox" id="sameAll" checked={single.sameAll} onChange={(e) => setSameAll(e.target.checked)} /> 同值 {same.length} 处一起
         </label>
