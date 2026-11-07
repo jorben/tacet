@@ -31,6 +31,9 @@ type Dispatcher struct {
 	mu      sync.Mutex
 	running bool
 	active  map[kernel.AttemptRef]context.CancelFunc
+	// BeforeSleep, when set by a test before Run, is told the queue's state when the dispatcher is about to sleep
+	// with no notification left to act on: only what happens from here on can wake it.
+	BeforeSleep func(QueueState)
 }
 
 func NewDispatcher(q *Queue) *Dispatcher {
@@ -64,8 +67,8 @@ func (d *Dispatcher) Running(job string) bool {
 }
 
 // Run serves until ctx cancellation or a completion error. Paused, pressured,
-// high-water or activity-blocked queues wait for Wake/state notifications, not
-// timers. Only one dispatcher can own a queue through this instance.
+// high-water or activity-blocked queues wait for state notifications, not timers.
+// Only one dispatcher can own a queue through this instance.
 func (d *Dispatcher) Run(ctx context.Context, complete Completion) error {
 	if d == nil || d.queue == nil || complete == nil {
 		return ErrRunner
@@ -134,6 +137,13 @@ func (d *Dispatcher) Run(ctx context.Context, complete Completion) error {
 		var cancelled <-chan struct{}
 		if !stopping {
 			cancelled = ctx.Done()
+		}
+		if d.BeforeSleep != nil {
+			// In this order: queued work has signalled by the time State shows it, and only this loop takes the
+			// signal, so with none left a Take has already looked at everything this state shows.
+			if s := d.queue.State(); len(d.queue.wake) == 0 {
+				d.BeforeSleep(s)
+			}
 		}
 		select {
 		case <-cancelled:
