@@ -448,6 +448,26 @@ describe("打开的文件进入发布或已完成：立刻提示并转只读", (
     expect(getState().history.filter((h) => h.name === "q.txt").map((h) => h.stl)).toEqual(["已导出"]);
   });
 
+  it("单文件导出时内核先完成、之后的调用才出错：任务仍是已完成，“最近”只记一次", async () => {
+    fake.units = [unit(1, "电话 13800138000", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    fake.retry = async () => {
+      fake.rows = [fake.row(0, "completed", { id: "q1" })];
+      await fake.emitBatch();
+      await waitFor(() => expect(single().phase).toBe("done"));
+      throw new Error("STORE_FAILED");
+    };
+    await act(async () => { await exportLiveSingle(); });
+    expect(single().phase).toBe("done");
+
+    await act(() => fake.emitBatch()); // the kernel says it again
+    await settle();
+    expect(single().phase).toBe("done");
+    expect(getState().history.filter((h) => h.name === "q.txt")).toHaveLength(1);
+  });
+
   it("单文件：导出时听到发布不算太晚，不提示", async () => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
     fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];

@@ -621,9 +621,11 @@ export async function exportLiveSingle(): Promise<void> {
     await e.retry(batch, [job]); // a file that stopped goes again; one that did not is left as it is
     await syncSingle(await e.status(batch, 10));
   } catch (err) {
+    // A task the kernel completed meanwhile has ended, and stays so: back in review, the next event would end it again.
+    // One under “最近” that ended is no longer found by `shelvedRun`: its entry stopped being parked.
     store.update((d) => {
       const x = d.single?.runId === runId ? d.single : d.behind?.single.runId === runId ? d.behind.single : null;
-      if (x) { x.phase = "review"; return; }
+      if (x) { if (x.phase !== "done") x.phase = "review"; return; }
       const h = shelvedRun(d, runId);
       if (h) { (h.saved as Single).phase = "review"; Object.assign(h, singleEntryStatus(h.saved as Single)); }
     });
