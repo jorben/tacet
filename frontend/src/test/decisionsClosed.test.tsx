@@ -7,6 +7,8 @@ import { refusalOf, refusedJobs } from "../actions/decisions";
 import { exportLiveSingle, publishLiveBatch, retryLive, startLive, takePaths } from "../actions/live";
 import { addManualRedaction, clickHit, focusHit, openAllImagesMenu, openCategoryMenu, openImageMenu, returnToBatch, setHitState, switchPreset, toggleFocusedHit, undoSingle } from "../actions/single";
 import { requestQuit } from "../actions/window";
+import { openHistoryEntry } from "../actions/home";
+import { goTo } from "../actions/navigation";
 import { closeModal, closePop, dismissToast, overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
@@ -415,6 +417,74 @@ describe("打开的文件进入发布或已完成：立刻提示并转只读", (
     expect([stats["涂抹"], stats["保留"]]).toEqual([1, 1]);
     const saved = getState().history.find((h) => h.name === "q.txt")!.saved as Single;
     expect(saved.hits.map((h) => h.state)).toEqual(held(saved.live!.findingOf));
+  });
+
+  /** A single task under review whose first choice the kernel holds as “keep” is changed to “redact” on screen,
+   *  then turns read-only as the kernel publishes: the kernel never takes the change. */
+  async function readOnlyWithAChoiceNotTaken() {
+    fake.units = [unit(1, "电话 13800138000 或 13900139000", [{ id: 51, start: 3, end: 14 }, { id: 52, start: 17, end: 28 }])];
+    fake.kernelDecisions.set(51, true);
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q1.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    const first = single().live!.batch;
+    choose(0, "redact");
+    expect(single().hits.map((h) => h.state)).toEqual(["redact", "redact"]);
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().live!.closed).toBe(true);
+    return first;
+  }
+  /** Back home, then another file: the read-only task leaves the screen for “最近”. */
+  async function leaveForAnotherFile() {
+    act(() => goTo("home"));
+    fake.nextRows = [fake.row(0, "awaiting_review", { id: "q2", pending: 1 })];
+    takePaths(["/d/q2.txt"]);
+    await waitFor(() => expect(single()?.name).toBe("q2.txt"));
+    await waitFor(() => expect(single().phase).toBe("review"));
+  }
+  const entriesOf = (name: string) => getState().history.filter((h) => h.name === name);
+  const heldStates = (findingOf: number[]) => findingOf.map((id) => (fake.kernelDecisions.get(id) ? "keep" : "redact"));
+  /** 涂抹 and 保留 on the done page, as the person reads them. */
+  const doneCounts = () => {
+    const stats = Object.fromEntries([...document.querySelectorAll(".donecard .stats > div")].map((d) => [d.querySelector("span")!.textContent, Number(d.querySelector("b")!.textContent)]));
+    return [stats["涂抹"], stats["保留"]];
+  };
+
+  it("单文件转只读前改了选择，回首页、打开别的文件后内核才完成：从“最近”打开，完成页按内核持有的决定计数", async () => {
+    const first = await readOnlyWithAChoiceNotTaken();
+    await leaveForAnotherFile();
+    expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["待确认"]);
+
+    await act(() => fake.emitFor(first, [fake.row(0, "completed", { id: "q1" })]));
+    await waitFor(() => expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["已导出"]));
+    act(() => openHistoryEntry(entriesOf("q1.txt")[0]!.id));
+    expect(getState().view).toBe("history");
+    const saved = entriesOf("q1.txt")[0]!.saved as Single;
+    expect(heldStates(saved.live!.findingOf)).toEqual(["keep", "redact"]);
+    expect(saved.hits.map((h) => h.state)).toEqual(heldStates(saved.live!.findingOf));
+    expect(doneCounts()).toEqual([1, 1]);
+    await act(() => fake.emitFor(first, [fake.row(0, "completed", { id: "q1" })])); // the kernel says it again
+    expect(entriesOf("q1.txt")).toHaveLength(1);
+  });
+
+  it("单文件转只读后内核完成，读回内核的选择期间人离开：读回后“最近”这条仍按内核持有的决定结束，只记一次", async () => {
+    const first = await readOnlyWithAChoiceNotTaken();
+    const [held, open] = gate();
+    fake.documentGateOf.set("q1", held);
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().phase).toBe("review"); // reading back what the kernel holds
+    await leaveForAnotherFile();
+    await act(() => fake.emitFor(first, [fake.row(0, "completed", { id: "q1" })]));
+    expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["待确认"]);
+
+    await act(async () => { open(); await settle(); });
+    await waitFor(() => expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["已导出"]));
+    const saved = entriesOf("q1.txt")[0]!.saved as Single;
+    expect(saved.hits.map((h) => h.state)).toEqual(["keep", "redact"]);
+    expect(saved.hits.map((h) => h.state)).toEqual(heldStates(saved.live!.findingOf));
+    act(() => openHistoryEntry(entriesOf("q1.txt")[0]!.id));
+    expect(doneCounts()).toEqual([1, 1]);
+    expect(single().name).toBe("q2.txt"); // the task now on screen is not touched
   });
 
   it("单文件转只读后内核完成：屏幕结束任务，“最近”里记下已导出", async () => {
