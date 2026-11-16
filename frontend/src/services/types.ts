@@ -18,7 +18,9 @@ export interface EngineFile {
   detail?: string;
   format: string;
   pending: number;
+  /** The sum of `categories`. */
   findings: number;
+  /** Places found per category: candidates of one category that overlap in a unit count once, as the plan merges them. */
   categories?: Record<string, number> | null;
   output?: string;
   /** sha256 of the published file. */

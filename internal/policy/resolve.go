@@ -241,20 +241,12 @@ func Resolve(in Input) Output {
 	}
 
 	// 4. Overlap merge per unit (FR-13); targets are sorted by unit and start.
-	for i := 0; i < len(targets); {
-		j, end := i+1, targets[i].c.End
-		for j < len(targets) && targets[j].c.Unit == targets[i].c.Unit && targets[j].c.Start <= end {
-			if targets[j].c.End > end {
-				end = targets[j].c.End
-			}
-			j++
-		}
-		cluster := targets[i:j]
-		i = j
-		d, conflict := mergeCluster(cluster, end)
+	for _, r := range mergeRuns(len(targets), func(i int) Span { c := targets[i].c; return Span{c.Unit, c.Start, c.End} }) {
+		cluster := targets[r.from:r.to]
+		d, conflict := mergeCluster(cluster, r.end)
 		if conflict {
 			c := cluster[0].c
-			draft(exceptions.PolicyReview, fmt.Sprintf("%s:%d-%d", c.Unit, c.Start, end), "conflict")
+			draft(exceptions.PolicyReview, fmt.Sprintf("%s:%d-%d", c.Unit, c.Start, r.end), "conflict")
 			continue
 		}
 		out.Dispositions = append(out.Dispositions, d)
@@ -310,6 +302,48 @@ func categoryAction(p Policy, c Candidate) (Action, bool) {
 		return Placeholder, true
 	}
 	return "", false
+}
+
+// Span is a range of code points [Start, End) of a unit.
+type Span struct {
+	Unit       string
+	Start, End int
+}
+
+// mergeRun is the spans [from, to) that merge into one, ending at end.
+type mergeRun struct{ from, to, end int }
+
+// mergeRuns splits n spans, sorted by unit and start, into the runs Resolve merges into one target: within a
+// unit, a span that overlaps or touches the run before it joins that run (FR-13).
+func mergeRuns(n int, span func(int) Span) []mergeRun {
+	var out []mergeRun
+	for i := 0; i < n; {
+		first := span(i)
+		j, end := i+1, first.End
+		for ; j < n; j++ {
+			s := span(j)
+			if s.Unit != first.Unit || s.Start > end {
+				break
+			}
+			end = max(end, s.End)
+		}
+		out = append(out, mergeRun{i, j, end})
+		i = j
+	}
+	return out
+}
+
+// Places is the number of places spans take once merged as Resolve merges overlapping targets: within a unit,
+// spans that overlap or touch are one place (FR-13). A number the rules and the model both report is one place.
+func Places(spans []Span) int {
+	s := append([]Span(nil), spans...)
+	sort.Slice(s, func(i, j int) bool {
+		if s[i].Unit != s[j].Unit {
+			return s[i].Unit < s[j].Unit
+		}
+		return s[i].Start < s[j].Start
+	})
+	return len(mergeRuns(len(s), func(i int) Span { return s[i] }))
 }
 
 func humanBasis(d Decision) Basis {

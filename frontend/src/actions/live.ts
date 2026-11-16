@@ -381,6 +381,9 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
   }
   if (f.state === "cancelled") return; // only discarding a task cancels it, and that takes the entry away when it is through
   const ended = f.state === "completed" || f.state === "partial";
+  // It left the screen from review with choices the kernel may not have taken (leaving sends them, and a read-only one
+  // refuses them as too late): what went out is what the kernel holds, read back before the entry says it is done.
+  const readBack = ended && !!openDecisionsOf(saved, entry.undo ?? []);
   store.update((d) => {
     const h = shelvedEntry(d, st.id);
     if (!h) return;
@@ -388,18 +391,31 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
     x.live!.job = f.id;
     x.live!.locked = passwordWait(f);
     x.live!.closed = staysClosed(!!x.live!.closed, f.state); // it opens from here as it stands by then
-    if (ended) {
-      x.phase = "done";
-      x.live!.output = f.output;
-      x.live!.digest = f.digest;
-      const partial = f.state === "partial";
-      Object.assign(h, { st: partial ? "part" : "done", stl: partial ? "部分结果" : "已导出", undo: undefined, park: undefined });
-      return;
-    }
+    if (ended) return; // it ends below, once what it says of the choices is the kernel's
     if (x.phase === "exporting" && (f.state === "awaiting_review" || f.state === "failed" || f.state === "blocked")) x.phase = "review";
     Object.assign(h, singleEntryStatus(x, f.state));
   });
-  if (ended) toast("「" + saved.name + "」已在后台完成");
+  if (readBack) await finishWithKernelChoices(saved.runId, f);
+  else if (ended && endShelvedSingle(saved.runId, f) !== undefined) toast("「" + saved.name + "」已在后台完成");
+}
+
+/** The entry under “最近” of a task the kernel completed says so, once: an ended entry is no longer parked, and
+ *  `shelvedRun` does not find it again. `take` puts the kernel's choices on it first. Its name if it was there. */
+function endShelvedSingle(runId: number, f: EngineFile, take?: (x: Draft<Single>) => void): string | undefined {
+  let name: string | undefined;
+  store.update((d) => {
+    const h = shelvedRun(d, runId);
+    if (!h) return;
+    const x = h.saved as Draft<Single>;
+    take?.(x);
+    x.phase = "done";
+    x.live!.output = f.output;
+    x.live!.digest = f.digest;
+    const partial = f.state === "partial";
+    Object.assign(h, { st: partial ? "part" : "done", stl: partial ? "部分结果" : "已导出", undo: undefined, park: undefined });
+    name = x.name;
+  });
+  return name;
 }
 
 async function syncSingle(st: EngineBatch): Promise<void> {
@@ -436,9 +452,19 @@ async function syncSingle(st: EngineBatch): Promise<void> {
     store.update((d) => { if (d.single?.runId === runId) { d.single.stage = stage; d.single.sp = sp; } });
     return;
   }
+  if (f.state === "completed" || f.state === "partial") {
+    // Not only an export ends the task: a review turned read-only, or put back to review by a failed call after the
+    // kernel took the publish, ends when the kernel does. The document went out from the kernel's choices, so a choice
+    // on screen it never took, or refused as too late, must not be what the result says. Outside an export, the only
+    // choices a single task on screen writes are those `openDecisionsOf` holds (leaving marks them sent), so a refused
+    // one is among them too.
+    if (s.phase === "done") return;
+    if (s.phase !== "exporting" && openDecisionsOf(s, getState().undo)) await finishWithKernelChoices(runId, f);
+    else finishSingle(runId, f);
+    return;
+  }
   if (s.phase === "exporting") {
-    if (f.state === "completed" || f.state === "partial") finishSingle(runId, f);
-    else if (f.state === "awaiting_review") {
+    if (f.state === "awaiting_review") {
       store.update((d) => { if (d.single?.runId === runId) d.single.phase = "review"; });
       toast("还有待确认的内容，请检查后再导出");
     } else if (f.state === "failed" || f.state === "blocked") {
@@ -559,10 +585,47 @@ async function showReview(runId: number, job: string): Promise<void> {
   }
 }
 
-function finishSingle(runId: number, f: EngineFile): void {
+/** Ends a task the kernel completed from review with the choices it holds, read back from it, in place of those on
+ *  screen. The task ends wherever it is when the read is back, on screen or under “最近”: the person may leave meanwhile,
+ *  and no event is left to end it. If the document cannot be read the task ends all the same, its choices marked
+ *  unknown: a read-only review has no way out, and neither the done page nor “最近” may count the screen's choices. */
+async function finishWithKernelChoices(runId: number, f: EngineFile): Promise<void> {
+  if (loading.has(runId)) return; // the read under way ends the task, wherever it is by then
+  loading.add(runId);
+  try {
+    let take: (x: Draft<Single>) => void;
+    let failure: unknown = null;
+    try {
+      const { units } = await loadUnits(f.id);
+      const held = new Map(units.flatMap((u) => (u.findings ?? []).map((x) => [x.id, x.decision === "keep"] as const)));
+      take = (x) => x.live!.findingOf.forEach((id, i) => { const keep = held.get(id); if (keep !== undefined) x.hits[i]!.state = keep ? "keep" : "redact"; });
+    } catch (err) {
+      failure = err;
+      take = (x) => { x.live!.choicesUnknown = true; };
+    }
+    const s = getState();
+    if (s.single?.runId === runId && s.single.phase !== "done") {
+      const { name } = s.single;
+      finishSingle(runId, f, take);
+      if (failure !== null) toast("「" + name + "」" + CHOICES_UNREAD + errorText(failure));
+      return;
+    }
+    const name = endShelvedSingle(runId, f, take);
+    if (name !== undefined) toast("「" + name + "」" + (failure === null ? "已在后台完成" : CHOICES_UNREAD + errorText(failure)));
+  } finally {
+    loading.delete(runId);
+  }
+}
+
+const CHOICES_UNREAD = "已导出，但未能读回导出时的选择，涂抹与保留以导出文件为准：";
+
+/** The task on screen ends, once: “最近” lists it from here, and an ending told again finds it done. `take` puts the
+ *  kernel's choices on it first. */
+function finishSingle(runId: number, f: EngineFile, take?: (x: Draft<Single>) => void): void {
   store.update((d) => {
     const x = d.single;
-    if (!x || x.runId !== runId) return;
+    if (!x || x.runId !== runId || x.phase === "done") return;
+    take?.(x);
     x.phase = "done";
     x.live!.output = f.output;
     x.live!.digest = f.digest;
@@ -590,9 +653,11 @@ export async function exportLiveSingle(): Promise<void> {
     await e.retry(batch, [job]); // a file that stopped goes again; one that did not is left as it is
     await syncSingle(await e.status(batch, 10));
   } catch (err) {
+    // A task the kernel completed meanwhile has ended, and stays so: back in review, the next event would end it again.
+    // One under “最近” that ended is no longer found by `shelvedRun`: its entry stopped being parked.
     store.update((d) => {
       const x = d.single?.runId === runId ? d.single : d.behind?.single.runId === runId ? d.behind.single : null;
-      if (x) { x.phase = "review"; return; }
+      if (x) { if (x.phase !== "done") x.phase = "review"; return; }
       const h = shelvedRun(d, runId);
       if (h) { (h.saved as Single).phase = "review"; Object.assign(h, singleEntryStatus(h.saved as Single)); }
     });

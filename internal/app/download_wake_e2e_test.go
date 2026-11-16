@@ -16,16 +16,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/jorben/tacet/internal/sched"
 )
 
 const stalledModel = "astrlink-guard-int8"
-
-// wakeLimit only keeps a broken scheduler or a download that never starts from taking the rest of the package down
-// with it (go test -timeout would). It bounds a wake-up and a small local transfer, no plugin.
-const wakeLimit = 2 * time.Minute
 
 // stalledHub serves one model file: half of it, then it waits for the test to say how the transfer ends. From reached
 // until then the download holds its network lease.
@@ -108,20 +103,11 @@ func downloadRig(t *testing.T) (r *parkRig, hub *stalledHub, asleep <-chan sched
 	return r, hub, slept
 }
 
-// untilAsleep waits for the scheduler to go to sleep in a state that satisfies reached.
-func untilAsleep(t *testing.T, e *Engine, asleep <-chan sched.QueueState, what string, reached func(sched.QueueState) bool) {
-	t.Helper()
-	limit := time.After(wakeLimit)
-	for {
-		select {
-		case s := <-asleep:
-			if reached(s) {
-				return
-			}
-		case <-limit:
-			s := e.queue.State()
-			t.Fatalf("%s: pending=%d running=%d", what, s.Pending, s.Running)
-		}
+// untilAsleep waits for the scheduler to go to sleep in a state that satisfies reached. The flow it waits on is real
+// (a download, the scheduler, the plugins), so it has no time limit of its own: one that never comes is go test
+// -timeout's to end, as a slower runner must not fail it.
+func untilAsleep(asleep <-chan sched.QueueState, reached func(sched.QueueState) bool) {
+	for !reached(<-asleep) {
 	}
 }
 
@@ -181,11 +167,7 @@ func TestWorkQueuedBehindADownloadRunsWhenTheDownloadEnds(t *testing.T) {
 			if err = r.e.DownloadModel(r.ctx, stalledModel); err != nil {
 				t.Fatal(err)
 			}
-			select {
-			case <-hub.reached:
-			case <-time.After(wakeLimit):
-				t.Fatal("the download never reached the hub")
-			}
+			<-hub.reached
 			if c.export {
 				err = r.e.Publish(r.ctx, st.ID, false, "")
 			} else {
@@ -195,14 +177,14 @@ func TestWorkQueuedBehindADownloadRunsWhenTheDownloadEnds(t *testing.T) {
 				t.Fatal(err)
 			}
 			// The scheduler has seen the work and gone to sleep: from here only the download's end can wake it.
-			untilAsleep(t, r.e, asleep, "the work never reached the queue", func(s sched.QueueState) bool { return s.Pending == 1 })
+			untilAsleep(asleep, func(s sched.QueueState) bool { return s.Pending == 1 }) // the work reached the queue
 			// It is the lease that holds the work back, which this asks directly: Take admits nothing while it is held.
 			if ticket, why := r.e.queue.Take(); ticket != nil || why != sched.WaitActivity {
 				t.Fatalf("with the download running the queue says %q", why)
 			}
 
 			c.end(r, hub)
-			untilAsleep(t, r.e, asleep, "the download ended and the work still waits", func(s sched.QueueState) bool { return s.Pending == 0 })
+			untilAsleep(asleep, func(s sched.QueueState) bool { return s.Pending == 0 }) // the download's end let the work run
 			if st, err = r.e.Wait(r.ctx, st.ID); err != nil || st.Files[0].State != c.state {
 				t.Fatalf("%+v %v", st, err)
 			}

@@ -19,6 +19,7 @@ import (
 	"github.com/jorben/tacet/internal/kernel"
 	"github.com/jorben/tacet/internal/keys"
 	"github.com/jorben/tacet/internal/lifecycle"
+	"github.com/jorben/tacet/internal/policy"
 	"github.com/jorben/tacet/internal/publish"
 	"github.com/jorben/tacet/internal/report"
 	"github.com/jorben/tacet/internal/retention"
@@ -451,14 +452,29 @@ func factsOf(j jobs.Job, pending int, granted bool) verdict.Facts {
 	return f
 }
 
+// placesByCategory counts the places the candidates of each category take, merged as the plan merges them
+// (policy.Places), and their sum.
+func placesByCategory(spans []findings.Span) (int, map[string]int) {
+	by := map[string][]policy.Span{}
+	for _, s := range spans {
+		by[s.Category] = append(by[s.Category], policy.Span{Unit: s.Unit, Start: s.Start, End: s.End})
+	}
+	total, out := 0, make(map[string]int, len(by))
+	for c, ss := range by {
+		out[c] = policy.Places(ss)
+		total += out[c]
+	}
+	return total, out
+}
+
 // fileStatus describes one file; only the rows that are shown pay for the counts.
 func (e *Engine) fileStatus(tx store.Tx, j jobs.Job, run Run, pending int, s verdict.Status) (FileStatus, error) {
 	m, err := getMember(tx, j.ID)
 	if err != nil {
 		return FileStatus{}, err
 	}
-	n, _ := e.fr.Count(tx, findings.Filter{Job: j.ID})
-	cats, _ := e.fr.CountByCategory(tx, findings.Filter{Job: j.ID})
+	spans, _ := e.fr.Spans(tx, findings.Filter{Job: j.ID})
+	n, cats := placesByCategory(spans)
 	fs := FileStatus{ID: j.ID, Name: m.Name, State: string(j.Position.State), Status: string(s), Detail: m.Detail, Format: m.Format, Pending: pending, Findings: n, Categories: cats}
 	if pending > 0 {
 		fs.Confirm = awaitingConfirm(tx, j.ID)
@@ -693,7 +709,7 @@ func (e *Engine) changeDecisions(ctx context.Context, job string, write func(tx 
 			return err
 		}
 		// a publish stopped by a pause leaves a state that does not tell whether its document went out
-		switch begun, err := publish.Begun(tx, job); {
+		switch begun, err := e.pub.Begun(tx, job); {
 		case err != nil:
 			return err
 		case begun:

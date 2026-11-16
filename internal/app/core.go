@@ -40,8 +40,10 @@ type FileStatus struct {
 	Detail   string `json:"detail,omitempty"`
 	Format   string `json:"format"`
 	Pending  int    `json:"pending"`  // exceptions awaiting a decision
-	Findings int    `json:"findings"` // detected candidates
-	// Categories counts the candidates per rule category.
+	Findings int    `json:"findings"` // the sum of Categories
+	// Categories counts the places found per category: candidates of one category that overlap or touch in a
+	// unit are one place, as the plan merges them (policy.Places, FR-13), so a number the rules and the model
+	// both report counts once. Every candidate is counted, decided or not, whatever its confidence.
 	Categories map[string]int `json:"categories,omitempty"`
 	Output     string         `json:"output,omitempty"` // relative output name once published
 	Digest     string         `json:"digest,omitempty"` // sha256 of the published file

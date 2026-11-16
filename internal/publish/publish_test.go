@@ -420,7 +420,7 @@ func (f *fx) crashAfterIntent(content, name string) (temp string) {
 func TestBegunTellsWhetherADocumentHasGoneOutOrMayBeGoingOut(t *testing.T) {
 	begun := func(f *fx) (b bool) {
 		t.Helper()
-		if err := f.svc.Commit(context.Background(), func(tx store.Tx) (err error) { b, err = Begun(tx, f.req("x", "x.txt").Attempt.JobID); return err }); err != nil {
+		if err := f.svc.Commit(context.Background(), func(tx store.Tx) (err error) { b, err = f.svc.Begun(tx, f.req("x", "x.txt").Attempt.JobID); return err }); err != nil {
 			t.Fatal(err)
 		}
 		return b
@@ -461,6 +461,52 @@ func TestBegunTellsWhetherADocumentHasGoneOutOrMayBeGoingOut(t *testing.T) {
 		}
 		if begun(f) {
 			t.Fatal("a publish that was refused by the name has begun")
+		}
+	})
+	// The intent of a publish that put nothing out is ended by a commit of its own. When that commit fails the intent
+	// stays prepared, and until a restart every change of decisions on the file would be refused as too late.
+	t.Run("name in conflict, the commit ending its intent failed", func(t *testing.T) {
+		f := setup(t)
+		f.grant(false)
+		if err := os.WriteFile(filepath.Join(f.dir, "a.txt"), []byte("theirs"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		commit, calls := f.svc.Commit, 0
+		f.svc.Commit = func(ctx context.Context, fn func(store.Tx) error) error {
+			if calls++; calls == 3 { // the grant check, the intent, then the one ending it
+				return errors.New("disk I/O error")
+			}
+			return commit(ctx, fn)
+		}
+		if _, err := f.svc.Publish(context.Background(), f.req("a", "a.txt")); !errors.Is(err, ErrNameConflict) {
+			t.Fatal(err)
+		}
+		if calls != 3 || f.intentStates()["prepared"] != 1 {
+			t.Fatalf("the ending commit was not the one that failed: %d commits, intents %v", calls, f.intentStates())
+		}
+		// Begun ends the intent in the caller's transaction, so a caller that rolls back takes the ending back with it:
+		// the intent is still prepared, and has to be kept for the next Begun to end.
+		gaveUp := errors.New("the caller gave up")
+		if err := f.svc.Commit(context.Background(), func(tx store.Tx) error {
+			if _, err := f.svc.Begun(tx, f.req("x", "x.txt").Attempt.JobID); err != nil {
+				return err
+			}
+			return gaveUp
+		}); !errors.Is(err, gaveUp) {
+			t.Fatal(err)
+		}
+		if st, n := f.intentStates(), len(f.svc.unsettled); st["prepared"] != 1 || n != 1 {
+			t.Fatalf("an ending rolled back with its caller was taken as done: intents %v, %d kept to be ended", st, n)
+		}
+		if begun(f) {
+			t.Fatal("a publish that was refused by the name, its intent left prepared by a failed commit, has begun")
+		}
+		if st := f.intentStates(); st["conflict"] != 1 || len(st) != 1 {
+			t.Fatalf("the intent was not ended by the commit that read it: %v", st)
+		}
+		begun(f)
+		if n := len(f.svc.unsettled); n != 0 {
+			t.Fatalf("%d ended intents are still kept to be ended", n)
 		}
 	})
 }

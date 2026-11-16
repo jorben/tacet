@@ -343,7 +343,7 @@ describe("写入失败时“停止并清理”只清理受影响的", () => {
   });
 });
 
-describe("内核说太晚了（DECISIONS_CLOSED）不算写入失败：文档已开始导出，重试不会成功，不因它缩小清理范围", () => {
+describe("内核说太晚了（DECISIONS_CLOSED），发布进行中不算写入失败：文档已开始导出，到发布结束为止重试不会成功，不因它缩小清理范围", () => {
   /** The kernel goes ahead of the screen: the export of this file starts while the person is still looking at it. */
   const publishingOn = (job: string) => () => { fake.rows = fake.rows.map((r) => (r.id === job ? { ...r, state: "publishing" } : r)); };
 

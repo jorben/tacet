@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -75,6 +76,11 @@ type Service struct {
 	Placed func()
 
 	rename func(temporary, destination string) error // platform.PublishExclusive; replaceable in tests
+
+	// unsettled holds the end state of intents whose publish put nothing out but whose ending was not committed:
+	// Begun ends them, as nothing is on its way out for them. A restart forgets them and Recover ends them instead.
+	mu        sync.Mutex
+	unsettled map[string]string
 }
 
 func (s *Service) ok() bool {
@@ -379,16 +385,31 @@ func (s *Service) checkGrant(ctx context.Context, job, key string, partial bool)
 	return nil
 }
 
-// settle ends an intent that did not produce a delivery.
+// settle ends an intent that did not produce a delivery. If that cannot be committed, the intent is kept for Begun to
+// end: left prepared, it would read as a document on its way out until a restart.
 func (s *Service) settle(ctx context.Context, id, state string, _ bool) {
-	_ = s.Commit(ctx, func(tx store.Tx) error {
-		_, sc, err := scope(tx)
-		if err != nil {
-			return err
+	if err := s.Commit(ctx, func(tx store.Tx) error { _, err := endIntent(tx, id, state); return err }); err != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.unsettled == nil {
+			s.unsettled = map[string]string{}
 		}
-		_, err = sc.Exec("UPDATE publish_intent SET state=? WHERE id=? AND state='prepared'", state, id)
-		return err
-	})
+		s.unsettled[id] = state
+	}
+}
+
+// endIntent moves a prepared intent to its end state, reporting whether it was still prepared.
+func endIntent(tx store.Tx, id, state string) (bool, error) {
+	_, sc, err := scope(tx)
+	if err != nil {
+		return false, err
+	}
+	res, err := sc.Exec("UPDATE publish_intent SET state=? WHERE id=? AND state='prepared'", state, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 func (s *Service) markPublished(tx store.Tx, id string, d Delivery) error {
@@ -615,7 +636,8 @@ func Deliveries(tx store.Tx, job string) ([]Delivery, []bool, error) {
 
 // Begun reports whether a job's document has gone out or may be on its way there: a delivery is on record, or an
 // intent that has not ended. No other intent can be committed once the attempt that would write it is stale.
-func Begun(tx store.Tx, job string) (bool, error) {
+// An intent whose publish put nothing out, and whose ending failed to commit, is ended here first, in tx.
+func (s *Service) Begun(tx store.Tx, job string) (bool, error) {
 	if job == "" {
 		return false, ErrInvalid
 	}
@@ -623,6 +645,17 @@ func Begun(tx store.Tx, job string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	s.mu.Lock()
+	for id, state := range s.unsettled {
+		switch open, err := endIntent(tx, id, state); {
+		case err != nil:
+			s.mu.Unlock()
+			return false, err
+		case !open:
+			delete(s.unsettled, id) // ended by an earlier commit, or by Recover
+		}
+	}
+	s.mu.Unlock()
 	var begun bool
 	err = t.QueryRow(`SELECT EXISTS(SELECT 1 FROM publish_delivery WHERE job=?) OR EXISTS(SELECT 1 FROM publish_intent WHERE job=? AND state='prepared')`, job, job).Scan(&begun)
 	return begun, err

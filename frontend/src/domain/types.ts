@@ -136,6 +136,9 @@ export interface LiveSingle {
   /** The kernel may hold other choices than the screen although nothing is left to undo (they went to it when the
    *  task left the screen, or a withdrawn selection emptied the undo list): leaving has to send them again. */
   sent?: boolean;
+  /** The kernel completed the task but its choices could not be read back: what went out is not known here, so the
+   *  done page shows no counts rather than the screen's choices. */
+  choicesUnknown?: boolean;
 }
 
 /* ── Models, presets, rule sets, plugins ──────────────────────────────────── */
