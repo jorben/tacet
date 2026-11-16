@@ -26,7 +26,7 @@
 - 其中 16 个测试文件带 `//go:build darwin`，Windows 上根本不编译，所以 Windows job 的耗时说明不了跳过与否：最初的分析拿它当证据，推断错了（2026-11-02 的研究报告）。没有构建标签的只有 `internal/host/session_test.go`，它写死的 `bin/python` 在 Windows 上找不到。
 - 规则：测试需要的环境由 CI 装好，再用开关（`TACET_REQUIRE_PLUGINS=1`）把“缺少依赖”变成失败。判断 CI 是否真的跑过，要看耗时和跳过数，不能只看颜色；某个平台上跑得快，先确认测试在那个平台上是否被编译（构建标签），再下“跳过了”的结论。CI 结果不能来自测试缓存（`-count=1`）。
 - 修复：ci/verification-gates（`testenv.Python`、`testenv.Missing`、CI 安装 uv 环境）。
-- `TestAModelMappingSendsALabelToAUserCategory` 依赖本地模型资源（`.pi/m0-resources`），CI 上跳过。它的 `phone == 1` 是 b717fd2（2026-11-03）加的，从那天起在本机 macOS 上每次都失败（`Findings:2 Categories:map[phone:2]`）：`Categories` 数的是候选，规则和模型对同一个号码各报一个，FR-13 允许检测阶段保留重叠的候选。在 b717fd2 的 worktree 上用同一份模型（文件摘要与 `resources/models` 的清单一致，文件日期 2026-10-31）复现了同样的失败，所以模型没有变。内核的计数符合 `core.go` 的定义：`Findings`、`Categories` 数的是候选，不是涂抹次数，输出里这个号码只被替换一次。直到 2026-11-16 的审查才被当成 master 上的红测试处理：f92d2a0 先把期望放宽成 `phone >= 1`，第 2 轮审查认为太宽，现在断言 `phone == 2`、`Findings == 2`，并断言输出里只有一个 `[手机号]`。界面把这个候选数显示成“N 涂抹”，是重复计数：Jorben 决定在本分支修，5e64f7f 把这两个字段改成按计划的合并规则数“处”，测试现在断言 `phone == 1`、`Findings == 1`，见“状态与显示”一节“界面上一个数的说法……”。
+- `TestAModelMappingSendsALabelToAUserCategory` 依赖本地模型资源（`.pi/m0-resources`），CI 上跳过。它的 `phone == 1` 是 b717fd2（2026-11-03）加的，从那天起在本机 macOS 上每次都失败（`Findings:2 Categories:map[phone:2]`）：`Categories` 数的是候选，规则和模型对同一个号码各报一个，FR-13 允许检测阶段保留重叠的候选。在 b717fd2 的 worktree 上用同一份模型（文件摘要与 `resources/models` 的清单一致，文件日期 2026-10-31）复现了同样的失败，所以模型没有变。内核的计数符合当时 `core.go` 的定义：`Findings`、`Categories` 数的是候选，不是涂抹次数，输出里这个号码只被替换一次。直到 2026-11-16 的审查才被当成 master 上的红测试处理：f92d2a0 先把期望放宽成 `phone >= 1`；第 2 轮审查认为太宽，5aecf3d 改为断言 `phone == 2`、`Findings == 2`，并断言输出里只有一个 `[手机号]`。界面把这个候选数显示成“N 涂抹”，是重复计数：Jorben 决定在本分支修，5e64f7f 把 `core.go` 里这两个字段的定义和计数改成按计划的合并规则数“处”，测试随之改为断言 `phone == 1`、`Findings == 1`，见“状态与显示”一节“界面上一个数的说法……”。
 - 规则补充：只在本地资源齐全时运行的测试，提交前在有资源的机器上跑一次，在提交说明里写明跑过；CI 跳过的测试，CI 的绿不能当作它的证据。
 - 出现：2 次（2026-11-02、2026-11-16）
 
@@ -98,7 +98,11 @@
 - 规则：
   - 行为随构建标签变化时，把 `Taskfile.yml`、`build/*/Taskfile.yml`、`build/config.yml` 里每个编译或运行二进制的入口都列出来，逐个写明带不带标签；只运行现成二进制的入口（`run`）要单独说明；
   - 用 `go version -m <二进制>` 核对产物实际的 `-tags`，不要从任务名推断。
-- 出现：1 次（2026-11-03）
+- fix/46-47-review-followups（2026-11-16）：5e64f7f 新增的 `internal/app/places_test.go` 没有构建标签，却调用了只在 `engine_e2e_test.go`（`//go:build darwin`）里定义的 `openEngine`、`memKey`。macOS 上 `engine_e2e_test.go` 参与编译，所以本机看不出；在 36031c7 上 `GOOS=windows go vet ./internal/app` 报 `internal/app/places_test.go:18:7: undefined: openEngine`。分支还没推送，CI 的 `windows-latest` job 没跑过，推送的话它应在编译这个包时失败（推断）。65ab155 给它加上 `//go:build darwin`。同一件事换了一种形式：没有核对新文件在每个构建目标上带什么标签、能看到哪些定义。`wails3 task check` 只在本平台编译，抓不到。
+- 规则补充：
+  - 新文件用到别的文件里的定义时，看那个文件的构建标签；带标签的定义只能被带同样（或更窄）标签的文件使用；
+  - 改了 Go 文件，推送前跑一次 `GOOS=windows go vet ./...`。它只说明能编译，不说明在 Windows 上测过（见“交叉编译不等于在 Windows 上测过”）。
+- 出现：2 次（2026-11-03、2026-11-16）
 
 **把原因写进 PR 或提交之前，先用实验验证：按这个原因改变一个条件，结果要像预测的那样变化。**
 - PR #12 第一版的描述说，`TestAProbeStartingItsWorkerWhenStoppedHasItReaped` 在 master 上也失败，所以不算这次改动的问题；这违反了 AGENTS.md 第 4 条，审查（2026-11-03）指出了这一点。描述里还写了原因：“`handshake` 抢先 `Terminate` 了 worker”。这个原因只是从日志推出来的，没有做过实验验证。
@@ -369,9 +373,17 @@
   - 转只读时藏起按钮不够，按入口（按钮、快捷键、菜单）逐个拦，并让转只读的标记跟着任务走到屏幕以外（“最近”）。
 - PR #46 合并后的审查（2026-11-16）：
   - 单文件在复核中转只读后，内核把它推进到 `completed`，屏幕仍停在只读复核页，没有出口，“最近”里也没有记录：`syncSingle` 只在 `exporting` 时结束任务。`exportLiveSingle` 在 `e.publish` 已成功、之后的调用出错时把屏幕退回 `review`，也会停在这里。转只读时只想了“不能改”，没有问内核接着往下走时屏幕怎么离开。0e50283 修复；旧代码上两个新测试都报 `expected 'review' to be 'done'`。
+  - 0e50283 之后同一天又修了四次（修了又修，同一天，“出现”不加 1）。0e50283 只给屏幕上的任务加了出口，每一次再修都是同一个问题换了个地方：任务结束时说的选择，是不是内核的。
+    - 352f89b：完成页和“最近”记的是屏幕上的选择。转只读前改过的选择内核没收到，完成页显示“涂抹 1”，文件按保留导出。改为结束前读回内核的决定；旧代码报 `expected [ 2, +0 ] to deeply equal [ 1, 1 ]`。
+    - 9356b3d：内核先完成、`exportLiveSingle` 之后的调用才出错时，catch 把已结束的任务退回复核，下一个事件再结束一次，“最近”里记两条。旧代码报 `expected 'review' to be 'done'`。
+    - f5c2ac4：352f89b 只读回屏幕上的任务。转只读后人离开（回首页、打开别的文件），任务带着屏幕选择进了“最近”，`syncShelvedSingle` 不读内核就标成已导出，从“最近”打开显示“涂抹 2 / 保留 0”；读回途中离开，读回的结果找不到屏幕上的任务就丢掉。现在读回是一个函数，读完时任务在哪就结束在哪；旧代码报 `expected [ 'redact', 'redact' ] to deeply equal [ 'keep', 'redact' ]`。
+    - 38fa5da：读回失败时只弹提示，屏幕停在没有按钮的只读复核页，0e50283 修的“无出口”又回来了。现在读回失败也结束任务，标记“选择未知”，完成页不显示涂抹/保留数；旧代码报 `expected 'review' to be 'done'`（屏幕上）、`expected [ '待确认' ] to deeply equal [ '已导出' ]`（“最近”里）。
+  - 每一次都只修了报告里的那个出口。结束一个任务的入口有：屏幕上的事件、“最近”里的事件、调用出错的 catch、读回之后；每个入口还要分“读回成功”“读回失败”“读回途中离开”。
   - `decisionsClosed.test.tsx` 的两个测试用 `decideFailsOf` 手工注入 `DECISIONS_CLOSED`，拒绝的是一个从未导出、仍在待复核的单文件，真实内核给不出这个组合：fake 没有实现被测的那条内核规则（AGENTS.md 第 8 条），测试就用注入的错误绕过它。`FakeEngine.decide` 只看当前批次的行，“最近”里的任务永远不会被拒为太晚，所以只能注入。de7c88a 让 fake 按文件所属批次判断，两个测试改走真实路径（导出时内核收下发布，之后的调用出错，屏幕退回复核）；只撤回 fake 的判断时报 `expected 'undefined' to contain 'DECISIONS_CLOSED'`。
   - 读码推断，没有修，待决定：文件已放进输出目录、记账提交失败时，文件按 `failed / PUBLISH_STORE_FAILED` 结束，发布意图仍是 `prepared`。前端把 `failed` 当作可以再写入、解除只读，内核按 `Begun` 拒绝。前端只看状态，看不出文档出去了没有。
-- 规则补充：转只读、暂停这类“先不让动”的屏幕状态，列出内核接下来会走到的每个状态（完成、失败、退回），逐个测屏幕怎么离开它。
+- 规则补充：
+  - 转只读、暂停这类“先不让动”的屏幕状态，列出内核接下来会走到的每个状态（完成、失败、退回），逐个测屏幕怎么离开它；
+  - 一个任务结束时写下的结论（完成页的数、“最近”的条目），列出结束它的每个入口（屏幕上、屏幕外、出错之后、异步读回之后），每个入口写的结论要来自同一处（这里是读回内核的函数），读不到就说不知道，不拿屏幕上的值代替。
 - 出现：5 次（2026-11-04、2026-11-05、2026-11-06、2026-11-07、2026-11-16）。已移入 [AGENTS.md](AGENTS.md) 验收要求第 8 条。
 
 **拦住一个动作时，写明出路的代价；代价超过受影响的范围，就是缺口。给内核加一个新操作，要用真实内核接着走完用户下一步。**
@@ -386,7 +398,7 @@
 - 出现：1 次（2026-11-06）
 
 **界面上一个数的说法（“N 涂抹”“命中 N 处”）要和内核字段数的是同一个东西；字段的定义或界面的说法改了，对照另一边核对。**
-- `FileStatus.Categories`、`Findings` 在 `core.go` 里定义为候选数。FR-13 允许检测阶段保留重叠的候选：规则和模型对同一个号码各报一个，计划合并后输出里只去除一次。界面却把这个数显示成“电话 2 涂抹”（批次自动处理页 `AutoTab`），文件表的“命中”列和逐份确认的“命中 N 处”也是它。已有的端到端测试都只用规则，一个号码只有一个候选，所以没抓到；只在本机有模型资源时运行的 `TestAModelMappingSendsALabelToAUserCategory` 从 2026-11-03 起报 `phone:2`，一直被当成测试期望的问题处理（见“CI 绿了不代表测试跑过”一条）。2026-11-16 的审查后，Jorben 决定在 fix/46-47-review-followups 修。
+- 5e64f7f 之前，`FileStatus.Categories`、`Findings` 在 `core.go` 里定义为候选数。FR-13 允许检测阶段保留重叠的候选：规则和模型对同一个号码各报一个，计划合并后输出里只去除一次。界面却把这个数显示成“电话 2 涂抹”（批次自动处理页 `AutoTab`），文件表的“命中”列和逐份确认的“命中 N 处”也是它。已有的端到端测试都只用规则，一个号码只有一个候选，所以没抓到；只在本机有模型资源时运行的 `TestAModelMappingSendsALabelToAUserCategory` 从 2026-11-03 起报 `phone:2`，一直被当成测试期望的问题处理（见“CI 绿了不代表测试跑过”一条）。2026-11-16 的审查后，Jorben 决定在 fix/46-47-review-followups 修。
 - 修复（5e64f7f）：内核改为数“处”：同一单元内同一类别重叠或相接的候选算一处，合并规则和计划共用一份代码（`policy.mergeRuns`，`Resolve` 第 4 步和 `policy.Places` 都调用它）；`Findings` 是 `Categories` 之和。改的是字段的语义，没有加新字段：界面只拿这两个数显示“涂抹”“命中”，没有地方需要候选数。新测试 `TestANumberTheRuleAndTheModelBothReportCountsOnce` 直接存一个和规则命中同位置的模型候选，不依赖模型资源；在旧代码上报 `one number and one address are two places: phone 2, email 1, findings 3`。
 - 还没改的：不同类别的候选重叠时仍各算一处（计划会合并成一处或形成冲突）；被人保留的、低于最低置信度的候选也计入，而“涂抹”这个说法对它们不准确。
 - 规则：
