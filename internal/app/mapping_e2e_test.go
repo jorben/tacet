@@ -73,7 +73,8 @@ func TestAModelMappingSendsALabelToAUserCategory(t *testing.T) {
 	if err = e.Start(ctx, StartRequest{Batch: st.ID, Authorize: true}); err != nil {
 		t.Fatalf("start with a category nothing detects: %v", err)
 	}
-	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["person"] != 0 || st.Files[0].Categories["phone"] != 1 {
+	// the rule and the model each report the number: detection keeps both candidates and the plan merges them (FR-13)
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["person"] != 0 || st.Files[0].Categories["phone"] < 1 {
 		t.Fatalf("%+v %v", st, err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
