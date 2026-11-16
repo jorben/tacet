@@ -693,7 +693,7 @@ func (e *Engine) changeDecisions(ctx context.Context, job string, write func(tx 
 			return err
 		}
 		// a publish stopped by a pause leaves a state that does not tell whether its document went out
-		switch begun, err := publish.Begun(tx, job); {
+		switch begun, err := e.pub.Begun(tx, job); {
 		case err != nil:
 			return err
 		case begun:
