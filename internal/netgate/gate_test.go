@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestProcessingExcludesNetworkAndMaintenanceBothDirections(t *testing.T) {
@@ -33,6 +34,37 @@ func TestProcessingExcludesNetworkAndMaintenanceBothDirections(t *testing.T) {
 			}
 			next.Release()
 		}
+	}
+}
+
+// A listener is told about a release when acting on it already works: it can take the conflicting lease at once, and
+// (being outside the gate's lock) it can call the gate at all. Only a real release counts.
+func TestAReleaseListenerFindsTheLeaseGone(t *testing.T) {
+	g := NewGate()
+	var heard []error
+	g.OnRelease(func() {
+		_, err := g.Acquire(Processing)
+		heard = append(heard, err)
+	})
+	lease, err := g.Acquire(Network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := make(chan error, 1)
+	go func() { released <- lease.Release() }()
+	select {
+	case err := <-released:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the release did not return: the listener ran under the gate's lock")
+	}
+	if len(heard) != 1 || heard[0] != nil {
+		t.Fatalf("what the listener found on acquiring: %v", heard)
+	}
+	if err := lease.Release(); !errors.Is(err, ErrLeaseReleased) || len(heard) != 1 {
+		t.Fatalf("a second release of one lease: %v, heard %d", err, len(heard))
 	}
 }
 
