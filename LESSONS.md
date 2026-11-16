@@ -26,7 +26,7 @@
 - 其中 16 个测试文件带 `//go:build darwin`，Windows 上根本不编译，所以 Windows job 的耗时说明不了跳过与否：最初的分析拿它当证据，推断错了（2026-11-02 的研究报告）。没有构建标签的只有 `internal/host/session_test.go`，它写死的 `bin/python` 在 Windows 上找不到。
 - 规则：测试需要的环境由 CI 装好，再用开关（`TACET_REQUIRE_PLUGINS=1`）把“缺少依赖”变成失败。判断 CI 是否真的跑过，要看耗时和跳过数，不能只看颜色；某个平台上跑得快，先确认测试在那个平台上是否被编译（构建标签），再下“跳过了”的结论。CI 结果不能来自测试缓存（`-count=1`）。
 - 修复：ci/verification-gates（`testenv.Python`、`testenv.Missing`、CI 安装 uv 环境）。
-- `TestAModelMappingSendsALabelToAUserCategory` 依赖本地模型资源（`.pi/m0-resources`），CI 上跳过。它的 `phone == 1` 是 b717fd2（2026-11-03）加的，从那天起在本机 macOS 上每次都失败（`Findings:2 Categories:map[phone:2]`）：`Categories` 数的是候选，规则和模型对同一个号码各报一个，FR-13 允许检测阶段保留重叠的候选。在 b717fd2 的 worktree 上用同一份模型（文件摘要与 `resources/models` 的清单一致，文件日期 2026-10-31）复现了同样的失败，所以是期望写错了，模型没有变。直到 2026-11-16 的审查才被当成 master 上的红测试处理，f92d2a0 改了期望。
+- `TestAModelMappingSendsALabelToAUserCategory` 依赖本地模型资源（`.pi/m0-resources`），CI 上跳过。它的 `phone == 1` 是 b717fd2（2026-11-03）加的，从那天起在本机 macOS 上每次都失败（`Findings:2 Categories:map[phone:2]`）：`Categories` 数的是候选，规则和模型对同一个号码各报一个，FR-13 允许检测阶段保留重叠的候选。在 b717fd2 的 worktree 上用同一份模型（文件摘要与 `resources/models` 的清单一致，文件日期 2026-10-31）复现了同样的失败，所以模型没有变。内核的计数符合 `core.go` 的定义：`Findings`、`Categories` 数的是候选，不是涂抹次数，输出里这个号码只被替换一次。直到 2026-11-16 的审查才被当成 master 上的红测试处理：f92d2a0 先把期望放宽成 `phone >= 1`，第 2 轮审查认为太宽，现在断言 `phone == 2`、`Findings == 2`，并断言输出里只有一个 `[手机号]`。界面把这个候选数显示成“N 涂抹”（批次的自动处理页）是否算重复计数，是产品问题，待 Jorben 决定，这里没有改界面。
 - 规则补充：只在本地资源齐全时运行的测试，提交前在有资源的机器上跑一次，在提交说明里写明跑过；CI 跳过的测试，CI 的绿不能当作它的证据。
 - 出现：2 次（2026-11-02、2026-11-16）
 
