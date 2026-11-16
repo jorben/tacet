@@ -619,11 +619,12 @@ async function finishWithKernelChoices(runId: number, f: EngineFile): Promise<vo
 
 const CHOICES_UNREAD = "已导出，但未能读回导出时的选择，涂抹与保留以导出文件为准：";
 
-/** The task on screen ends: “最近” lists it from here. `take` puts the kernel's choices on it first. */
+/** The task on screen ends, once: “最近” lists it from here, and an ending told again finds it done. `take` puts the
+ *  kernel's choices on it first. */
 function finishSingle(runId: number, f: EngineFile, take?: (x: Draft<Single>) => void): void {
   store.update((d) => {
     const x = d.single;
-    if (!x || x.runId !== runId) return;
+    if (!x || x.runId !== runId || x.phase === "done") return;
     take?.(x);
     x.phase = "done";
     x.live!.output = f.output;
