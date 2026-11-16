@@ -159,7 +159,7 @@ function Categories({ single }: { single: Single }) {
               <span className="n num">{o.redacted}</span>
               {o.kept > 0 && <span className="kept">保留 {o.kept}</span>}
             </button>
-            <button type="button" className="sel sm" aria-label={categoryName(catalog, t) + " 处理方式"} onClick={(e) => openCategoryMenu(e.currentTarget, t)}>
+            <button type="button" className="sel sm" aria-label={categoryName(catalog, t) + " 处理方式"} disabled={!!single.live?.closed} onClick={(e) => openCategoryMenu(e.currentTarget, t)}>
               {treatmentOf(single, t) === "ph" ? "占位" : "涂抹"}
               <Icon name="chev-d" size={12} />
             </button>
@@ -172,6 +172,21 @@ function Categories({ single }: { single: Single }) {
 
 function Footer({ single, batch, undoCount }: { single: Single; batch: Batch | null; undoCount: number }) {
   const inBatch = single.from === "batch";
+  if (single.live?.closed) {
+    return (
+      <div className="side-foot">
+        <div className="side-note" role="status">
+          <Icon name="info" size={13} />
+          已开始导出或已导出，现在只读。这里的修改不会进入导出文件
+        </div>
+        {inBatch && (
+          <Button variant="primary" large wide onClick={returnToBatch}>
+            返回批次
+          </Button>
+        )}
+      </div>
+    );
+  }
   const file = inBatch && batch ? batch.files[single.bfi!] : null;
   const exported = !!file && ["done", "partial"].includes(file.st);
   if (inBatch && single.live && file?.g.includes(GROUP_STRICT)) {

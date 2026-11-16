@@ -130,6 +130,9 @@ export interface LiveSingle {
   digest?: string;
   /** The file waits for its password: the kernel lets the next task past it, even though nothing was read yet. */
   locked?: boolean;
+  /** The kernel takes no more choices on this file, its document is going or has gone out: the screen is read-only.
+   *  What is on it stays, for the case that the publish fails and the file comes back. */
+  closed?: boolean;
   /** The kernel may hold other choices than the screen although nothing is left to undo (they went to it when the
    *  task left the screen, or a withdrawn selection emptied the undo list): leaving has to send them again. */
   sent?: boolean;
@@ -311,6 +314,8 @@ export interface BatchFile {
   h: Record<CategoryId, number>;
   imgs: number;
   st: FileStatus;
+  /** Its document is going or has gone out: the kernel takes no more choices on it. */
+  closed?: boolean;
   /** Ticks left of the current processing step. */
   t: number;
   /** Exception groups the file still waits in. */

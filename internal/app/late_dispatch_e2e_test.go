@@ -244,13 +244,11 @@ func TestALatePublishNotificationDoesNotStandInForTheAuthorization(t *testing.T)
 	r.publishes(batch)
 }
 
-// A publish that was paused and resumed is queued with only its own notification to come. A decision meanwhile took the
-// batch's authorization back, and that rule is about files leaving ready_to_publish: this one must not wait for ever.
-// Whether that publish should go on with the choice made meanwhile is another question, not settled here: only that the
-// notification is not dropped is asserted.
-func TestAResumedPublishIsNotDroppedForTheAuthorizationADecisionTookBack(t *testing.T) {
-	late := newLateNotice(t, kernel.StagePublish, 1)
-	r := late.r
+// A decision under a paused publish that sent nothing takes a quick task's authorization back and the file back to
+// resolution (#42): the resume does not go on to publish, neither from the old decisions nor for lack of a notification.
+// The file waits for the next export, which delivers the choice made under the pause.
+func TestAResumedPublishGoesOnWithTheChoiceMadeUnderItsPause(t *testing.T) {
+	r := newParkRig(t)
 	batch, id, fs := r.awaitingTwoDecisions()
 	for _, f := range fs {
 		if err := r.e.DecideFinding(r.ctx, id, f.ID, false); err != nil {
@@ -260,19 +258,11 @@ func TestAResumedPublishIsNotDroppedForTheAuthorizationADecisionTookBack(t *test
 			t.Fatal(err)
 		}
 	}
-	started, gate := make(chan struct{}), make(chan struct{})
-	release := sync.OnceFunc(func() { close(gate) })
-	t.Cleanup(release)
-	var once sync.Once
-	r.e.stageStarted = func(_ string, s kernel.StageKind) {
-		if s == kernel.StagePublish {
-			once.Do(func() { close(started); <-gate })
-		}
-	}
+	held, release := holdStage(t, r.e, kernel.StagePublish, nil)
 	if err := r.e.Publish(r.ctx, batch, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	<-started
+	eventually(t, "at the publish", func() bool { return held.Load() == 1 })
 	if err := r.e.Pause(r.ctx, batch); err != nil {
 		t.Fatal(err)
 	}
@@ -280,21 +270,33 @@ func TestAResumedPublishIsNotDroppedForTheAuthorizationADecisionTookBack(t *test
 		t.Fatal(err)
 	}
 	release()
+	eventually(t, "stopped", func() bool { return r.e.queue.State().Running == 0 && !r.e.disp.Running(id) })
 	if st, err := r.e.Status(r.ctx, batch, 10); err != nil || st.Authorized || st.Files[0].State != "paused" {
 		t.Fatalf("the premise: paused, and no longer authorized: %+v %v", st, err)
 	}
-	late.job = id
-	late.armed.Store(true)
 	if err := r.e.Resume(r.ctx, batch); err != nil {
 		t.Fatal(err)
 	}
-	dispatch := <-late.held
-	if s := r.state(batch, 0); s != "queued" {
-		t.Fatalf("the premise: queued with its notification on the way, not %s", s)
+	st, err := r.e.Wait(r.ctx, batch)
+	if err != nil {
+		t.Fatal(err)
 	}
-	late.land(dispatch)
-	if s := r.state(batch, 0); s == "queued" {
-		t.Fatal("the notification was dropped, and no other is coming: the file stays queued")
+	if st.Files[0].State != "ready_to_publish" || st.Delivered != 0 {
+		t.Fatalf("the resume did not wait for the next export: %+v", st)
+	}
+	if err = r.e.Publish(r.ctx, batch, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = r.e.Wait(r.ctx, batch); err != nil || st.Files[0].State != "completed" || st.Delivered != 1 {
+		t.Fatalf("after the next export: %+v %v", st, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(r.out, st.Files[0].Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// of the two numbers one was kept under the pause, and the other stays redacted
+	if n := strings.Count(string(raw), "11010119900307451"); n != 1 {
+		t.Fatalf("%d numbers left in the document, want the one kept: %q", n, raw)
 	}
 }
 

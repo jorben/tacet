@@ -415,6 +415,56 @@ func (f *fx) crashAfterIntent(content, name string) (temp string) {
 	return ""
 }
 
+// Begun is what stands between a person's change of decisions and a document that may be out already: true from the
+// moment an intent is committed, as the rename may be under way, and false again for an attempt that put nothing out.
+func TestBegunTellsWhetherADocumentHasGoneOutOrMayBeGoingOut(t *testing.T) {
+	begun := func(f *fx) (b bool) {
+		t.Helper()
+		if err := f.svc.Commit(context.Background(), func(tx store.Tx) (err error) { b, err = Begun(tx, f.req("x", "x.txt").Attempt.JobID); return err }); err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	t.Run("nothing tried", func(t *testing.T) {
+		f := setup(t)
+		f.grant(false)
+		if begun(f) {
+			t.Fatal("a job that never published has begun")
+		}
+	})
+	t.Run("delivered", func(t *testing.T) {
+		f := setup(t)
+		f.grant(false)
+		if _, err := f.svc.Publish(context.Background(), f.req("a", "a.txt")); err != nil {
+			t.Fatal(err)
+		}
+		if !begun(f) {
+			t.Fatal("a delivered job has not begun")
+		}
+	})
+	t.Run("on its way", func(t *testing.T) {
+		f := setup(t)
+		f.grant(false)
+		f.crashAfterIntent("a", "a.txt")
+		if !begun(f) {
+			t.Fatal("a job with an open intent has not begun")
+		}
+	})
+	t.Run("name in conflict", func(t *testing.T) {
+		f := setup(t)
+		f.grant(false)
+		if err := os.WriteFile(filepath.Join(f.dir, "a.txt"), []byte("theirs"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.svc.Publish(context.Background(), f.req("a", "a.txt")); !errors.Is(err, ErrNameConflict) {
+			t.Fatal(err)
+		}
+		if begun(f) {
+			t.Fatal("a publish that was refused by the name has begun")
+		}
+	})
+}
+
 func TestRecoveryCompletesAPublishWhoseRenameLandedButWhoseRecordDidNot(t *testing.T) {
 	f := setup(t)
 	f.grant(false)

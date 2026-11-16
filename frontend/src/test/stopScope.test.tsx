@@ -1,5 +1,5 @@
 // #41: with choices the kernel refused, “停止并清理” costs the file or task they were on, not every unfinished task.
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { openBatchFile, startBatch } from "../actions/batch";
 import { sendDecisions } from "../actions/decisions";
@@ -7,7 +7,7 @@ import { discardSavedTask, resumeSavedBatch } from "../actions/home";
 import { restoreUnfinished, startLive, stopLiveBatch, takePaths } from "../actions/live";
 import { focusHit, returnToBatch, setHitState } from "../actions/single";
 import { requestQuit, saveAndQuit, stopAndQuit } from "../actions/window";
-import { closeModal, dismissToast, overlayStore } from "../overlay/store";
+import { closeModal, dismissToast, openModal, overlayStore } from "../overlay/store";
 import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
@@ -73,13 +73,14 @@ async function quickOn(job: string, path: string) {
   return single().live!.batch;
 }
 
-/** Opens a file of the batch on screen, makes a choice and leaves it. */
-async function chooseOnFile(fi: number, state: "keep" | "redact") {
+/** Opens a file of the batch on screen, makes a choice and leaves it. `meanwhile` is what happens before it leaves. */
+async function chooseOnFile(fi: number, state: "keep" | "redact", meanwhile?: () => void) {
   fake.units = [unit(1, "电话 13812345678", [{ id: 31 + fi, start: 3, end: 14 }])];
   const job = batch().live!.jobs[fi];
   act(() => openBatchFile(fi));
   await waitFor(() => expect(single()?.live?.job).toBe(job));
   choose(0, state);
+  meanwhile?.();
   const before = decides();
   act(() => returnToBatch());
   await waitFor(() => expect(decides()).toBe(before + 1));
@@ -342,7 +343,89 @@ describe("写入失败时“停止并清理”只清理受影响的", () => {
   });
 });
 
+describe("内核说太晚了（DECISIONS_CLOSED）不算写入失败：文档已开始导出，重试不会成功，不因它缩小清理范围", () => {
+  /** The kernel goes ahead of the screen: the export of this file starts while the person is still looking at it. */
+  const publishingOn = (job: string) => () => { fake.rows = fake.rows.map((r) => (r.id === job ? { ...r, state: "publishing" } : r)); };
+
+  it("只有太晚的文件：对话框说全部任务，“停止并清理”按整个批次走，不单独取消这个文件", async () => {
+    const id = await batchOn("a", ["/d/a1.txt", "/d/a2.txt"], "awaiting_review", "awaiting_review");
+    await chooseOnFile(0, "keep", publishingOn("a1"));
+    expect.soft(toastText()).toContain("这次修改不会生效"); // the kernel did refuse it: what follows is not for want of a refusal
+
+    act(() => requestQuit());
+    expect.soft(dialog()).toContain("停止将清理下列全部任务");
+    expect.soft(dialog()).not.toContain("未能保存");
+
+    act(() => stopAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect.soft(fake.cancelledFiles).toEqual([]);
+    expect.soft(fake.cancelled).toEqual([id]);
+  });
+
+  it("太晚的和真正写入失败的同时存在：提示和对话框只点名后者，也只清理后者，正在导出的文件不被取消", async () => {
+    const id = await batchOn("a", ["/d/a1.txt", "/d/a2.txt"], "awaiting_review", "awaiting_review");
+    await chooseOnFile(0, "keep", publishingOn("a1"));
+    refuse();
+    await chooseOnFile(1, "keep");
+
+    act(() => saveAndQuit());
+    await waitFor(() => expect(toastText()).toContain("窗口未关闭"));
+    expect.soft(toastText()).toContain("只清理「a2.txt」，");
+    expect(quit.n).toBe(0);
+
+    accept();
+    act(() => requestQuit());
+    expect.soft(dialog()).toContain("1 个文件的选择未能保存");
+    expect.soft(dialog()).toContain("a2.txt");
+    expect.soft(dialog()).not.toContain("a1.txt");
+
+    act(() => stopAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect.soft(fake.cancelledFiles).toEqual(["a2"]);
+    expect.soft(fake.cleanedFiles).toEqual(["a2"]);
+    expect.soft(fake.cancelled).toEqual([]);
+    expect.soft(statesOf(id)).toEqual(["publishing", "cancelled"]);
+  });
+
+  it("对话框开着时，写入失败的文件重写后变成太晚：它跟着回到全部任务的说法，“停止并清理”也回到全部", async () => {
+    const id = await batchOn("a", ["/d/a1.txt", "/d/a2.txt"], "awaiting_review", "awaiting_review");
+    refuse();
+    await chooseOnFile(0, "keep");
+    accept();
+    act(() => requestQuit());
+    expect.soft(dialog()).toContain("1 个文件的选择未能保存"); // what it comes back from
+
+    publishingOn("a1")();
+    await act(() => sendDecisions("a1", [{ id: 31, keep: true }]).catch(() => {}));
+    await waitFor(() => expect(dialog()).toContain("停止将清理下列全部任务"));
+    expect.soft(dialog()).not.toContain("未能保存");
+
+    act(() => stopAndQuit());
+    await waitFor(() => expect(quit.n).toBe(1));
+    expect.soft(fake.cancelledFiles).toEqual([]);
+    expect.soft(fake.cancelled).toEqual([id]);
+  });
+});
+
 describe("对话框和提示说明实际的清理范围", () => {
+  it("两个任务文案相同：对话框都列出，React 不报 key 重复", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await quickOn("q1", "/d/q.txt");
+    await quickOn("q2", "/d/q.txt");
+    await quickOn("q3", "/d/q.txt");
+    errors.mockClear();
+    act(() => requestQuit());
+    expect(dialog().match(/q\.txt/g)?.length).toBe(3);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+
+    errors.mockClear();
+    act(() => { closeModal(); openModal({ type: "updateApp" }); }); // the other dialog that lists them
+    expect(dialog().match(/q\.txt/g)?.length).toBe(3);
+    expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
+    errors.mockRestore();
+    act(() => closeModal());
+  });
+
   it("“保存并退出”被拒：提示点名受影响的文件，说其他任务保留，不说全部", async () => {
     await batchWithARefusedFile("a", ["/d/a1.txt", "/d/a2.txt"]);
     act(() => dismissToast());

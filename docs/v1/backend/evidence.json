@@ -83,7 +83,7 @@
   },
   "FR-37": {
    "status": "partial",
-   "evidence": "verdict.UnattendedEligible 要求全部处置来自冻结策略/字段规则（HumanDecided=false）；处置依据统计与 policy 未实现；【task-10】引擎接线：StartRequest.Authorize/AllowPartial 与 Engine.Publish 记录发布授权，未授权的文件停在 ready_to_publish 且输出目录为空（端到端断言）；授权后决定变更使文件回到解析并再次等待；Publish 可同时指定输出目录（相对路径拒绝）；非交互 CLI 必须显式 --preset/--authorize/--out，缺任一项在触及内核前退出 1"
+   "evidence": "verdict.UnattendedEligible 要求全部处置来自冻结策略/字段规则（HumanDecided=false）；处置依据统计与 policy 未实现；【task-10】引擎接线：StartRequest.Authorize/AllowPartial 与 Engine.Publish 记录发布授权，未授权的文件停在 ready_to_publish 且输出目录为空（端到端断言）；授权后决定变更使文件回到解析并再次等待；Publish 可同时指定输出目录（相对路径拒绝）；非交互 CLI 必须显式 --preset/--authorize/--out，缺任一项在触及内核前退出 1；【#42】决定与它引起的重做同一提交生效：publishing、completed、partial，或已有未结束发布意图、交付记录的文件返回 DECISIONS_CLOSED 且不写入；被暂停但尚未提交发布意图的发布，决定照常生效，恢复后交付新决定的结果（Linux 垫片上的真实引擎测试；未在 macOS、Windows 或真实界面上运行）"
   },
   "MD-14": {
    "status": "partial",

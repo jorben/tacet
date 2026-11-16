@@ -1,9 +1,10 @@
 import { openPop } from "../../overlay/store";
+import { getState } from "../../store";
 
 /** After the mouse is released inside the document: if plain text of one text run is selected, offer to redact it. */
 export function setSelectionPopover(): void {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed) return;
+  if (!sel || sel.isCollapsed || getState().single?.live?.closed) return;
   const r = sel.getRangeAt(0);
   const a = r.startContainer;
   const b = r.endContainer;

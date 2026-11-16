@@ -740,3 +740,111 @@ func TestWithdrawingAManualRedactionTakesTheFindingAndItsDecisionBack(t *testing
 		t.Fatalf("withdrawn twice: %v", err)
 	}
 }
+
+// A decision asks for the next sequence number inside a commit that carries a whole file's list. The plan is compared,
+// not the time: reading the table would make that commit grow with the square of the list.
+func TestTheNextSequenceNumberIsReadFromTheIndex(t *testing.T) {
+	f := setup(t)
+	if err := f.do(func(tx store.Tx) error {
+		txn, err := store.InTransaction(tx)
+		if err != nil {
+			return err
+		}
+		rows, err := txn.Query("EXPLAIN QUERY PLAN " + nextSeqQuery)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		var plan string
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				return err
+			}
+			plan += detail + "\n"
+		}
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		if !strings.Contains(plan, "review_decision_seq") {
+			t.Errorf("the query does not use the index: %s", plan)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func commitIn(t *testing.T, db *store.DB, fn func(store.Tx) error) error {
+	t.Helper()
+	tx, err := db.Begin(t.Context())
+	if err != nil {
+		return err
+	}
+	if err = fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// A workspace made before the index gets it when it opens, and its decisions go on being numbered after the old ones.
+func TestAWorkspaceFromBeforeTheSequenceIndexGetsIt(t *testing.T) {
+	path := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "r.db"))
+	openAt := func(m store.Module) *store.DB {
+		raw, err := sql.Open("sqlite3", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reg, err := store.NewRegistry(findings.Module(), m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.Open(t.Context(), raw, reg, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+	old := Module()
+	old.Migrations = old.Migrations[:2]
+	db := openAt(old)
+	if err := commitIn(t, db, func(tx store.Tx) error {
+		_, sc, err := scope(tx)
+		if err != nil {
+			return err
+		}
+		_, err = sc.Exec(`INSERT INTO review_decision(id, request, batch, kind, keep, state, seq, members) VALUES('old','r','b','item',1,'committed',7,0)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	db = openAt(Module())
+	defer db.Close()
+	if err := commitIn(t, db, func(tx store.Tx) error {
+		txn, err := store.InTransaction(tx)
+		if err != nil {
+			return err
+		}
+		var indexes int
+		if err = txn.QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND name='review_decision_seq'").Scan(&indexes); err != nil {
+			return err
+		}
+		if indexes != 1 {
+			t.Errorf("the index is not there after the upgrade: %d", indexes)
+		}
+		n, err := nextSeq(txn)
+		if err != nil {
+			return err
+		}
+		if n != 8 {
+			t.Errorf("next sequence number %d, want 8", n)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
