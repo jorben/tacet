@@ -304,3 +304,29 @@ func TestADecidedRedactionOfAHandMarkWithoutActionIsAPlaceholderToo(t *testing.T
 		t.Fatalf("dispositions = %v", got)
 	}
 }
+
+// Places counts what Resolve merges: for one category, every run of overlapping or touching candidates of a unit
+// is one disposition, so Places of the spans equals the number of dispositions.
+func TestPlacesCountsTheTargetsResolveMerges(t *testing.T) {
+	cases := map[string][]Candidate{
+		"the rule and the model report the same number": {cand("rule", 3, 14, "phone", kernel.SourceRule, 0), cand("model", 3, 14, "phone", kernel.SourceModel, 0.95)},
+		"the model reports a wider span":                {cand("rule", 3, 14, "phone", kernel.SourceRule, 0), cand("model", 1, 14, "phone", kernel.SourceModel, 0.95)},
+		"touching spans":                                {cand("a", 0, 5, "phone", kernel.SourceRule, 0), cand("b", 5, 9, "phone", kernel.SourceModel, 0.95)},
+		"a chain joined by its middle":                  {cand("a", 0, 4, "phone", kernel.SourceRule, 0), cand("b", 8, 12, "phone", kernel.SourceRule, 0), cand("c", 3, 9, "phone", kernel.SourceModel, 0.95)},
+		"apart":                                         {cand("a", 0, 4, "phone", kernel.SourceRule, 0), cand("b", 5, 9, "phone", kernel.SourceRule, 0)},
+		"the same span in two units":                    {cand("a", 0, 4, "phone", kernel.SourceRule, 0), {ID: "b", Unit: "u2", Start: 0, End: 4, Category: "phone", Source: kernel.SourceModel, Score: 0.95}},
+	}
+	for name, cs := range cases {
+		spans := make([]Span, len(cs))
+		for i, c := range cs {
+			spans[i] = Span{c.Unit, c.Start, c.End}
+		}
+		out := resolve(base(), cs...)
+		if len(out.Drafts) != 0 || Places(spans) != len(out.Dispositions) {
+			t.Errorf("%s: %d places, Resolve gave %+v and drafts %+v", name, Places(spans), out.Dispositions, out.Drafts)
+		}
+	}
+	if n := Places([]Span{{"u1", 3, 14}, {"u1", 3, 14}}); n != 1 {
+		t.Fatalf("one number reported twice is %d places", n)
+	}
+}

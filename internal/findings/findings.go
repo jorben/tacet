@@ -434,8 +434,14 @@ func (r *Repository) Count(tx store.Tx, f Filter) (int, error) {
 	return n, err
 }
 
-// CountByCategory counts the visible findings of f per category.
-func (r *Repository) CountByCategory(tx store.Tx, f Filter) (map[string]int, error) {
+// Span is where a visible finding lies: code points [Start, End) of a unit, and its category.
+type Span struct {
+	Category, Unit string
+	Start, End     int
+}
+
+// Spans lists where the visible findings of f lie, with the same predicate as Count.
+func (r *Repository) Spans(tx store.Tx, f Filter) ([]Span, error) {
 	where, args, err := f.where()
 	if err != nil {
 		return nil, err
@@ -444,19 +450,18 @@ func (r *Repository) CountByCategory(tx store.Tx, f Filter) (map[string]int, err
 	if err != nil {
 		return nil, err
 	}
-	rows, err := t.Query(`SELECT f.category, COUNT(*) FROM findings_finding f JOIN findings_attempt a ON a.attempt=f.attempt`+where+` GROUP BY f.category`, args...)
+	rows, err := t.Query(`SELECT f.category, f.unit, f.start, f.stop FROM findings_finding f JOIN findings_attempt a ON a.attempt=f.attempt`+where, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]int{}
+	var out []Span
 	for rows.Next() {
-		var c string
-		var n int
-		if err = rows.Scan(&c, &n); err != nil {
+		var s Span
+		if err = rows.Scan(&s.Category, &s.Unit, &s.Start, &s.End); err != nil {
 			return nil, err
 		}
-		out[c] = n
+		out = append(out, s)
 	}
 	return out, rows.Err()
 }

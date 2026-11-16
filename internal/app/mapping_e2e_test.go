@@ -74,12 +74,12 @@ func TestAModelMappingSendsALabelToAUserCategory(t *testing.T) {
 		t.Fatalf("start with a category nothing detects: %v", err)
 	}
 	// the rule and the model each report the number: detection keeps both candidates and the plan merges them (FR-13).
-	// Findings and Categories count those candidates (two: one of the rule, one of the model), not redactions.
-	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["person"] != 0 || st.Files[0].Categories["phone"] != 2 || st.Files[0].Findings != 2 {
+	// Findings and Categories count places merged the same way, so the two candidates are one place.
+	if st, err = e.Wait(ctx, st.ID); err != nil || st.Files[0].State != "completed" || st.Files[0].Categories["person"] != 0 || st.Files[0].Categories["phone"] != 1 || st.Files[0].Findings != 1 {
 		t.Fatalf("%+v %v", st, err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(out, st.Files[0].Output))
-	// the two candidates are one redaction: the number is replaced once
+	// the one place is one redaction: the number is replaced once
 	if s := string(raw); strings.Count(s, "[手机号]") != 1 || !strings.Contains(s, "张伟") || strings.Contains(s, "13812345678") {
 		t.Fatalf("output %q", s)
 	}
