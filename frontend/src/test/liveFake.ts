@@ -218,9 +218,11 @@ export class FakeEngine implements EngineService {
     this.cleanedFiles.push(job);
   }
   retried: [string, string[]][] = [];
+  retryFails: Error | null = null;
   /** As the kernel: a failed file runs again, a blocked one too unless it waits for a password or the original changed. */
   async retry(b: string, only: string[] = []) {
     this.calls.push("retry");
+    if (this.retryFails) throw this.retryFails;
     this.retried.push([b, only]);
     this.setRows(b, this.rowsOf(b).map((r) => (r.state === "failed" || (r.state === "blocked" && !["password_required", "PASSWORD_INCORRECT", "INPUT_CHANGED"].includes(r.detail ?? ""))) ? { ...r, state: "queued" } : r));
   }

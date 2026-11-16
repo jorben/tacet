@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 import { openBatchFile, startBatch } from "../actions/batch";
 import { refusalOf, refusedJobs } from "../actions/decisions";
-import { publishLiveBatch, retryLive, startLive, takePaths } from "../actions/live";
+import { exportLiveSingle, publishLiveBatch, retryLive, startLive, takePaths } from "../actions/live";
 import { addManualRedaction, clickHit, focusHit, openAllImagesMenu, openCategoryMenu, openImageMenu, returnToBatch, setHitState, switchPreset, toggleFocusedHit, undoSingle } from "../actions/single";
 import { requestQuit } from "../actions/window";
 import { closeModal, closePop, dismissToast, overlayStore } from "../overlay/store";
@@ -381,6 +381,37 @@ describe("打开的文件进入发布或已完成：立刻提示并转只读", (
     expect(toastText()).toContain(NOT_IN_OUTPUT);
     expect(page()).toContain("现在只读");
     expect(buttons("确认并导出")).toEqual([]);
+  });
+
+  it("单文件转只读后内核完成：屏幕结束任务，“最近”里记下已导出", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().live!.closed).toBe(true);
+    expect(single().phase).toBe("review");
+
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().phase).toBe("done");
+    expect(getState().history.filter((h) => h.name === "q.txt").map((h) => h.stl)).toEqual(["已导出"]);
+    await act(() => fake.emitBatch()); // the kernel says it again: the task ends once
+    expect(getState().history.filter((h) => h.name === "q.txt")).toHaveLength(1);
+  });
+
+  it("单文件导出时内核收下发布、之后的调用出错退回复核：内核完成时屏幕同样结束任务", async () => {
+    fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    fake.retryFails = new Error("STORE_FAILED");
+    await act(async () => { await exportLiveSingle(); });
+    expect(fake.calls).toContain("publish");
+    expect(single().phase).toBe("review");
+
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().phase).toBe("done");
+    expect(getState().history.filter((h) => h.name === "q.txt").map((h) => h.stl)).toEqual(["已导出"]);
   });
 
   it("单文件：导出时听到发布不算太晚，不提示", async () => {

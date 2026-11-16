@@ -436,9 +436,14 @@ async function syncSingle(st: EngineBatch): Promise<void> {
     store.update((d) => { if (d.single?.runId === runId) { d.single.stage = stage; d.single.sp = sp; } });
     return;
   }
+  if (f.state === "completed" || f.state === "partial") {
+    // Not only an export ends the task: a review turned read-only, or put back to review by a failed call after the
+    // kernel took the publish, ends when the kernel does.
+    if (s.phase !== "done") finishSingle(runId, f);
+    return;
+  }
   if (s.phase === "exporting") {
-    if (f.state === "completed" || f.state === "partial") finishSingle(runId, f);
-    else if (f.state === "awaiting_review") {
+    if (f.state === "awaiting_review") {
       store.update((d) => { if (d.single?.runId === runId) d.single.phase = "review"; });
       toast("还有待确认的内容，请检查后再导出");
     } else if (f.state === "failed" || f.state === "blocked") {
