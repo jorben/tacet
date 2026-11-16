@@ -484,6 +484,20 @@ func TestBegunTellsWhetherADocumentHasGoneOutOrMayBeGoingOut(t *testing.T) {
 		if calls != 3 || f.intentStates()["prepared"] != 1 {
 			t.Fatalf("the ending commit was not the one that failed: %d commits, intents %v", calls, f.intentStates())
 		}
+		// Begun ends the intent in the caller's transaction, so a caller that rolls back takes the ending back with it:
+		// the intent is still prepared, and has to be kept for the next Begun to end.
+		gaveUp := errors.New("the caller gave up")
+		if err := f.svc.Commit(context.Background(), func(tx store.Tx) error {
+			if _, err := f.svc.Begun(tx, f.req("x", "x.txt").Attempt.JobID); err != nil {
+				return err
+			}
+			return gaveUp
+		}); !errors.Is(err, gaveUp) {
+			t.Fatal(err)
+		}
+		if st, n := f.intentStates(), len(f.svc.unsettled); st["prepared"] != 1 || n != 1 {
+			t.Fatalf("an ending rolled back with its caller was taken as done: intents %v, %d kept to be ended", st, n)
+		}
 		if begun(f) {
 			t.Fatal("a publish that was refused by the name, its intent left prepared by a failed commit, has begun")
 		}
