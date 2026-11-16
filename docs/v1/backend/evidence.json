@@ -3,7 +3,7 @@
  "requirements": {
   "MD-19": {
    "status": "partial",
-   "evidence": "sched 每个准入票据持有处理租约至 runner 真正停止，取消不提前释放；网络活动阻止准入，释放后事件唤醒，队列暂停/压力不轮询。netgate.Lease.HTTPClient 已实现受租约约束的出站客户端：仅 Network 租约可创建；只允许 https、无 URL 凭据、主机白名单（空白名单拒绝一切），重定向每一跳重新校验且最多 5 跳；每次请求和拨号在租约下准入，释放租约会取消在途请求并使响应体读取返回 ACTIVITY_LEASE_RELEASED，同时关闭空闲连接（7 项本地 TLS 服务器测试，-race 通过，5 个有效变异验证）；模型/插件下载、更新、安装的具体调用方与 UI 待接入。；pluginmgr.Confirm 取维护租约（需下载依赖时再取网络租约），models/update 下载取网络租约，处理期间均返回 ACTIVITY_BUSY 且未发起任何请求或部署（测试）"
+   "evidence": "sched 每个准入票据持有处理租约至 runner 真正停止，取消不提前释放；网络活动阻止准入，队列订阅 Gate 的释放通知（OnRelease，计数减少后触发），下载完成/暂停/失败后等待中的阶段自动继续（#43，真实下载端到端测试，未在真实界面验证），队列暂停/压力不轮询。netgate.Lease.HTTPClient 已实现受租约约束的出站客户端：仅 Network 租约可创建；只允许 https、无 URL 凭据、主机白名单（空白名单拒绝一切），重定向每一跳重新校验且最多 5 跳；每次请求和拨号在租约下准入，释放租约会取消在途请求并使响应体读取返回 ACTIVITY_LEASE_RELEASED，同时关闭空闲连接（7 项本地 TLS 服务器测试，-race 通过，5 个有效变异验证）；模型/插件下载、更新、安装的具体调用方与 UI 待接入。；pluginmgr.Confirm 取维护租约（需下载依赖时再取网络租约），models/update 下载取网络租约，处理期间均返回 ACTIVITY_BUSY 且未发起任何请求或部署（测试）"
   },
   "AR-13": {
    "status": "partial",
