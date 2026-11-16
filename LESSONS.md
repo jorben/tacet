@@ -44,7 +44,7 @@
   - 其他测试里还有约 80 处 `context.WithTimeout(context.Background(), …)`；在本机 `-race` 下，它们离各自的上限都还很远，所以这次没有改。
 - PR #5 第三轮审查（2026-11-03）：`TestAProbeStoppedBeforeItsWorkerStartsStartsNone` 断言关闭不超过 2 秒，这是经验值，不是需求规定的时限。改成和旧代码的行为对比：旧代码等整个探测，最多 3 秒，测试把探测卡到 Reap 之后，所以旧代码的关闭必然不少于 3 秒；关闭达到 3 秒才报错。
 - PR #24 的审查（2026-11-04）：`TestAnInterruptEndsTheWaitOfARefusedStart` 改写时去掉了 20 秒保护。把 `discard` 里的 `Wait` 换成不响应中断的 context，旧测试只能等 `go test -timeout`（CI 上是 30 分钟）panic，同包后面的测试不再运行；恢复保护后，它在 20 秒报 `the run did not end on the interrupt`，后面的测试照常运行。这不算违反上面的规则：规则管的是给真实流程设的上限，这里被等的只有内存里的 fake，runner 变慢也不会误报。所以“出现”不加 1。
-- PR #47（#43）的 `download_wake_e2e_test.go` 用 2 分钟的 `wakeLimit` 给真实流程（本机下载、调度器、插件）设上限，注释写的理由是“不让卡住的调度器拖垮整个包”，这正是这条规则交给 `go test -timeout` 的事；上面 PR #24 那条例外只限被等的只有内存里的 fake。合并后的审查（2026-11-16）指出后，b545d38 去掉上限，改为直接等待。把上限压到 5ms 模拟慢 runner，旧代码每个子测试都报 `the download never reached the hub`。
+- PR #47（#43）的 `download_wake_e2e_test.go` 用 2 分钟的 `wakeLimit` 给真实流程（本机下载、调度器、插件）设上限，注释写的理由是“不让卡住的调度器拖垮整个包”，这正是这条规则交给 `go test -timeout` 的事；上面 PR #24 那条例外只限被等的只有内存里的 fake。合并后的审查（2026-11-16）指出后，b545d38 去掉了 `wakeLimit`，等下载到达、调度器睡下和被唤醒都改为直接等待。把上限压到 5ms 模拟慢 runner，旧代码每个子测试都报 `the download never reached the hub`。b545d38 的提交说明和这里原来都写“去掉上限”，不准确：测试最后核对模型状态时调用的 `waitModel`（`catalog_test.go`）仍有 3 分钟的墙钟上限。暂时保留，因为 `waitModel` 是 `internal/app` 里 8 处调用共用的辅助函数，改它超出这轮修复的范围；而这里调用它时下载已经结束、等着的工作已经跑完，它只等模型状态落定，本机 `-race` 下 6 个子测试各用 0.1ms 到 101ms（第 2 轮审查时实测），离上限很远。改成直接等待留给单独的改动。
 - 出现：3 次（2026-11-02、2026-11-03、2026-11-16）。已移入 [AGENTS.md](AGENTS.md) 验收要求第 9 条。
 
 **一个修复由几处改动组成时，逐处撤回，确认每一处都有测试失败；哪一处撤回后都没有测试失败，就补一个会失败的测试，补不出来就删掉它。**
@@ -201,12 +201,8 @@
   - 收尾可能等待时，先把结论告诉用户；
   - 一个错误会被逐层改写时，要判断是否被中断就直接看 ctx，并核对接收方（这里是 `finish`）按什么判断；
   - fake 回答的组合要是真实实现能给出的，中断时机用钩子放在被测的那一步上。
-- PR #46（#42）合并后的审查（2026-11-16）又查出两处：
-  - `publish.settle` 用 `_ = s.Commit(...)` 忽略“结束发布意图”的提交失败，而 #42 新加的 `Begun` 依赖这一步成功：意图停在 `prepared`，决定变更一直返回 `DECISIONS_CLOSED`，直到重启后 `Recover` 结束它。加 `Begun` 时没有回头看写这个状态的每一处会不会失败。67a1947 修复：提交失败的意图记在内存里，由下一次 `Begun` 在调用方的事务里结束；旧代码上新测试报 `a publish that was refused by the name, its intent left prepared by a failed commit, has begun`。
-  - `decisionsClosed.test.tsx` 的两个测试用 `decideFailsOf` 手工注入 `DECISIONS_CLOSED`，拒绝的是一个从未导出、仍在待复核的单文件，真实内核给不出这个组合。`FakeEngine.decide` 只看当前批次的行，“最近”里的任务永远不会被拒为太晚，所以只能注入。de7c88a 让 fake 按文件所属批次判断，两个测试改走真实路径（导出时内核收下发布，之后的调用出错，屏幕退回复核）；只撤回 fake 的判断时报 `expected 'undefined' to contain 'DECISIONS_CLOSED'`。
-- 规则补充：
-  - 新增一个读持久状态的判断（这里是 `Begun`）时，列出写这个状态的每一处，问它失败时状态停在哪里；
-  - fake 缺某条内核规则时补上规则，不要用注入的错误绕过它。
+- PR #46（#42）合并后的审查（2026-11-16）：`publish.settle` 用 `_ = s.Commit(...)` 忽略“结束发布意图”的提交失败，而 #42 新加的 `Begun` 依赖这一步成功：意图停在 `prepared`，决定变更一直返回 `DECISIONS_CLOSED`，直到重启后 `Recover` 结束它。加 `Begun` 时没有回头看写这个状态的每一处会不会失败。67a1947 修复：提交失败的意图记在内存里，由下一次 `Begun` 在调用方的事务里结束；旧代码上新测试报 `a publish that was refused by the name, its intent left prepared by a failed commit, has begun`。
+- 规则补充：新增一个读持久状态的判断（这里是 `Begun`）时，列出写这个状态的每一处，问它失败时状态停在哪里。
 - 出现：2 次（2026-11-04、2026-11-16）
 
 **发出去不等结果的写入，要在发出的那一刻登记；之后读同一份数据、依赖它的动作都排在它后面。同一份数据的写入也要互相排队。**
@@ -373,6 +369,7 @@
   - 转只读时藏起按钮不够，按入口（按钮、快捷键、菜单）逐个拦，并让转只读的标记跟着任务走到屏幕以外（“最近”）。
 - PR #46 合并后的审查（2026-11-16）：
   - 单文件在复核中转只读后，内核把它推进到 `completed`，屏幕仍停在只读复核页，没有出口，“最近”里也没有记录：`syncSingle` 只在 `exporting` 时结束任务。`exportLiveSingle` 在 `e.publish` 已成功、之后的调用出错时把屏幕退回 `review`，也会停在这里。转只读时只想了“不能改”，没有问内核接着往下走时屏幕怎么离开。0e50283 修复；旧代码上两个新测试都报 `expected 'review' to be 'done'`。
+  - `decisionsClosed.test.tsx` 的两个测试用 `decideFailsOf` 手工注入 `DECISIONS_CLOSED`，拒绝的是一个从未导出、仍在待复核的单文件，真实内核给不出这个组合：fake 没有实现被测的那条内核规则（AGENTS.md 第 8 条），测试就用注入的错误绕过它。`FakeEngine.decide` 只看当前批次的行，“最近”里的任务永远不会被拒为太晚，所以只能注入。de7c88a 让 fake 按文件所属批次判断，两个测试改走真实路径（导出时内核收下发布，之后的调用出错，屏幕退回复核）；只撤回 fake 的判断时报 `expected 'undefined' to contain 'DECISIONS_CLOSED'`。
   - 读码推断，没有修，待决定：文件已放进输出目录、记账提交失败时，文件按 `failed / PUBLISH_STORE_FAILED` 结束，发布意图仍是 `prepared`。前端把 `failed` 当作可以再写入、解除只读，内核按 `Begun` 拒绝。前端只看状态，看不出文档出去了没有。
 - 规则补充：转只读、暂停这类“先不让动”的屏幕状态，列出内核接下来会走到的每个状态（完成、失败、退回），逐个测屏幕怎么离开它。
 - 出现：5 次（2026-11-04、2026-11-05、2026-11-06、2026-11-07、2026-11-16）。已移入 [AGENTS.md](AGENTS.md) 验收要求第 8 条。
