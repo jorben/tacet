@@ -197,6 +197,10 @@ export class FakeEngine implements EngineService {
   }
   cancelledFiles: string[] = [];
   cleanedFiles: string[] = [];
+  /** The row of a file in the batch it belongs to: the current one first, as its ids can repeat in batches kept aside. */
+  private fileRow(job: string): EngineFile | undefined {
+    return this.rows.find((r) => r.id === job) ?? [...this.kept.values()].flat().find((r) => r.id === job);
+  }
   private batchOfFile(job: string): string {
     const owner = this.rows.some((r) => r.id === job) ? this.current : [...this.kept].find(([, rows]) => rows.some((r) => r.id === job))?.[0];
     if (!owner) throw new Error("NOT_FOUND");
@@ -366,8 +370,8 @@ export class FakeEngine implements EngineService {
     if (this.decideFails) throw this.decideFails;
     const refused = this.decideFailsOf.get(job);
     if (refused) throw refused;
-    // as the kernel: a file whose document has gone out or is going out cannot follow a new choice
-    if (this.rows.some((r) => r.id === job && ["publishing", "completed", "partial"].includes(r.state))) throw new Error("DECISIONS_CLOSED");
+    // as the kernel: a file whose document has gone out or is going out cannot follow a new choice, in whichever batch it is
+    if (["publishing", "completed", "partial"].includes(this.fileRow(job)?.state ?? "")) throw new Error("DECISIONS_CLOSED");
     this.decisions = ds;
     this.decisionLog.push({ job, ds });
     ds.forEach((d) => this.kernelDecisions.set(d.id, d.keep));

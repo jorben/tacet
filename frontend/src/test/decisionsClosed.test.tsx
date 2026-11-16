@@ -73,6 +73,17 @@ async function openSecond() {
   expect(single().hits[0]!.state).toBe("keep");
 }
 
+/** “确认并导出” on the single task on screen: the kernel takes the publish, a later call fails, the screen is back in
+ *  review while the kernel goes on to publish. */
+async function kernelTookTheExport() {
+  fake.retryFails = new Error("STORE_FAILED");
+  await act(async () => { await exportLiveSingle(); });
+  fake.retryFails = null;
+  expect(fake.calls).toContain("publish");
+  expect(single().phase).toBe("review");
+  act(() => dismissToast());
+}
+
 /** “关闭窗口”, as the person does it, up to “保存并关闭”. */
 function saveAndCloseByHand() {
   act(() => requestQuit());
@@ -495,15 +506,15 @@ describe("文件退回可写：太晚的记录不再是太晚", () => {
     takePaths(["/d/q1.txt"]);
     await waitFor(() => expect(single()?.phase).toBe("review"));
     const first = single().live!.batch;
+    await kernelTookTheExport();
     choose(0, "keep");
-    fake.decideFailsOf.set("q1", new Error("DECISIONS_CLOSED"));
+    fake.rows = [fake.row(0, "publishing", { id: "q1" })]; // the screen has not heard yet
     fake.nextRows = [fake.row(0, "awaiting_review", { id: "q2", pending: 1 })];
     takePaths(["/d/q2.txt"]); // the first goes to “最近”, its choices to the kernel, which refuses them as too late
     await waitFor(() => expect(single()?.name).toBe("q2.txt"));
     await waitFor(() => expect(String(refusalOf("q1"))).toContain("DECISIONS_CLOSED"));
     await waitFor(() => expect(single()?.phase).toBe("review"));
 
-    fake.decideFailsOf.clear();
     await act(() => fake.emitFor(first, [fake.row(0, "failed", { id: "q1" })]));
     expect(refusedJobs()).toEqual(["q1"]);
     saveAndCloseByHand();
@@ -589,11 +600,13 @@ describe("退出和只读的其余入口", () => {
     takePaths(["/d/q.txt"]);
     await waitFor(() => { expect(single()?.name).toBe("q.txt"); expect(single().phase).toBe("review"); });
     const task = single().live!.batch;
+    await kernelTookTheExport();
     choose(0, "keep");
     fake.units = [unit(1, "电话 13812345678", [{ id: 31, start: 3, end: 14 }])];
     act(() => openBatchFile(1));
     await waitFor(() => expect(getState().behind?.single.live?.batch).toBe(task));
-    fake.decideFailsOf.set("q1", new Error("DECISIONS_CLOSED"));
+    expect(fake.current).toBe(task);
+    fake.rows = [fake.row(0, "publishing", { id: "q1" })]; // the screen has not heard yet
     act(() => dismissToast());
 
     saveAndCloseByHand();
