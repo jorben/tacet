@@ -487,6 +487,45 @@ describe("打开的文件进入发布或已完成：立刻提示并转只读", (
     expect(single().name).toBe("q2.txt"); // the task now on screen is not touched
   });
 
+  const UNREAD = "以导出文件为准";
+
+  it("单文件转只读后内核完成，读回内核的选择失败：任务照样结束，完成页和“最近”不显示涂抹/保留数，只记一次", async () => {
+    await readOnlyWithAChoiceNotTaken();
+    fake.documentFails = new Error("STORE_FAILED");
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    await waitFor(() => expect(single().phase).toBe("done"));
+    expect(fake.documentFails).toBeNull(); // the read back was tried, and failed
+    expect(single().live!.choicesUnknown).toBe(true);
+    expect(toastText()).toContain(UNREAD);
+    expect(doneCounts()).toEqual([undefined, undefined]);
+    expect(page()).toContain(UNREAD);
+    await act(() => fake.emitBatch()); // the kernel says it again
+    expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["已导出"]);
+
+    act(() => openHistoryEntry(entriesOf("q1.txt")[0]!.id));
+    expect(getState().view).toBe("history");
+    expect(doneCounts()).toEqual([undefined, undefined]);
+    expect(page()).toContain(UNREAD);
+  });
+
+  it("“最近”里的只读单文件完成时读回失败：条目同样结束，打开后不显示涂抹/保留数，只记一次", async () => {
+    const first = await readOnlyWithAChoiceNotTaken();
+    await leaveForAnotherFile();
+    fake.documentFails = new Error("STORE_FAILED");
+    await act(() => fake.emitFor(first, [fake.row(0, "completed", { id: "q1" })]));
+    await waitFor(() => expect(entriesOf("q1.txt").map((h) => h.stl)).toEqual(["已导出"]));
+    expect(fake.documentFails).toBeNull();
+    expect((entriesOf("q1.txt")[0]!.saved as Single).live!.choicesUnknown).toBe(true);
+    expect(toastText()).toContain(UNREAD);
+    await act(() => fake.emitFor(first, [fake.row(0, "completed", { id: "q1" })]));
+    expect(entriesOf("q1.txt")).toHaveLength(1);
+
+    act(() => openHistoryEntry(entriesOf("q1.txt")[0]!.id));
+    expect(doneCounts()).toEqual([undefined, undefined]);
+    expect(page()).toContain(UNREAD);
+    expect(single().name).toBe("q2.txt");
+  });
+
   it("单文件转只读后内核完成：屏幕结束任务，“最近”里记下已导出", async () => {
     fake.units = [unit(1, "电话 13812345678", [{ id: 51, start: 3, end: 14 }])];
     fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];

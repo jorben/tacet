@@ -396,7 +396,7 @@ async function syncShelvedSingle(st: EngineBatch): Promise<void> {
     Object.assign(h, singleEntryStatus(x, f.state));
   });
   if (readBack) await finishWithKernelChoices(saved.runId, f);
-  else if (ended) endedInBackground(saved.runId, f);
+  else if (ended && endShelvedSingle(saved.runId, f) !== undefined) toast("「" + saved.name + "」已在后台完成");
 }
 
 /** The entry under “最近” of a task the kernel completed says so, once: an ended entry is no longer parked, and
@@ -416,12 +416,6 @@ function endShelvedSingle(runId: number, f: EngineFile, take?: (x: Draft<Single>
     name = x.name;
   });
   return name;
-}
-
-/** The entry of a task that completed under “最近” says so, and the person is told. */
-function endedInBackground(runId: number, f: EngineFile, take?: (x: Draft<Single>) => void): void {
-  const name = endShelvedSingle(runId, f, take);
-  if (name !== undefined) toast("「" + name + "」已在后台完成");
 }
 
 async function syncSingle(st: EngineBatch): Promise<void> {
@@ -593,28 +587,37 @@ async function showReview(runId: number, job: string): Promise<void> {
 
 /** Ends a task the kernel completed from review with the choices it holds, read back from it, in place of those on
  *  screen. The task ends wherever it is when the read is back, on screen or under “最近”: the person may leave meanwhile,
- *  and no event is left to end it. If the document cannot be read the task stays as it is, read-only, and the person
- *  is told: the screen does not say what went out. */
+ *  and no event is left to end it. If the document cannot be read the task ends all the same, its choices marked
+ *  unknown: a read-only review has no way out, and neither the done page nor “最近” may count the screen's choices. */
 async function finishWithKernelChoices(runId: number, f: EngineFile): Promise<void> {
   if (loading.has(runId)) return; // the read under way ends the task, wherever it is by then
   loading.add(runId);
   try {
-    let held: Map<number, boolean>;
+    let take: (x: Draft<Single>) => void;
+    let failure: unknown = null;
     try {
       const { units } = await loadUnits(f.id);
-      held = new Map(units.flatMap((u) => (u.findings ?? []).map((x) => [x.id, x.decision === "keep"] as const)));
+      const held = new Map(units.flatMap((u) => (u.findings ?? []).map((x) => [x.id, x.decision === "keep"] as const)));
+      take = (x) => x.live!.findingOf.forEach((id, i) => { const keep = held.get(id); if (keep !== undefined) x.hits[i]!.state = keep ? "keep" : "redact"; });
     } catch (err) {
-      if (getState().single?.runId === runId) toast("「" + getState().single!.name + "」已导出，但未能读回导出时的选择：" + errorText(err));
+      failure = err;
+      take = (x) => { x.live!.choicesUnknown = true; };
+    }
+    const s = getState();
+    if (s.single?.runId === runId && s.single.phase !== "done") {
+      const { name } = s.single;
+      finishSingle(runId, f, take);
+      if (failure !== null) toast("「" + name + "」" + CHOICES_UNREAD + errorText(failure));
       return;
     }
-    const take = (x: Draft<Single>) => x.live!.findingOf.forEach((id, i) => { const keep = held.get(id); if (keep !== undefined) x.hits[i]!.state = keep ? "keep" : "redact"; });
-    const s = getState();
-    if (s.single?.runId === runId && s.single.phase !== "done") finishSingle(runId, f, take);
-    else endedInBackground(runId, f, take);
+    const name = endShelvedSingle(runId, f, take);
+    if (name !== undefined) toast("「" + name + "」" + (failure === null ? "已在后台完成" : CHOICES_UNREAD + errorText(failure)));
   } finally {
     loading.delete(runId);
   }
 }
+
+const CHOICES_UNREAD = "已导出，但未能读回导出时的选择，涂抹与保留以导出文件为准：";
 
 /** The task on screen ends: “最近” lists it from here. `take` puts the kernel's choices on it first. */
 function finishSingle(runId: number, f: EngineFile, take?: (x: Draft<Single>) => void): void {
