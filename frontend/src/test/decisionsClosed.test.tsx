@@ -12,6 +12,7 @@ import { setService } from "../services";
 import { mockService } from "../services/mock";
 import { getState, resetStore, store } from "../store";
 import { setSelectionPopover } from "../features/single/selection";
+import type { Single } from "../domain/types";
 import { FakeEngine, unit } from "./liveFake";
 import { button, buttons, mountApp, pick } from "./helpers";
 
@@ -392,6 +393,28 @@ describe("打开的文件进入发布或已完成：立刻提示并转只读", (
     expect(toastText()).toContain(NOT_IN_OUTPUT);
     expect(page()).toContain("现在只读");
     expect(buttons("确认并导出")).toEqual([]);
+  });
+
+  it("单文件转只读前改了选择、内核没收到，之后内核完成：完成页和“最近”按内核持有的决定计数", async () => {
+    fake.units = [unit(1, "电话 13800138000 或 13900139000", [{ id: 51, start: 3, end: 14 }, { id: 52, start: 17, end: 28 }])];
+    fake.kernelDecisions.set(51, true);
+    fake.rows = [fake.row(0, "awaiting_review", { id: "q1", pending: 1 })];
+    takePaths(["/d/q.txt"]);
+    await waitFor(() => expect(single()?.phase).toBe("review"));
+    expect(single().hits.map((h) => h.state)).toEqual(["keep", "redact"]);
+    choose(0, "redact"); // not written: a single task's choices go to the kernel when it exports or leaves
+    await act(() => { fake.rows = [fake.row(0, "publishing", { id: "q1" })]; return fake.emitBatch(); });
+    expect(single().live!.closed).toBe(true);
+    expect(toastText()).toContain(NOT_IN_OUTPUT);
+
+    await act(() => { fake.rows = [fake.row(0, "completed", { id: "q1" })]; return fake.emitBatch(); });
+    await waitFor(() => expect(single().phase).toBe("done"));
+    const held = (findingOf: number[]) => findingOf.map((id) => (fake.kernelDecisions.get(id) ? "keep" : "redact"));
+    expect(held(single().live!.findingOf)).toEqual(["keep", "redact"]);
+    const stats = Object.fromEntries([...document.querySelectorAll(".donecard .stats > div")].map((d) => [d.querySelector("span")!.textContent, Number(d.querySelector("b")!.textContent)]));
+    expect([stats["涂抹"], stats["保留"]]).toEqual([1, 1]);
+    const saved = getState().history.find((h) => h.name === "q.txt")!.saved as Single;
+    expect(saved.hits.map((h) => h.state)).toEqual(held(saved.live!.findingOf));
   });
 
   it("单文件转只读后内核完成：屏幕结束任务，“最近”里记下已导出", async () => {

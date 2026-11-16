@@ -438,8 +438,13 @@ async function syncSingle(st: EngineBatch): Promise<void> {
   }
   if (f.state === "completed" || f.state === "partial") {
     // Not only an export ends the task: a review turned read-only, or put back to review by a failed call after the
-    // kernel took the publish, ends when the kernel does.
-    if (s.phase !== "done") finishSingle(runId, f);
+    // kernel took the publish, ends when the kernel does. The document went out from the kernel's choices, so a choice
+    // on screen it never took, or refused as too late, must not be what the result says. Outside an export, the only
+    // choices a single task on screen writes are those `openDecisionsOf` holds (leaving marks them sent), so a refused
+    // one is among them too.
+    if (s.phase === "done") return;
+    if (s.phase !== "exporting" && openDecisionsOf(s, getState().undo)) await finishWithKernelChoices(runId, f);
+    else finishSingle(runId, f);
     return;
   }
   if (s.phase === "exporting") {
@@ -561,6 +566,27 @@ async function showReview(runId: number, job: string): Promise<void> {
     if (truncated && !stale()) toast("文档较长，只显示前一部分；其余内容按方案自动处理");
   } catch (err) {
     shelveUnread(runId, err);
+  }
+}
+
+/** Ends the task with the choices the kernel holds, read back from it, in place of those on screen. If the document
+ *  cannot be read the task stays as it is, read-only, and the person is told: the screen does not say what went out. */
+async function finishWithKernelChoices(runId: number, f: EngineFile): Promise<void> {
+  if (loading.has(runId)) return;
+  loading.add(runId);
+  try {
+    const { units } = await loadUnits(f.id);
+    const held = new Map(units.flatMap((u) => (u.findings ?? []).map((x) => [x.id, x.decision === "keep"] as const)));
+    store.update((d) => {
+      const x = d.single;
+      if (!x || x.runId !== runId || x.phase === "done") return;
+      x.live!.findingOf.forEach((id, i) => { const keep = held.get(id); if (keep !== undefined) x.hits[i]!.state = keep ? "keep" : "redact"; });
+    });
+    finishSingle(runId, f);
+  } catch (err) {
+    if (getState().single?.runId === runId) toast("「" + getState().single!.name + "」已导出，但未能读回导出时的选择：" + errorText(err));
+  } finally {
+    loading.delete(runId);
   }
 }
 
